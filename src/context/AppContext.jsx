@@ -72,9 +72,68 @@ export const AppProvider = ({ children }) => {
         };
     }, []);
 
-    // ... (fetchData unchanged)
+    const fetchData = async () => {
+        const { data: m } = await supabase.from('materials').select('*');
+        if (m) setMaterials(m.map(item => ({
+            ...item,
+            serialNumber: item.serial_number,
+            qrCode: item.qr_code,
+            locationType: item.location_type,
+            locationId: item.location_id
+        })));
 
-    // ... (login/logout unchanged)
+        const { data: s } = await supabase.from('sites').select('*');
+        if (s) setSites(s);
+
+        const { data: u } = await supabase.from('users').select('*');
+        if (u) setUsers(u);
+
+        const { data: l } = await supabase.from('logs').select('*').order('timestamp', { ascending: false });
+        if (l) setLogs(l.map(item => ({ ...item, userId: item.user_id })));
+
+        const { data: c } = await supabase.from('company_info').select('*').single();
+        if (c) setCompanyInfo(c);
+    };
+
+
+    // Actions
+    const login = (role, password, remember = false) => {
+        // Simple auth against loaded users
+        const user = users.find(u => u.role === role);
+        if (user && user.password === password) {
+            setCurrentUser(user);
+            if (remember) {
+                localStorage.setItem('currentUser', JSON.stringify(user));
+            }
+            return true;
+        }
+        return false;
+    };
+
+    const logout = () => {
+        setCurrentUser(null);
+        localStorage.removeItem('currentUser');
+    };
+
+    const updateCompanyInfo = async (info) => {
+        // Assumes ID 1 is the main company info
+        const { error } = await supabase.from('company_info').update(info).eq('id', companyInfo.id || 1);
+        if (!error) {
+            // Optimistic update handled by subscription or local if fast
+            addLog('Updated company information');
+        }
+    };
+
+    const addUser = async (user) => {
+        const { error } = await supabase.from('users').insert([{ ...user, created_at: new Date() }]);
+        if (!error) addLog(`Added user: ${user.name}`);
+    };
+
+    const deleteUser = async (userId) => {
+        const userToDelete = users.find(u => u.id === userId);
+        const { error } = await supabase.from('users').delete().eq('id', userId);
+        if (!error) addLog(`Deleted user: ${userToDelete?.name}`);
+    };
 
     const addMaterial = async (material) => {
         const dbMaterial = {
