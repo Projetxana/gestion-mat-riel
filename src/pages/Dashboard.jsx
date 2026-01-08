@@ -1,5 +1,8 @@
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAppContext } from '../context/AppContext';
+import { Hammer, HardHat, AlertTriangle, Activity, Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { Camera } from 'lucide-react';
 
 const Dashboard = () => {
     const { materials, sites, addLog } = useAppContext();
