@@ -23,7 +23,7 @@ const LoginPage = () => {
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
             <div className="glass-panel w-full max-w-md p-8">
                 <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-blue-500 mb-2">Antigravity</h1>
+                    <img src="/company-logo.png" alt="Logo" className="h-24 mx-auto mb-4 object-contain" />
                     <p className="text-slate-400">Système de Gestion de Matériel</p>
                 </div>
 
