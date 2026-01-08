@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, QrCode } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
 const AddMaterialModal = ({ onClose }) => {
     const { addMaterial } = useAppContext();
+    const [isScanning, setIsScanning] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
         serialNumber: '',
@@ -12,6 +14,33 @@ const AddMaterialModal = ({ onClose }) => {
         locationType: 'warehouse',
         locationId: null
     });
+
+    useEffect(() => {
+        let scanner = null;
+        if (isScanning) {
+            scanner = new Html5QrcodeScanner(
+                "reader",
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                /* verbose= */ false
+            );
+            scanner.render(onScanSuccess, onScanFailure);
+        }
+
+        return () => {
+            if (scanner) {
+                scanner.clear().catch(error => console.error("Failed to clear scanner", error));
+            }
+        };
+    }, [isScanning]);
+
+    const onScanSuccess = (decodedText, decodedResult) => {
+        setFormData(prev => ({ ...prev, qrCode: decodedText }));
+        setIsScanning(false);
+    };
+
+    const onScanFailure = (error) => {
+        // console.warn(`Code scan error = ${error}`);
+    };
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -26,7 +55,7 @@ const AddMaterialModal = ({ onClose }) => {
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-            <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200 overflow-y-auto max-h-[90vh]">
                 <div className="flex items-center justify-between p-6 border-b border-slate-800">
                     <h2 className="text-xl font-bold text-white">Ajouter un outil</h2>
                     <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
@@ -35,6 +64,21 @@ const AddMaterialModal = ({ onClose }) => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
+
+                    {/* Scanner Section */}
+                    {isScanning && (
+                        <div className="mb-4 p-4 bg-black rounded-lg">
+                            <div id="reader" className="w-full"></div>
+                            <button
+                                type="button"
+                                onClick={() => setIsScanning(false)}
+                                className="mt-2 w-full py-2 bg-red-600 text-white rounded text-sm"
+                            >
+                                Arrêter le scan
+                            </button>
+                        </div>
+                    )}
+
                     <div>
                         <label className="block text-sm font-medium text-slate-400 mb-1">Nom de l'outil</label>
                         <input
@@ -82,14 +126,15 @@ const AddMaterialModal = ({ onClose }) => {
                             />
                             <button
                                 type="button"
-                                onClick={generateMockQR}
-                                className="btn btn-ghost border border-slate-700 hover:bg-slate-800"
-                                title="Simuler Scan"
+                                onClick={() => setIsScanning(!isScanning)}
+                                className="btn btn-primary bg-amber-500 hover:bg-amber-600 border-none text-white shadow-lg shadow-amber-900/20"
+                                title="Scanner Code QR"
                             >
                                 <QrCode size={20} />
+                                <span className="ml-2 hidden sm:inline">Scanner</span>
                             </button>
                         </div>
-                        <p className="text-xs text-slate-500 mt-1">Cliquez sur l'icône QR pour simuler un scan.</p>
+                        <p className="text-xs text-slate-500 mt-1">Utilisez la caméra pour scanner un code.</p>
                     </div>
 
                     <div className="pt-4 flex justify-end gap-3">

@@ -10,7 +10,10 @@ export const AppProvider = ({ children }) => {
     const [users, setUsers] = useState([]);
     const [logs, setLogs] = useState([]);
     const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
-    const [currentUser, setCurrentUser] = useState(null);
+    const [currentUser, setCurrentUser] = useState(() => {
+        const savedUser = localStorage.getItem('currentUser');
+        return savedUser ? JSON.parse(savedUser) : null;
+    });
 
     // Initial Data Fetch
     useEffect(() => {
@@ -82,11 +85,14 @@ export const AppProvider = ({ children }) => {
 
 
     // Actions
-    const login = (role, password) => {
+    const login = (role, password, remember = false) => {
         // Simple auth against loaded users
         const user = users.find(u => u.role === role);
         if (user && user.password === password) {
             setCurrentUser(user);
+            if (remember) {
+                localStorage.setItem('currentUser', JSON.stringify(user));
+            }
             return true;
         }
         return false;
@@ -94,6 +100,7 @@ export const AppProvider = ({ children }) => {
 
     const logout = () => {
         setCurrentUser(null);
+        localStorage.removeItem('currentUser');
     };
 
     const updateCompanyInfo = async (info) => {
@@ -117,7 +124,21 @@ export const AppProvider = ({ children }) => {
     };
 
     const addMaterial = async (material) => {
-        const { error } = await supabase.from('materials').insert([{ ...material, created_at: new Date() }]);
+        const dbMaterial = {
+            ...material,
+            serial_number: material.serialNumber,
+            qr_code: material.qrCode,
+            location_type: material.locationType,
+            location_id: material.locationId,
+            created_at: new Date()
+        };
+        // Remove camelCase keys to avoid DB errors if strict
+        delete dbMaterial.serialNumber;
+        delete dbMaterial.qrCode;
+        delete dbMaterial.locationType;
+        delete dbMaterial.locationId;
+
+        const { error } = await supabase.from('materials').insert([dbMaterial]);
         if (!error) addLog(`Added tool: ${material.name}`);
     };
 
