@@ -1,15 +1,17 @@
--- Enable storage extension if not already enabled (usually enabled by default)
--- Create a new public bucket called 'delivery-notes'
+-- 1. Create bucket (ignore if already exists)
 insert into storage.buckets (id, name, public)
-values ('delivery-notes', 'delivery-notes', true);
+values ('delivery-notes', 'delivery-notes', true)
+on conflict (id) do nothing;
 
--- Policy to allow anyone (authenticated) to upload files
-create policy "Allow authenticated uploads"
+-- 2. Allow PUBLIC uploads (Essential because we use custom login, not Supabase Auth)
+drop policy if exists "Allow public uploads" on storage.objects;
+create policy "Allow public uploads"
 on storage.objects for insert
-to authenticated
+to public
 with check ( bucket_id = 'delivery-notes' );
 
--- Policy to allow anyone to view files (since it's a public link for email)
+-- 3. Allow public viewing (so the link works in the email)
+drop policy if exists "Allow public viewing" on storage.objects;
 create policy "Allow public viewing"
 on storage.objects for select
 to public
