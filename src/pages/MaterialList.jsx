@@ -37,19 +37,16 @@ const MaterialList = () => {
     const sortedMaterials = [...filteredMaterials].sort((a, b) => {
         const direction = sortConfig.direction === 'asc' ? 1 : -1;
 
-        switch (sortConfig.key) {
-            case 'name':
-                return direction * a.name.localeCompare(b.name);
-            case 'serialNumber':
-                return direction * a.serialNumber.localeCompare(b.serialNumber);
-            case 'status':
-                return direction * a.status.localeCompare(b.status);
-            case 'location':
-                // Simple location type sort for now, could be more complex
-                return direction * a.locationType.localeCompare(b.locationType);
-            default:
-                return 0;
-        }
+        const getValue = (obj, key) => {
+            if (key === 'location') return obj.locationType || '';
+            const val = obj[key];
+            return val === null || val === undefined ? '' : val;
+        };
+
+        const valA = getValue(a, sortConfig.key);
+        const valB = getValue(b, sortConfig.key);
+
+        return direction * String(valA).localeCompare(String(valB));
     });
 
     const getStatusColor = (status) => {
