@@ -5,7 +5,7 @@ import AddUserModal from '../components/AddUserModal';
 import { legacyMaterials } from '../data/legacyMaterials';
 
 const Settings = () => {
-    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser } = useAppContext();
+    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, addMaterial } = useAppContext();
     const [localCompanyValues, setLocalCompanyValues] = useState({ name: '', address: '' });
     const [isEditing, setIsEditing] = useState(false);
     const [showAddUserModal, setShowAddUserModal] = useState(false);
