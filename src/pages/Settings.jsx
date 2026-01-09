@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { useAppContext } from '../context/AppContext';
 import { Save, UserPlus, Shield, Users, Database } from 'lucide-react';
 import AddUserModal from '../components/AddUserModal';
 import { legacyMaterials } from '../data/legacyMaterials';
