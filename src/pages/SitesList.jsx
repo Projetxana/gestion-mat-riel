@@ -22,18 +22,15 @@ const SitesList = () => {
 
     const sortedSites = [...sites].sort((a, b) => {
         const direction = sortConfig.direction === 'asc' ? 1 : -1;
-        switch (sortConfig.key) {
-            case 'name':
-                return direction * a.name.localeCompare(b.name);
-            case 'address':
-                return direction * a.address.localeCompare(b.address);
-            case 'status':
-                return direction * a.status.localeCompare(b.status);
-            case 'count':
-                return direction * (getToolCount(a.id) - getToolCount(b.id));
-            default:
-                return 0;
+
+        if (sortConfig.key === 'count') {
+            return direction * (getToolCount(a.id) - getToolCount(b.id));
         }
+
+        const valA = a[sortConfig.key] || '';
+        const valB = b[sortConfig.key] || '';
+
+        return direction * String(valA).localeCompare(String(valB));
     });
 
     return (
