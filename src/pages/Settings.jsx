@@ -179,25 +179,22 @@ const Settings = () => {
                 </div>
             </div>
 
-            {/* Data Management */}
-            <div className="bg-red-50 rounded-2xl shadow-sm border border-red-100 p-8">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-red-700">
-                    ⚠️ Zone de Danger
+            {/* Import Data */}
+            <div className="bg-blue-50 rounded-2xl shadow-sm border border-blue-100 p-8">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-700">
+                    <Database className="text-blue-600" size={24} />
+                    Import de Données
                 </h2>
-                <p className="text-red-600 mb-6">
-                    Vous êtes actuellement peut-être en mode "Démonstration" avec des données pré-remplies.
-                    Si vous souhaitez commencer à utiliser l'application pour votre vraie activité, vous pouvez effacer toutes les données de démonstration (Outils, Chantiers, Historique).
+                <p className="text-blue-600 mb-6">
+                    Importer massivement la liste d'inventaire initiale ({legacyMaterials.length} éléments).
+                    Les numéros de série en double seront ignorés.
                 </p>
                 <button
-                    onClick={() => {
-                        if (window.confirm("Êtes-vous sûr de vouloir tout effacer ? Cette action est irréversible.")) {
-                            clearData();
-                            alert("Données effacées avec succès. Vous pouvez commencer !");
-                        }
-                    }}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow-md shadow-red-500/20 transition-all"
+                    onClick={handleImportData}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-md shadow-blue-500/20 transition-all flex items-center gap-2"
                 >
-                    Sortir du Mode Démo (Tout Effacer)
+                    <Database size={18} />
+                    Lancer l'importation
                 </button>
             </div>
 
