@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { Plus, Search, Filter, QrCode, Hammer, MapPin, LayoutGrid, List } from 'lucide-react';
+import { Plus, Search, Filter, QrCode, Hammer, MapPin, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import AddMaterialModal from '../components/AddMaterialModal';
 import MaterialDetailsModal from '../components/MaterialDetailsModal';
 
@@ -9,14 +9,21 @@ const MaterialList = () => {
     const { materials, sites } = useAppContext();
     const [searchParams] = useSearchParams();
     const [showAddModal, setShowAddModal] = useState(false);
-    const [selectedTool, setSelectedTool] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState(searchParams.get('filter') || 'all');
     const [viewMode, setViewMode] = useState('grid');
+    const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
 
     const getSiteName = (id) => {
         const site = sites.find(s => s.id === id);
         return site ? site.name : 'Unknown Site';
+    };
+
+    const handleSort = (key) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
     };
 
     const filteredMaterials = materials.filter(item => {
@@ -25,6 +32,24 @@ const MaterialList = () => {
             item.serialNumber.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesFilter = filterStatus === 'all' || item.status === filterStatus;
         return matchesSearch && matchesFilter;
+    });
+
+    const sortedMaterials = [...filteredMaterials].sort((a, b) => {
+        const direction = sortConfig.direction === 'asc' ? 1 : -1;
+
+        switch (sortConfig.key) {
+            case 'name':
+                return direction * a.name.localeCompare(b.name);
+            case 'serialNumber':
+                return direction * a.serialNumber.localeCompare(b.serialNumber);
+            case 'status':
+                return direction * a.status.localeCompare(b.status);
+            case 'location':
+                // Simple location type sort for now, could be more complex
+                return direction * a.locationType.localeCompare(b.locationType);
+            default:
+                return 0;
+        }
     });
 
     const getStatusColor = (status) => {
@@ -106,7 +131,7 @@ const MaterialList = () => {
             {/* Content */}
             {viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredMaterials.map((item) => (
+                    {sortedMaterials.map((item) => (
                         <div
                             key={item.id}
                             onClick={() => setSelectedTool(item)}
@@ -146,14 +171,54 @@ const MaterialList = () => {
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-slate-800/50 text-slate-400 text-xs uppercase tracking-wider">
-                                <th className="p-4 font-medium">Nom</th>
-                                <th className="p-4 font-medium hidden md:table-cell">Série / QR</th>
-                                <th className="p-4 font-medium">Statut</th>
-                                <th className="p-4 font-medium hidden md:table-cell">Emplacement</th>
+                                <th
+                                    className="p-4 font-medium cursor-pointer hover:text-white transition-colors"
+                                    onClick={() => handleSort('name')}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        Nom
+                                        {sortConfig.key === 'name' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                        ) : <ArrowUpDown size={14} className="opacity-50" />}
+                                    </div>
+                                </th>
+                                <th
+                                    className="p-4 font-medium hidden md:table-cell cursor-pointer hover:text-white transition-colors"
+                                    onClick={() => handleSort('serialNumber')}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        Série / QR
+                                        {sortConfig.key === 'serialNumber' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                        ) : <ArrowUpDown size={14} className="opacity-50" />}
+                                    </div>
+                                </th>
+                                <th
+                                    className="p-4 font-medium cursor-pointer hover:text-white transition-colors"
+                                    onClick={() => handleSort('status')}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        Statut
+                                        {sortConfig.key === 'status' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                        ) : <ArrowUpDown size={14} className="opacity-50" />}
+                                    </div>
+                                </th>
+                                <th
+                                    className="p-4 font-medium hidden md:table-cell cursor-pointer hover:text-white transition-colors"
+                                    onClick={() => handleSort('location')}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        Emplacement
+                                        {sortConfig.key === 'location' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                        ) : <ArrowUpDown size={14} className="opacity-50" />}
+                                    </div>
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800">
-                            {filteredMaterials.map((item) => (
+                            {sortedMaterials.map((item) => (
                                 <tr
                                     key={item.id}
                                     onClick={() => setSelectedTool(item)}

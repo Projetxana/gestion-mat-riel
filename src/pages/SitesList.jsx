@@ -1,18 +1,40 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { Plus, MapPin, HardHat, ChevronRight, LayoutGrid, List } from 'lucide-react';
+import { Plus, MapPin, HardHat, ChevronRight, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import AddSiteModal from '../components/AddSiteModal';
 import SiteDetailsModal from '../components/SiteDetailsModal';
 
 const SitesList = () => {
     const { sites, materials } = useAppContext();
-    const [showAddModal, setShowAddModal] = useState(false);
-    const [selectedSite, setSelectedSite] = useState(null);
     const [viewMode, setViewMode] = useState('grid');
+    const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
 
     const getToolCount = (siteId) => {
         return materials.filter(m => m.locationType === 'site' && m.locationId === siteId).length;
     };
+
+    const handleSort = (key) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    const sortedSites = [...sites].sort((a, b) => {
+        const direction = sortConfig.direction === 'asc' ? 1 : -1;
+        switch (sortConfig.key) {
+            case 'name':
+                return direction * a.name.localeCompare(b.name);
+            case 'address':
+                return direction * a.address.localeCompare(b.address);
+            case 'status':
+                return direction * a.status.localeCompare(b.status);
+            case 'count':
+                return direction * (getToolCount(a.id) - getToolCount(b.id));
+            default:
+                return 0;
+        }
+    });
 
     return (
         <div>
@@ -50,7 +72,7 @@ const SitesList = () => {
 
             {viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {sites.map((site) => (
+                    {sortedSites.map((site) => (
                         <div
                             key={site.id}
                             onClick={() => setSelectedSite(site)}
@@ -89,14 +111,54 @@ const SitesList = () => {
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-slate-800/50 text-slate-400 text-xs uppercase tracking-wider">
-                                <th className="p-4 font-medium">Nom Chantier</th>
-                                <th className="p-4 font-medium hidden md:table-cell">Adresse</th>
-                                <th className="p-4 font-medium">Statut</th>
-                                <th className="p-4 font-medium text-right">Matériel</th>
+                                <th
+                                    className="p-4 font-medium cursor-pointer hover:text-white transition-colors"
+                                    onClick={() => handleSort('name')}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        Nom Chantier
+                                        {sortConfig.key === 'name' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                        ) : <ArrowUpDown size={14} className="opacity-50" />}
+                                    </div>
+                                </th>
+                                <th
+                                    className="p-4 font-medium hidden md:table-cell cursor-pointer hover:text-white transition-colors"
+                                    onClick={() => handleSort('address')}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        Adresse
+                                        {sortConfig.key === 'address' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                        ) : <ArrowUpDown size={14} className="opacity-50" />}
+                                    </div>
+                                </th>
+                                <th
+                                    className="p-4 font-medium cursor-pointer hover:text-white transition-colors"
+                                    onClick={() => handleSort('status')}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        Statut
+                                        {sortConfig.key === 'status' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                        ) : <ArrowUpDown size={14} className="opacity-50" />}
+                                    </div>
+                                </th>
+                                <th
+                                    className="p-4 font-medium text-right cursor-pointer hover:text-white transition-colors"
+                                    onClick={() => handleSort('count')}
+                                >
+                                    <div className="flex items-center justify-end gap-2">
+                                        Matériel
+                                        {sortConfig.key === 'count' ? (
+                                            sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                        ) : <ArrowUpDown size={14} className="opacity-50" />}
+                                    </div>
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800">
-                            {sites.map((site) => (
+                            {sortedSites.map((site) => (
                                 <tr
                                     key={site.id}
                                     onClick={() => setSelectedSite(site)}
