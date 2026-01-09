@@ -4,8 +4,23 @@ import { X, MapPin, Hammer, ExternalLink } from 'lucide-react';
 import MaterialDetailsModal from './MaterialDetailsModal';
 
 const SiteDetailsModal = ({ site, onClose }) => {
-    const { materials } = useAppContext();
+    const { materials, currentUser, updateSite, deleteSite } = useAppContext();
     const [selectedTool, setSelectedTool] = useState(null);
+    const [editMode, setEditMode] = useState(false);
+    const [editData, setEditData] = useState({ ...site });
+
+    const handleUpdate = (e) => {
+        e.preventDefault();
+        updateSite(site.id, editData);
+        setEditMode(false);
+    };
+
+    const handleDelete = () => {
+        if (confirm('Êtes-vous sûr de vouloir supprimer ce chantier ?')) {
+            deleteSite(site.id);
+            onClose();
+        }
+    };
 
     const siteTools = materials.filter(m => m.locationType === 'site' && m.locationId === site.id);
 
@@ -15,17 +30,46 @@ const SiteDetailsModal = ({ site, onClose }) => {
                 {/* Header */}
                 <div className="flex items-start justify-between p-6 border-b border-slate-800 bg-slate-900/50">
                     <div>
-                        <div className="flex items-center gap-3 mb-2">
-                            <h2 className="text-2xl font-bold text-white">{site.name}</h2>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${site.status === 'active' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-slate-500/10 text-slate-400'
-                                }`}>
-                                {site.status === 'active' ? 'Actif' : site.status}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-slate-400">
-                            <MapPin size={16} />
-                            <p className="text-sm">{site.address}</p>
-                        </div>
+                        {editMode ? (
+                            <form onSubmit={handleUpdate} className="flex flex-col gap-2">
+                                <input
+                                    className="bg-slate-800 p-2 rounded text-white border border-slate-600"
+                                    value={editData.name}
+                                    onChange={e => setEditData({ ...editData, name: e.target.value })}
+                                />
+                                <input
+                                    className="bg-slate-800 p-2 rounded text-white border border-slate-600 text-sm"
+                                    value={editData.address}
+                                    onChange={e => setEditData({ ...editData, address: e.target.value })}
+                                />
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={() => setEditMode(false)} className="text-xs text-slate-400">Annuler</button>
+                                    <button type="submit" className="text-xs text-green-500">Sauvegarder</button>
+                                </div>
+                            </form>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <h2 className="text-2xl font-bold text-white max-w-md truncate">{site.name}</h2>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium border ${site.status === 'active' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-slate-500/10 text-slate-400'
+                                        }`}>
+                                        {site.status === 'active' ? 'Actif' : site.status}
+                                    </span>
+                                    {currentUser?.role === 'admin' && (
+                                        <div className="flex gap-2 ml-4">
+                                            <button onClick={() => setEditMode(true)} className="text-xs text-slate-500 hover:text-blue-400">Modifier</button>
+                                            <button onClick={handleDelete} className="text-xs text-slate-500 hover:text-red-500">Supprimer</button>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                        {!editMode && (
+                            <div className="flex items-center gap-2 text-slate-400">
+                                <MapPin size={16} />
+                                <p className="text-sm">{site.address}</p>
+                            </div>
+                        )}
                     </div>
                     <button
                         onClick={onClose}

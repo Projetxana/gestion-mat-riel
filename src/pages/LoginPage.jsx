@@ -8,12 +8,11 @@ const LoginPage = () => {
     const navigate = useNavigate();
     const [role, setRole] = useState('admin');
     const [password, setPassword] = useState('');
-    const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState('');
 
     const handleLogin = (e) => {
         e.preventDefault();
-        if (login(role, password, rememberMe)) {
+        if (login(role, password)) {
             navigate('/');
         } else {
             setError('Mot de passe incorrect');
@@ -73,18 +72,6 @@ const LoginPage = () => {
                             />
                             {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
                         </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                        <label className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={rememberMe}
-                                onChange={(e) => setRememberMe(e.target.checked)}
-                                className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="text-sm text-slate-400">Se souvenir de moi</span>
-                        </label>
                     </div>
 
                     <button

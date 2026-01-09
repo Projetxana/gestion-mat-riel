@@ -3,8 +3,11 @@ import { X, MapPin, Truck, Wrench, AlertCircle } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
 const MaterialDetailsModal = ({ tool, onClose }) => {
-    const { sites, transferTool } = useAppContext();
+    const { sites, transferTool, updateMaterial, deleteMaterial, currentUser } = useAppContext();
     const [transferMode, setTransferMode] = useState(false);
+    const [editMode, setEditMode] = useState(false);
+    const [editData, setEditData] = useState({ ...tool });
+
     const [selectedLocationType, setSelectedLocationType] = useState('site'); // site, warehouse, repair
     const [selectedSiteId, setSelectedSiteId] = useState('');
 
@@ -14,6 +17,19 @@ const MaterialDetailsModal = ({ tool, onClose }) => {
         transferTool(tool.id, selectedLocationType, locId);
         setTransferMode(false);
         onClose();
+    };
+
+    const handleUpdate = (e) => {
+        e.preventDefault();
+        updateMaterial(tool.id, editData);
+        setEditMode(false);
+    };
+
+    const handleDelete = () => {
+        if (confirm('Êtes-vous sûr de vouloir supprimer cet outil ? Cette action est irréversible.')) {
+            deleteMaterial(tool.id);
+            onClose();
+        }
     };
 
     const currentLocationName = () => {
@@ -60,15 +76,56 @@ const MaterialDetailsModal = ({ tool, onClose }) => {
                         </div>
                     </div>
 
-                    <div className="mb-6">
-                        <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2">Détails Appareil</h3>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                            <div className="text-slate-500">Numéro de Série</div>
-                            <div className="text-slate-200 font-mono">{tool.serialNumber}</div>
-                            <div className="text-slate-500">Date d'ajout</div>
-                            <div className="text-slate-200">{new Date().toLocaleDateString()}</div>
+                    {editMode ? (
+                        <form onSubmit={handleUpdate} className="mb-6 space-y-3 bg-slate-800 p-4 rounded-xl">
+                            <div>
+                                <label className="text-xs text-slate-400">Nom</label>
+                                <input
+                                    className="w-full bg-slate-700 p-2 rounded text-white"
+                                    value={editData.name}
+                                    onChange={e => setEditData({ ...editData, name: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-slate-400">Numéro de Série</label>
+                                <input
+                                    className="w-full bg-slate-700 p-2 rounded text-white"
+                                    value={editData.serialNumber}
+                                    onChange={e => setEditData({ ...editData, serialNumber: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-slate-400">QR Code</label>
+                                <input
+                                    className="w-full bg-slate-700 p-2 rounded text-white"
+                                    value={editData.qrCode}
+                                    onChange={e => setEditData({ ...editData, qrCode: e.target.value })}
+                                />
+                            </div>
+                            <div className="flex gap-2 justify-end mt-2">
+                                <button type="button" onClick={() => setEditMode(false)} className="px-3 py-1 text-sm bg-slate-600 rounded">Annuler</button>
+                                <button type="submit" className="px-3 py-1 text-sm bg-green-600 rounded">Sauvegarder</button>
+                            </div>
+                        </form>
+                    ) : (
+                        <div className="mb-6">
+                            <div className="flex justify-between items-start mb-2">
+                                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider">Détails Appareil</h3>
+                                {currentUser?.role === 'admin' && (
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setEditMode(true)} className="text-xs text-blue-400 hover:underline">Modifier</button>
+                                        <button onClick={handleDelete} className="text-xs text-red-500 hover:underline">Supprimer</button>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                <div className="text-slate-500">Numéro de Série</div>
+                                <div className="text-slate-200 font-mono">{tool.serialNumber}</div>
+                                <div className="text-slate-500">Date d'ajout</div>
+                                <div className="text-slate-200">{new Date(tool.created_at || Date.now()).toLocaleDateString()}</div>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {!transferMode ? (
                         <div className="flex gap-3 pt-4 border-t border-slate-800">

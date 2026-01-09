@@ -10,10 +10,7 @@ export const AppProvider = ({ children }) => {
     const [users, setUsers] = useState([]);
     const [logs, setLogs] = useState([]);
     const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
-    const [currentUser, setCurrentUser] = useState(() => {
-        const savedUser = localStorage.getItem('currentUser');
-        return savedUser ? JSON.parse(savedUser) : null;
-    });
+    const [currentUser, setCurrentUser] = useState(null);
 
     // Initial Data Fetch
     useEffect(() => {
@@ -29,30 +26,18 @@ export const AppProvider = ({ children }) => {
                     locationType: item.location_type,
                     locationId: item.location_id
                 });
-                if (payload.eventType === 'INSERT') {
-                    setMaterials(prev => {
-                        if (prev.some(item => item.id === payload.new.id)) return prev;
-                        return [...prev, mapItem(payload.new)];
-                    });
-                }
+                if (payload.eventType === 'INSERT') setMaterials(prev => [...prev, mapItem(payload.new)]);
                 if (payload.eventType === 'UPDATE') setMaterials(prev => prev.map(item => item.id === payload.new.id ? mapItem(payload.new) : item));
                 if (payload.eventType === 'DELETE') setMaterials(prev => prev.filter(item => item.id !== payload.old.id));
             }).subscribe(),
 
             supabase.channel('public:sites').on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, payload => {
-                if (payload.eventType === 'INSERT') {
-                    setSites(prev => {
-                        if (prev.some(item => item.id === payload.new.id)) return prev;
-                        return [...prev, payload.new];
-                    });
-                }
+                if (payload.eventType === 'INSERT') setSites(prev => [...prev, payload.new]);
                 if (payload.eventType === 'UPDATE') setSites(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
                 if (payload.eventType === 'DELETE') setSites(prev => prev.filter(item => item.id !== payload.old.id));
             }).subscribe(),
 
-            // ... (other subscriptions unchanged)
             supabase.channel('public:users').on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, payload => {
-                // ... existing user logic ...
                 if (payload.eventType === 'INSERT') setUsers(prev => [...prev, payload.new]);
                 if (payload.eventType === 'UPDATE') setUsers(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
                 if (payload.eventType === 'DELETE') setUsers(prev => prev.filter(item => item.id !== payload.old.id));
@@ -97,14 +82,11 @@ export const AppProvider = ({ children }) => {
 
 
     // Actions
-    const login = (role, password, remember = false) => {
+    const login = (role, password) => {
         // Simple auth against loaded users
         const user = users.find(u => u.role === role);
         if (user && user.password === password) {
             setCurrentUser(user);
-            if (remember) {
-                localStorage.setItem('currentUser', JSON.stringify(user));
-            }
             return true;
         }
         return false;
@@ -112,27 +94,44 @@ export const AppProvider = ({ children }) => {
 
     const logout = () => {
         setCurrentUser(null);
-        localStorage.removeItem('currentUser');
     };
 
     const updateCompanyInfo = async (info) => {
-        // Assumes ID 1 is the main company info
+        // Optimistic
+        setCompanyInfo(prev => ({ ...prev, ...info }));
         const { error } = await supabase.from('company_info').update(info).eq('id', companyInfo.id || 1);
-        if (!error) {
-            // Optimistic update handled by subscription or local if fast
-            addLog('Updated company information');
-        }
+        if (!error) addLog('Updated company information');
     };
 
     const addUser = async (user) => {
-        const { error } = await supabase.from('users').insert([{ ...user, created_at: new Date() }]);
-        if (!error) addLog(`Added user: ${user.name}`);
+        // Optimistic
+        const tempUser = { ...user, id: `temp-${Date.now()}`, created_at: new Date() };
+        setUsers(prev => [...prev, tempUser]);
+
+        const { data, error } = await supabase.from('users').insert([{ ...user, created_at: new Date() }]).select();
+
+        if (!error && data) {
+            // Replace temp with real
+            setUsers(prev => prev.map(u => u.id === tempUser.id ? data[0] : u));
+            addLog(`Added user: ${user.name}`);
+        } else {
+            // Rollback
+            setUsers(prev => prev.filter(u => u.id !== tempUser.id));
+        }
     };
 
     const deleteUser = async (userId) => {
+        // Optimistic
         const userToDelete = users.find(u => u.id === userId);
+        setUsers(prev => prev.filter(u => u.id !== userId));
+
         const { error } = await supabase.from('users').delete().eq('id', userId);
-        if (!error) addLog(`Deleted user: ${userToDelete?.name}`);
+        if (error) {
+            // Rollback
+            if (userToDelete) setUsers(prev => [...prev, userToDelete]);
+        } else {
+            addLog(`Deleted user: ${userToDelete?.name}`);
+        }
     };
 
     const addMaterial = async (material) => {
@@ -144,32 +143,108 @@ export const AppProvider = ({ children }) => {
             location_id: material.locationId,
             created_at: new Date()
         };
-        // Remove camelCase keys to avoid DB errors if strict
+        // Remove camelCase keys
         delete dbMaterial.serialNumber;
         delete dbMaterial.qrCode;
         delete dbMaterial.locationType;
         delete dbMaterial.locationId;
 
+        // Optimistic Update
+        const tempId = `temp-${Date.now()}`;
+        const optimMaterial = { ...material, id: tempId };
+        setMaterials(prev => [...prev, optimMaterial]);
+
         const { data, error } = await supabase.from('materials').insert([dbMaterial]).select();
 
         if (!error && data) {
-            const newItem = {
-                ...data[0],
-                serialNumber: data[0].serial_number,
-                qrCode: data[0].qr_code,
-                locationType: data[0].location_type,
-                locationId: data[0].location_id
+            const created = data[0];
+            const mapped = {
+                ...created,
+                serialNumber: created.serial_number,
+                qrCode: created.qr_code,
+                locationType: created.location_type,
+                locationId: created.location_id
             };
-            setMaterials(prev => [...prev, newItem]);
+            // Replace temp with real
+            setMaterials(prev => prev.map(m => m.id === tempId ? mapped : m));
             addLog(`Added tool: ${material.name}`);
+        } else {
+            // Rollback
+            setMaterials(prev => prev.filter(m => m.id !== tempId));
+        }
+    };
+
+    const updateMaterial = async (id, updates) => {
+        // Prepare DB object
+        const dbUpdates = {};
+        if (updates.name) dbUpdates.name = updates.name;
+        if (updates.serialNumber) dbUpdates.serial_number = updates.serialNumber;
+        if (updates.qrCode) dbUpdates.qr_code = updates.qrCode;
+        if (updates.status) dbUpdates.status = updates.status;
+
+        // Optimistic
+        const oldMaterials = [...materials];
+        setMaterials(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+
+        const { error } = await supabase.from('materials').update(dbUpdates).eq('id', id);
+
+        if (error) {
+            setMaterials(oldMaterials); // Rollback
+        } else {
+            addLog(`Updated tool: ${updates.name || id}`);
+        }
+    };
+
+    const deleteMaterial = async (id) => {
+        const oldMaterials = [...materials];
+        const material = materials.find(m => m.id === id);
+        setMaterials(prev => prev.filter(m => m.id !== id));
+
+        const { error } = await supabase.from('materials').delete().eq('id', id);
+
+        if (error) {
+            setMaterials(oldMaterials); // Rollback
+        } else {
+            addLog(`Deleted tool: ${material?.name}`);
         }
     };
 
     const addSite = async (site) => {
+        // Optimistic
+        const tempId = `temp-${Date.now()}`;
+        const optimSite = { ...site, id: tempId };
+        setSites(prev => [...prev, optimSite]);
+
         const { data, error } = await supabase.from('sites').insert([{ ...site, created_at: new Date() }]).select();
+
         if (!error && data) {
-            setSites(prev => [...prev, data[0]]);
+            setSites(prev => prev.map(s => s.id === tempId ? data[0] : s));
             addLog(`Created site: ${site.name}`);
+        } else {
+            setSites(prev => prev.filter(s => s.id !== tempId));
+        }
+    };
+
+    const updateSite = async (id, updates) => {
+        // Optimistic
+        const oldSites = [...sites];
+        setSites(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+
+        const { error } = await supabase.from('sites').update(updates).eq('id', id);
+        if (error) setSites(oldSites);
+        else addLog(`Updated site: ${updates.name || id}`);
+    };
+
+    const deleteSite = async (id) => {
+        const oldSites = [...sites];
+        const site = sites.find(s => s.id === id);
+        setSites(prev => prev.filter(s => s.id !== id));
+
+        const { error } = await supabase.from('sites').delete().eq('id', id);
+        if (error) {
+            setSites(oldSites);
+        } else {
+            addLog(`Deleted site: ${site?.name}`);
         }
     };
 
@@ -180,9 +255,17 @@ export const AppProvider = ({ children }) => {
             status: locationType === 'repair' ? 'repair' : (locationType === 'warehouse' ? 'available' : 'in_use')
         };
 
+        // Optimistic
+        const oldMaterials = [...materials];
+        setMaterials(prev => prev.map(m =>
+            m.id === toolId ? { ...m, locationType, locationId, status: updates.status } : m
+        ));
+
         const { error } = await supabase.from('materials').update(updates).eq('id', toolId);
 
-        if (!error) {
+        if (error) {
+            setMaterials(oldMaterials); // Rollback
+        } else {
             const tool = materials.find(m => m.id === toolId);
             let locationName = 'Warehouse';
             if (locationType === 'site') {
@@ -230,6 +313,10 @@ export const AppProvider = ({ children }) => {
         updateCompanyInfo,
         addUser,
         deleteUser,
+        updateMaterial,
+        deleteMaterial,
+        updateSite,
+        deleteSite,
         clearData
     };
 
