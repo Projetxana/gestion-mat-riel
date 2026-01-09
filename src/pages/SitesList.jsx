@@ -8,6 +8,8 @@ const SitesList = () => {
     const { sites, materials } = useAppContext();
     const [viewMode, setViewMode] = useState('grid');
     const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [selectedSite, setSelectedSite] = useState(null);
 
     const getToolCount = (siteId) => {
         return materials.filter(m => m.locationType === 'site' && m.locationId === siteId).length;

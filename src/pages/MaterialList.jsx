@@ -13,6 +13,7 @@ const MaterialList = () => {
     const [filterStatus, setFilterStatus] = useState(searchParams.get('filter') || 'all');
     const [viewMode, setViewMode] = useState('grid');
     const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+    const [selectedTool, setSelectedTool] = useState(null);
 
     const getSiteName = (id) => {
         const site = sites.find(s => s.id === id);
