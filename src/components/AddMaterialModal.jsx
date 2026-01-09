@@ -42,10 +42,19 @@ const AddMaterialModal = ({ onClose }) => {
         // console.warn(`Code scan error = ${error}`);
     };
 
-    const handleSubmit = (e) => {
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        addMaterial(formData);
-        onClose();
+        setError('');
+
+        const result = await addMaterial(formData);
+
+        if (result && result.error) {
+            setError(result.error);
+        } else {
+            onClose();
+        }
     };
 
     const generateMockQR = () => {
@@ -64,6 +73,12 @@ const AddMaterialModal = ({ onClose }) => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
+
+                    {error && (
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-500 text-sm">
+                            {error}
+                        </div>
+                    )}
 
                     {/* Scanner Section */}
                     {isScanning && (

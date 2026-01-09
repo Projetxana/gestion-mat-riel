@@ -135,6 +135,11 @@ export const AppProvider = ({ children }) => {
     };
 
     const addMaterial = async (material) => {
+        // Check for duplicates
+        if (materials.some(m => m.serialNumber === material.serialNumber)) {
+            return { error: 'Ce numéro de série existe déjà.' };
+        }
+
         const dbMaterial = {
             ...material,
             serial_number: material.serialNumber,
@@ -168,9 +173,11 @@ export const AppProvider = ({ children }) => {
             // Replace temp with real
             setMaterials(prev => prev.map(m => m.id === tempId ? mapped : m));
             addLog(`Added tool: ${material.name}`);
+            return { data: mapped };
         } else {
             // Rollback
             setMaterials(prev => prev.filter(m => m.id !== tempId));
+            return { error: error.message };
         }
     };
 
