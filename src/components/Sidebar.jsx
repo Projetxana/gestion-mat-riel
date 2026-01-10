@@ -33,7 +33,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                     <div>
                         <h1 className="text-xl font-bold text-slate-900 tracking-wide">GESTION MATÉRIEL</h1>
-                        <p className="text-xs text-slate-500 mt-1">Société : {companyInfo?.name || 'Antigravity Inc.'}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <p className="text-xs text-slate-500">Société : {companyInfo?.name || 'Antigravity Inc.'}</p>
+                            <img src="/company-logo-small.png" alt="Logo" className="h-5 w-auto object-contain" />
+                        </div>
                     </div>
                     {/* Close button on mobile only */}
                     <button onClick={onClose} className="md:hidden text-slate-400 hover:text-slate-600">

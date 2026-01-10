@@ -16,7 +16,10 @@ const Layout = () => {
                     <button onClick={() => setIsSidebarOpen(true)} className="text-slate-600 hover:text-slate-900">
                         <Menu size={24} />
                     </button>
-                    <span className="font-bold text-slate-900">{companyInfo?.name || 'Antigravity'}</span>
+                    <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900">{companyInfo?.name || 'Antigravity'}</span>
+                        <img src="/company-logo-small.png" alt="Logo" className="h-8 w-auto object-contain" />
+                    </div>
                 </div>
             </div>
 
