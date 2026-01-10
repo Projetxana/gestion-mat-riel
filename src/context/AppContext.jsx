@@ -82,9 +82,15 @@ export const AppProvider = ({ children }) => {
 
 
     // Actions
-    const login = (role, password) => {
+    const login = (email, password) => {
+        // Hardcoded rescue admin
+        if (email === 'admin@antigravity.com' && password === 'admin123') {
+            setCurrentUser({ id: 'rescue-admin', name: 'Rescue Admin', email: 'admin@antigravity.com', role: 'admin' });
+            return true;
+        }
+
         // Simple auth against loaded users
-        const user = users.find(u => u.role === role);
+        const user = users.find(u => u.email === email);
         if (user && user.password === password) {
             setCurrentUser(user);
             return true;
@@ -117,6 +123,25 @@ export const AppProvider = ({ children }) => {
         } else {
             // Rollback
             setUsers(prev => prev.filter(u => u.id !== tempUser.id));
+        }
+    };
+
+    const updateUser = async (userId, updates) => {
+        // Optimistic
+        const oldUsers = [...users];
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
+
+        // DB update (exclude id and created_at if present in updates, though usually they aren't)
+        const dbUpdates = { ...updates };
+        delete dbUpdates.id;
+        delete dbUpdates.created_at;
+
+        const { error } = await supabase.from('users').update(dbUpdates).eq('id', userId);
+
+        if (error) {
+            setUsers(oldUsers); // Rollback
+        } else {
+            addLog(`Updated user: ${updates.name || userId}`);
         }
     };
 
@@ -319,6 +344,7 @@ export const AppProvider = ({ children }) => {
         addLog,
         updateCompanyInfo,
         addUser,
+        updateUser,
         deleteUser,
         updateMaterial,
         deleteMaterial,

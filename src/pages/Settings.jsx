@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { Save, UserPlus, Shield, Users, Database } from 'lucide-react';
-import AddUserModal from '../components/AddUserModal';
+import UserModal from '../components/UserModal';
 import { legacyMaterials } from '../data/legacyMaterials';
 
 const Settings = () => {
     const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, addMaterial } = useAppContext();
     const [localCompanyValues, setLocalCompanyValues] = useState({ name: '', address: '' });
     const [isEditing, setIsEditing] = useState(false);
-    const [showAddUserModal, setShowAddUserModal] = useState(false);
+    const [showUserModal, setShowUserModal] = useState(false);
+    const [editingUser, setEditingUser] = useState(null);
 
     useEffect(() => {
         if (companyInfo) {
@@ -126,7 +127,10 @@ const Settings = () => {
                         Gestion Utilisateurs
                     </h2>
                     <button
-                        onClick={() => setShowAddUserModal(true)}
+                        onClick={() => {
+                            setEditingUser(null);
+                            setShowUserModal(true);
+                        }}
                         className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium shadow-md shadow-green-500/20 transition-all flex items-center gap-2"
                     >
                         <UserPlus size={20} />
@@ -159,17 +163,29 @@ const Settings = () => {
                                     </td>
                                     <td className="py-4 px-4 text-right">
                                         {currentUser?.id !== user.id && (
-                                            <button
-                                                onClick={() => {
-                                                    if (window.confirm(`Voulez-vous vraiment supprimer ${user.name} ?`)) {
-                                                        deleteUser(user.id);
-                                                    }
-                                                }}
-                                                className="text-red-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors"
-                                                title="Supprimer l'utilisateur"
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg>
-                                            </button>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingUser(user);
+                                                        setShowUserModal(true);
+                                                    }}
+                                                    className="text-blue-400 hover:text-blue-600 p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                                                    title="Modifier l'utilisateur"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        if (window.confirm(`Voulez-vous vraiment supprimer ${user.name} ?`)) {
+                                                            deleteUser(user.id);
+                                                        }
+                                                    }}
+                                                    className="text-red-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors"
+                                                    title="Supprimer l'utilisateur"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg>
+                                                </button>
+                                            </div>
                                         )}
                                     </td>
                                 </tr>
@@ -198,26 +214,14 @@ const Settings = () => {
                 </button>
             </div>
 
-            {/* Import Data */}
-            <div className="bg-blue-50 rounded-2xl shadow-sm border border-blue-100 p-8">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-700">
-                    <Database className="text-blue-600" size={24} />
-                    Import de Données
-                </h2>
-                <p className="text-blue-600 mb-6">
-                    Importer massivement la liste d'inventaire initiale ({legacyMaterials.length} éléments).
-                    Les numéros de série en double seront ignorés.
-                </p>
-                <button
-                    onClick={handleImportData}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-md shadow-blue-500/20 transition-all flex items-center gap-2"
-                >
-                    <Database size={18} />
-                    Lancer l'importation
-                </button>
-            </div>
 
-            {showAddUserModal && <AddUserModal onClose={() => setShowAddUserModal(false)} />}
+
+            {showUserModal && (
+                <UserModal
+                    onClose={() => setShowUserModal(false)}
+                    userToEdit={editingUser}
+                />
+            )}
         </div>
     );
 };
