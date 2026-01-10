@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { Plus, Search, Filter, QrCode, Hammer, MapPin, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Search, Filter, QrCode, Hammer, MapPin, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown, X } from 'lucide-react';
 import AddMaterialModal from '../components/AddMaterialModal';
 import MaterialDetailsModal from '../components/MaterialDetailsModal';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
 const MaterialList = () => {
     const { materials, sites } = useAppContext();
@@ -14,6 +15,34 @@ const MaterialList = () => {
     const [viewMode, setViewMode] = useState('grid');
     const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
     const [selectedTool, setSelectedTool] = useState(null);
+    const [showScanner, setShowScanner] = useState(false);
+
+    useEffect(() => {
+        let scanner = null;
+        if (showScanner) {
+            scanner = new Html5QrcodeScanner(
+                "search-reader",
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                false
+            );
+            scanner.render(onScanSuccess, onScanFailure);
+        }
+
+        return () => {
+            if (scanner) {
+                scanner.clear().catch(error => console.error("Failed to clear scanner", error));
+            }
+        };
+    }, [showScanner]);
+
+    const onScanSuccess = (decodedText) => {
+        setSearchTerm(decodedText);
+        setShowScanner(false);
+    };
+
+    const onScanFailure = (error) => {
+        // console.warn(error);
+    };
 
     const getSiteName = (id) => {
         const site = sites.find(s => s.id === id);
@@ -91,10 +120,17 @@ const MaterialList = () => {
                     <input
                         type="text"
                         placeholder="Rechercher par nom, série ou QR..."
-                        className="pl-10 w-full"
+                        className="pl-10 pr-10 w-full"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
+                    <button
+                        onClick={() => setShowScanner(true)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-blue-500 p-1 rounded-full hover:bg-slate-800 transition-colors"
+                        title="Scanner un QR Code"
+                    >
+                        <QrCode size={18} />
+                    </button>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
                     <select
@@ -255,6 +291,30 @@ const MaterialList = () => {
 
             {showAddModal && <AddMaterialModal onClose={() => setShowAddModal(false)} />}
             {selectedTool && <MaterialDetailsModal tool={selectedTool} onClose={() => setSelectedTool(null)} />}
+
+            {/* Scanner Overlay */}
+            {showScanner && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                <QrCode size={20} />
+                                Scanner pour rechercher
+                            </h2>
+                            <button
+                                onClick={() => setShowScanner(false)}
+                                className="text-slate-400 hover:text-white transition-colors"
+                            >
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <div className="p-4 bg-black">
+                            <div id="search-reader" className="w-full rounded-lg overflow-hidden"></div>
+                            <p className="text-center text-slate-500 text-sm mt-4">Placez le QR Code dans le cadre</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
