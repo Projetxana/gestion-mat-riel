@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { Plus, Search, Filter, QrCode, Hammer, MapPin, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown, X } from 'lucide-react';
