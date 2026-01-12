@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import Layout from './components/Layout';
+import ReloadPrompt from './components/ReloadPrompt';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import MaterialList from './pages/MaterialList';
@@ -85,6 +86,7 @@ const AppRoutes = () => {
 function App() {
   return (
     <AppProvider>
+      <ReloadPrompt />
       <BrowserRouter>
         <ErrorBoundary>
           <AppRoutes />
