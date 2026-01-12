@@ -235,7 +235,25 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.1.8 (Name Matching Fix)
+                v0.1.9 (AutoUpdate)
+                <button
+                    onClick={() => {
+                        alert("Nettoyage du cache et redémarrage...");
+                        if ('serviceWorker' in navigator) {
+                            navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                                for (let registration of registrations) {
+                                    registration.unregister();
+                                }
+                                window.location.reload(true);
+                            });
+                        } else {
+                            window.location.reload(true);
+                        }
+                    }}
+                    className="block mx-auto mt-2 text-xs text-blue-400 hover:text-blue-300 underline"
+                >
+                    Forcer la mise à jour
+                </button>
             </div>
         </div>
     );
