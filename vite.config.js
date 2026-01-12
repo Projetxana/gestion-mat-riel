@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['favicon.ico', 'logo192.png', 'logo512.png', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.ico', 'logo192.png', 'logo512.png', 'apple-touch-icon.png', 'hilti-logo.png'],
       manifest: {
         short_name: 'Gestion Matériel',
         name: 'Gestion Matériel & Stock',
