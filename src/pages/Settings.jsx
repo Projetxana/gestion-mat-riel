@@ -222,6 +222,10 @@ const Settings = () => {
                     userToEdit={editingUser}
                 />
             )}
+
+            <div className="text-center text-slate-300 text-sm mt-10">
+                v0.1.2 (Build {new Date().toLocaleDateString()})
+            </div>
         </div>
     );
 };
