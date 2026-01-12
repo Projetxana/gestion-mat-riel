@@ -6,11 +6,13 @@ import ReloadPrompt from './components/ReloadPrompt';
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import MaterialList from './pages/MaterialList';
-import SitesList from './pages/SitesList';
+import PlaceholderPage from './pages/Placeholders';
+import SiteList from './pages/SiteList'; // Changed from SitesList to SiteList
 import SiteDetails from './pages/SiteDetails';
 import Journal from './pages/Journal';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
+import HiltiPage from './pages/HiltiPage'; // Added HiltiPage
 
 const ProtectedRoute = ({ children }) => {
   const { currentUser } = useAppContext();
@@ -74,10 +76,12 @@ const AppRoutes = () => {
       >
         <Route index element={<Dashboard />} />
         <Route path="material" element={<MaterialList />} />
-        <Route path="sites" element={<SitesList />} />
+        <Route path="sites" element={<SiteList />} /> {/* Changed from SitesList to SiteList */}
         <Route path="sites/:id" element={<SiteDetails />} />
         <Route path="journal" element={<Journal />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="hilti" element={<HiltiPage />} /> {/* Added HiltiPage route */}
+        <Route path="*" element={<PlaceholderPage title="Page Non Trouvée" />} /> {/* Added catch-all route */}
       </Route>
     </Routes>
   );

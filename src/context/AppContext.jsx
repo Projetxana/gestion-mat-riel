@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { initialHiltiTools, initialHiltiUsers } from '../data/hiltiData';
 
 const AppContext = createContext();
 
@@ -9,6 +10,7 @@ export const AppProvider = ({ children }) => {
     const [sites, setSites] = useState([]);
     const [users, setUsers] = useState([]);
     const [logs, setLogs] = useState([]);
+    const [hiltiTools, setHiltiTools] = useState([]); // Hilti State
     const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
     const [currentUser, setCurrentUser] = useState(null);
 
@@ -58,6 +60,13 @@ export const AppProvider = ({ children }) => {
     }, []);
 
     const fetchData = async () => {
+        // Mock Hilti Data - waiting for CSV import
+        setHiltiTools([
+            { id: 1, name: 'TE 6-A36', serial_number: '12345', qr_code: 'H-001', assigned_to: '1', status: 'ok' },
+            { id: 2, name: 'PM 40-MG', serial_number: '67890', qr_code: 'H-002', assigned_to: '1', status: 'ok' },
+            { id: 3, name: 'DD 150-U', serial_number: '54321', qr_code: 'H-003', assigned_to: '2', status: 'repair' },
+        ]);
+
         const { data: m } = await supabase.from('materials').select('*');
         if (m) setMaterials(m.map(item => ({
             ...item,
@@ -70,8 +79,45 @@ export const AppProvider = ({ children }) => {
         const { data: s } = await supabase.from('sites').select('*');
         if (s) setSites(s);
 
-        const { data: u } = await supabase.from('users').select('*');
-        if (u) setUsers(u);
+        let loadedUsers = u || [];
+
+        // --- SEED HILTI USERS IF MISSING ---
+        // This ensures the users from the CSV exist in our app
+        const newUsers = [];
+        for (const userName of initialHiltiUsers) {
+            if (!loadedUsers.find(user => user.name === userName)) {
+                // Create a placeholder user
+                const newUser = {
+                    id: `generated-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    name: userName,
+                    email: `${userName.toLowerCase().replace(/ /g, '.')}@antigravity.fake`,
+                    title: 'Technicien',
+                    role: 'user',
+                    must_change_password: true,
+                    password: 'password123' // default for generated
+                };
+                newUsers.push(newUser);
+            }
+        }
+
+        if (newUsers.length > 0) {
+            // We add them to state. Ideally we should save them to DB too, but for now state is enough for the session
+            // To persist, we would do: await supabase.from('users').insert(newUsers);
+            // Let's just create them in memory for now to keep it snappy and avoid massive writes on reload
+            loadedUsers = [...loadedUsers, ...newUsers];
+        }
+        setUsers(loadedUsers);
+
+        // --- LOAD HILTI TOOLS ---
+        // Map assigned_to_name -> assigned_to (ID)
+        const mappedHiltiTools = initialHiltiTools.map(tool => {
+            const assignee = loadedUsers.find(user => user.name === tool.assigned_to_name);
+            return {
+                ...tool,
+                assigned_to: assignee ? assignee.id : 'unassigned'
+            };
+        });
+        setHiltiTools(mappedHiltiTools);
 
         const { data: l } = await supabase.from('logs').select('*').order('timestamp', { ascending: false });
         if (l) setLogs(l.map(item => ({ ...item, userId: item.user_id })));
@@ -297,6 +343,21 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    // Hilti Actions
+    const updateHiltiTool = async (id, updates) => {
+        // Optimistic only for now as table doesn't exist yet
+        setHiltiTools(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+
+        let logMsg = `Updated Hilti Tool ${id}`;
+        if (updates.assigned_to) {
+            const user = users.find(u => u.id === updates.assigned_to);
+            logMsg = `Reassigned Hilti Tool ${id} to ${user?.name || 'User'}`;
+        } else if (updates.status === 'repair') {
+            logMsg = `Reported issue on Hilti Tool ${id}`;
+        }
+        addLog(logMsg);
+    };
+
     const transferTool = async (toolId, locationType, locationId) => {
         const updates = {
             location_type: locationType,
@@ -368,6 +429,8 @@ export const AppProvider = ({ children }) => {
         deleteMaterial,
         updateSite,
         deleteSite,
+        hiltiTools,
+        updateHiltiTool,
         clearData
     };
 

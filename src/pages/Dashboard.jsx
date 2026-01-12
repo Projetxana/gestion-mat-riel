@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { Hammer, HardHat, AlertTriangle, Activity, Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
@@ -85,6 +85,24 @@ const Dashboard = () => {
 
             {/* KPI Cards as Main Navigation */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
+                <Link to="/hilti" className="group relative overflow-hidden p-6 md:p-8 rounded-3xl border border-red-900/50 bg-gradient-to-br from-red-950/50 to-slate-900 transition-all duration-300 hover:scale-[1.03] hover:shadow-2xl hover:shadow-red-900/20 text-left shadow-lg">
+                    <div className="absolute -right-6 -top-6 w-32 h-32 bg-red-600/20 rounded-full blur-2xl group-hover:bg-red-600/30 transition-all" />
+                    <div className="relative z-10 flex flex-col h-full justify-between min-h-[140px]">
+                        <div className="flex items-center justify-between">
+                            <div className="p-3 bg-white/5 rounded-2xl backdrop-blur-sm border border-white/10">
+                                <img src="/hilti-logo.png" alt="Hilti" className="h-8 w-auto object-contain" />
+                            </div>
+                            <div className="px-3 py-1 bg-red-600/20 rounded-full border border-red-600/30 text-xs font-bold text-red-400 uppercase tracking-wider">
+                                Module Externe
+                            </div>
+                        </div>
+                        <div>
+                            <h2 className="text-3xl font-bold text-white mb-2">HILTI</h2>
+                            <p className="text-slate-400">Gestion du parc outillage spécifique</p>
+                        </div>
+                    </div>
+                </Link>
+
                 {stats.map((stat, index) => (
                     <button
                         key={index}
