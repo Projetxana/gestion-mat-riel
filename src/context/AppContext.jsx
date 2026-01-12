@@ -13,6 +13,7 @@ export const AppProvider = ({ children }) => {
     const [hiltiTools, setHiltiTools] = useState([]); // Hilti State
     const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
     const [currentUser, setCurrentUser] = useState(null);
+    const [dbError, setDbError] = useState(null);
 
     // Initial Data Fetch
     useEffect(() => {
@@ -78,6 +79,12 @@ export const AppProvider = ({ children }) => {
 
         const { data: s } = await supabase.from('sites').select('*');
         if (s) setSites(s);
+
+        const { data: u, error: userError } = await supabase.from('users').select('*');
+        if (userError) {
+            console.error("Error fetching users:", userError);
+            setDbError(userError.message);
+        }
 
         let loadedUsers = u || [];
 

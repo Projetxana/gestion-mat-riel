@@ -5,7 +5,7 @@ import UserModal from '../components/UserModal';
 import { legacyMaterials } from '../data/legacyMaterials';
 
 const Settings = () => {
-    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, addMaterial } = useAppContext();
+    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, addMaterial, dbError } = useAppContext();
     const [localCompanyValues, setLocalCompanyValues] = useState({ name: '', address: '' });
     const [isEditing, setIsEditing] = useState(false);
     const [showUserModal, setShowUserModal] = useState(false);
@@ -58,6 +58,17 @@ const Settings = () => {
                     <p className="text-slate-500">Gérez les détails de l'entreprise et les utilisateurs</p>
                 </div>
             </div>
+
+            {dbError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl mb-6 flex items-start gap-3">
+                    <Shield className="shrink-0 mt-1" size={20} />
+                    <div>
+                        <h3 className="font-bold">Erreur de connexion base de données</h3>
+                        <p className="text-sm">{dbError}</p>
+                        <p className="text-xs mt-1 text-red-500">Vos anciens utilisateurs n'ont pas pu être chargés.</p>
+                    </div>
+                </div>
+            )}
 
             {/* Company Settings */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
@@ -224,7 +235,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.1.2 (Build {new Date().toLocaleDateString()})
+                v0.1.3 (Build {new Date().toLocaleDateString()}) (Debug)
             </div>
         </div>
     );
