@@ -235,7 +235,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.1.6 (Name Matching Fix)
+                v0.1.7 (Name Matching Fix)
             </div>
         </div>
     );
