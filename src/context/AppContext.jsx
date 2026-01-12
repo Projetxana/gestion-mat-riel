@@ -102,6 +102,16 @@ export const AppProvider = ({ children }) => {
         setCurrentUser(null);
     };
 
+    const changePassword = async (newPassword) => {
+        if (!currentUser) return;
+
+        const updates = { password: newPassword, must_change_password: false };
+
+        // Optimistic
+        setCurrentUser(prev => ({ ...prev, ...updates }));
+        updateUser(currentUser.id, updates);
+    };
+
     const updateCompanyInfo = async (info) => {
         // Optimistic
         setCompanyInfo(prev => ({ ...prev, ...info }));
@@ -110,19 +120,26 @@ export const AppProvider = ({ children }) => {
     };
 
     const addUser = async (user) => {
-        // Optimistic
-        const tempUser = { ...user, id: `temp-${Date.now()}`, created_at: new Date() };
-        setUsers(prev => [...prev, tempUser]);
+        // Force new users to change password
+        const userWithFlags = {
+            ...user,
+            must_change_password: true,
+            id: `temp-${Date.now()}`,
+            created_at: new Date()
+        };
 
-        const { data, error } = await supabase.from('users').insert([{ ...user, created_at: new Date() }]).select();
+        // Optimistic
+        setUsers(prev => [...prev, userWithFlags]);
+
+        const { data, error } = await supabase.from('users').insert([{ ...user, must_change_password: true, created_at: new Date() }]).select();
 
         if (!error && data) {
             // Replace temp with real
-            setUsers(prev => prev.map(u => u.id === tempUser.id ? data[0] : u));
+            setUsers(prev => prev.map(u => u.id === userWithFlags.id ? data[0] : u));
             addLog(`Added user: ${user.name}`);
         } else {
             // Rollback
-            setUsers(prev => prev.filter(u => u.id !== tempUser.id));
+            setUsers(prev => prev.filter(u => u.id !== userWithFlags.id));
         }
     };
 
@@ -338,6 +355,7 @@ export const AppProvider = ({ children }) => {
         companyInfo,
         login,
         logout,
+        changePassword,
         addMaterial,
         addSite,
         transferTool,

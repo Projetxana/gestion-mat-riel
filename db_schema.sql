@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('admin', 'user')),
     password TEXT NOT NULL,
+    must_change_password BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 import MaterialList from './pages/MaterialList';
 import SitesList from './pages/SitesList';
 import SiteDetails from './pages/SiteDetails';
@@ -14,6 +15,9 @@ const ProtectedRoute = ({ children }) => {
   const { currentUser } = useAppContext();
   if (!currentUser) {
     return <Navigate to="/login" replace />;
+  }
+  if (currentUser.must_change_password) {
+    return <Navigate to="/change-password" replace />;
   }
   return children;
 };
@@ -58,6 +62,7 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/change-password" element={<ChangePasswordPage />} />
       <Route
         path="/"
         element={

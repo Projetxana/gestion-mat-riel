@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Mail, RefreshCw } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
 const UserModal = ({ onClose, userToEdit = null }) => {
@@ -10,6 +10,7 @@ const UserModal = ({ onClose, userToEdit = null }) => {
         password: '',
         role: 'user'
     });
+    const [inviteLink, setInviteLink] = useState('');
 
     useEffect(() => {
         if (userToEdit) {
@@ -19,11 +20,34 @@ const UserModal = ({ onClose, userToEdit = null }) => {
                 password: userToEdit.password,
                 role: userToEdit.role
             });
+        } else {
+            // Generate random password for new users
+            const randomPass = Math.random().toString(36).slice(-8);
+            setFormData(prev => ({ ...prev, password: randomPass }));
         }
     }, [userToEdit]);
 
+    useEffect(() => {
+        if (!userToEdit && formData.email && formData.password) {
+            const subject = encodeURIComponent("Invitation à Antigravity");
+            const body = encodeURIComponent(`Bonjour ${formData.name},\n\nVous avez été invité à rejoindre l'application Antigravity.\n\nVoici vos identifiants temporaires :\nEmail : ${formData.email}\nMot de passe : ${formData.password}\n\nVous devrez changer votre mot de passe lors de la première connexion.\n\nCordialement,`);
+            setInviteLink(`mailto:${formData.email}?subject=${subject}&body=${body}`);
+        }
+    }, [formData, userToEdit]);
+
+    const generatePassword = () => {
+        const randomPass = Math.random().toString(36).slice(-8);
+        setFormData(prev => ({ ...prev, password: randomPass }));
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
+
+        // Open mail client if adding new user
+        if (!userToEdit && inviteLink) {
+            window.location.href = inviteLink;
+        }
+
         if (userToEdit) {
             updateUser(userToEdit.id, formData);
         } else {
@@ -70,15 +94,27 @@ const UserModal = ({ onClose, userToEdit = null }) => {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1">Mot de passe</label>
-                        <input
-                            type="text"
-                            required
-                            placeholder="******"
-                            className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-900 bg-white"
-                            value={formData.password}
-                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        />
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Mot de passe {userToEdit ? '' : '(Temporaire)'}</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                required
+                                placeholder="******"
+                                className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-900 bg-white"
+                                value={formData.password}
+                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                            />
+                            {!userToEdit && (
+                                <button
+                                    type="button"
+                                    onClick={generatePassword}
+                                    className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    title="Générer un mot de passe"
+                                >
+                                    <RefreshCw size={20} />
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     <div>
@@ -119,9 +155,10 @@ const UserModal = ({ onClose, userToEdit = null }) => {
                         </button>
                         <button
                             type="submit"
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-lg shadow-blue-500/30 transition-all"
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2"
                         >
-                            {userToEdit ? 'Enregistrer' : 'Ajouter'}
+                            {!userToEdit && <Mail size={18} />}
+                            {userToEdit ? 'Enregistrer' : 'Inviter & Ajouter'}
                         </button>
                     </div>
                 </form>
