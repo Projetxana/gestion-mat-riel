@@ -11,6 +11,7 @@ const UserModal = ({ onClose, userToEdit = null }) => {
         role: 'user'
     });
     const [inviteLink, setInviteLink] = useState('');
+    const [shouldInvite, setShouldInvite] = useState(false);
 
     useEffect(() => {
         if (userToEdit) {
@@ -28,13 +29,14 @@ const UserModal = ({ onClose, userToEdit = null }) => {
     }, [userToEdit]);
 
     useEffect(() => {
-        if (!userToEdit && formData.email && formData.password) {
+        // Generate invite link if we have email and password
+        if (formData.email && formData.password) {
             const subject = encodeURIComponent("Invitation à Gestion matériel - Protection Incendie CD");
             const appUrl = window.location.origin;
-            const body = encodeURIComponent(`Bonjour ${formData.name},\n\nVous avez été invité à rejoindre l'application Gestion matériel pour Protection Incendie CD.\n\nAccéder à l'application : ${appUrl}\n\nVoici vos identifiants temporaires :\nEmail : ${formData.email}\nMot de passe : ${formData.password}\n\nVous devrez changer votre mot de passe lors de la première connexion.\n\nCordialement,`);
+            const body = encodeURIComponent(`Bonjour ${formData.name},\n\nVous avez été invité à rejoindre l'application Gestion matériel pour Protection Incendie CD.\n\nAccéder à l'application : ${appUrl}\n\nVoici vos identifiants :\nEmail : ${formData.email}\nMot de passe : ${formData.password}\n\nVous devrez changer votre mot de passe lors de la première connexion.\n\nCordialement,`);
             setInviteLink(`mailto:${formData.email}?subject=${subject}&body=${body}`);
         }
-    }, [formData, userToEdit]);
+    }, [formData]);
 
     const generatePassword = () => {
         const randomPass = Math.random().toString(36).slice(-8);
@@ -45,7 +47,7 @@ const UserModal = ({ onClose, userToEdit = null }) => {
         e.preventDefault();
 
         // Open mail client if adding new user
-        if (!userToEdit && inviteLink) {
+        if (shouldInvite && inviteLink) {
             window.location.href = inviteLink;
         }
 
@@ -154,12 +156,22 @@ const UserModal = ({ onClose, userToEdit = null }) => {
                         >
                             Annuler
                         </button>
+
                         <button
                             type="submit"
+                            onClick={() => setShouldInvite(false)}
+                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors"
+                        >
+                            Enregistrer seulement
+                        </button>
+
+                        <button
+                            type="submit"
+                            onClick={() => setShouldInvite(true)}
                             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2"
                         >
-                            {!userToEdit && <Mail size={18} />}
-                            {userToEdit ? 'Enregistrer' : 'Inviter & Ajouter'}
+                            <Mail size={18} />
+                            {userToEdit ? 'Mettre à jour & Inviter' : 'Inviter & Ajouter'}
                         </button>
                     </div>
                 </form>

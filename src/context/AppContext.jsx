@@ -201,14 +201,60 @@ export const AppProvider = ({ children }) => {
         const oldUsers = [...users];
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
 
-        // DB update (exclude id and created_at if present in updates, though usually they aren't)
+        // DB update
         const dbUpdates = { ...updates };
         delete dbUpdates.id;
         delete dbUpdates.created_at;
 
-        const { error } = await supabase.from('users').update(dbUpdates).eq('id', userId);
+        let error = null;
+
+        // If it's a generated user, we need to INSERT it as a new user in DB
+        if (userId.startsWith('generated-')) {
+            // We use the same ID (converted to string if needed) or let Supabase generate one?
+            // Ideally we KEEP the generated ID to match what's in memory for the session, 
+            // OR we replace it with the real one.
+            // But replacing IDs in memory is tricky for HiltiTools assignments that refer to it.
+            // EASIER: Just insert a new row, get the REAL ID, and update Hilti assignments?
+            // NO, let's try to keeping the ID if it's a string, assuming ID column allows text.
+            // If ID is int/uuid, 'generated-...' will fail.
+            // Given the schema isn't strictly known but usually UUID, let's assume we need a proper insert.
+
+            // BETTER STRATEGY: 
+            // 1. Insert new user with normal ID (auto).
+            // 2. Update all Hilti tools assigned to old 'generated-ID' to 'new-real-ID'.
+            // 3. Update 'users' state to replace old user with new user.
+
+            const newUserPayload = {
+                ...users.find(u => u.id === userId),
+                ...updates,
+                must_change_password: true,
+                created_at: new Date()
+            };
+            delete newUserPayload.id; // Let DB assign ID
+
+            const { data: insertedUser, error: insertError } = await supabase.from('users').insert([newUserPayload]).select().single();
+
+            if (insertError) {
+                error = insertError;
+            } else if (insertedUser) {
+                // Success: Update state to use real ID
+                setUsers(prev => prev.map(u => u.id === userId ? insertedUser : u));
+
+                // Update Hilti assignments
+                setHiltiTools(prev => prev.map(t => t.assigned_to === userId ? { ...t, assigned_to: insertedUser.id } : t));
+
+                addLog(`Persisted generated user: ${insertedUser.name}`);
+                return; // Done
+            }
+        } else {
+            // Normal update for existing real users
+            const { error: updateError } = await supabase.from('users').update(dbUpdates).eq('id', userId);
+            error = updateError;
+        }
 
         if (error) {
+            console.error("Error updating user:", error);
+            setDbError(error.message);
             setUsers(oldUsers); // Rollback
         } else {
             addLog(`Updated user: ${updates.name || userId}`);
