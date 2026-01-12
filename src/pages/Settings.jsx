@@ -235,7 +235,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.1.4 (User Invite Fix)
+                v0.1.5 (Persistence Fix)
             </div>
         </div>
     );

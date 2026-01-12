@@ -98,7 +98,6 @@ export const AppProvider = ({ children }) => {
                     id: `generated-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     name: userName,
                     email: `${userName.toLowerCase().replace(/ /g, '.')}@antigravity.fake`,
-                    title: 'Technicien',
                     role: 'user',
                     must_change_password: true,
                     password: 'password123' // default for generated
@@ -224,13 +223,16 @@ export const AppProvider = ({ children }) => {
             // 2. Update all Hilti tools assigned to old 'generated-ID' to 'new-real-ID'.
             // 3. Update 'users' state to replace old user with new user.
 
+            const existingUser = users.find(u => u.id === userId);
+
             const newUserPayload = {
-                ...users.find(u => u.id === userId),
-                ...updates,
+                name: updates.name || existingUser.name,
+                email: updates.email || existingUser.email,
+                role: updates.role || existingUser.role,
+                password: updates.password || existingUser.password,
                 must_change_password: true,
                 created_at: new Date()
             };
-            delete newUserPayload.id; // Let DB assign ID
 
             const { data: insertedUser, error: insertError } = await supabase.from('users').insert([newUserPayload]).select().single();
 
