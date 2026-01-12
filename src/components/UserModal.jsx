@@ -30,7 +30,8 @@ const UserModal = ({ onClose, userToEdit = null }) => {
     useEffect(() => {
         if (!userToEdit && formData.email && formData.password) {
             const subject = encodeURIComponent("Invitation à Gestion matériel - Protection Incendie CD");
-            const body = encodeURIComponent(`Bonjour ${formData.name},\n\nVous avez été invité à rejoindre l'application Gestion matériel pour Protection Incendie CD.\n\nVoici vos identifiants temporaires :\nEmail : ${formData.email}\nMot de passe : ${formData.password}\n\nVous devrez changer votre mot de passe lors de la première connexion.\n\nCordialement,`);
+            const appUrl = window.location.origin;
+            const body = encodeURIComponent(`Bonjour ${formData.name},\n\nVous avez été invité à rejoindre l'application Gestion matériel pour Protection Incendie CD.\n\nAccéder à l'application : ${appUrl}\n\nVoici vos identifiants temporaires :\nEmail : ${formData.email}\nMot de passe : ${formData.password}\n\nVous devrez changer votre mot de passe lors de la première connexion.\n\nCordialement,`);
             setInviteLink(`mailto:${formData.email}?subject=${subject}&body=${body}`);
         }
     }, [formData, userToEdit]);
