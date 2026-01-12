@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { Hammer, HardHat, AlertTriangle, Activity, Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import DeliveryNoteModal from '../components/DeliveryNoteModal';
 
 const Dashboard = () => {
     const { materials, sites, addLog } = useAppContext();
     const navigate = useNavigate();
+    const [showCamera, setShowCamera] = useState(false);
 
     const totalTools = materials.length;
     const toolsOnSite = materials.filter(m => m.locationType === 'site').length;
@@ -14,40 +16,7 @@ const Dashboard = () => {
     const toolsAvailable = materials.filter(m => m.locationType === 'warehouse').length;
 
     const handleCameraClick = () => {
-        document.getElementById('cameraInput').click();
-    };
-
-    const handleFileUpload = async (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        try {
-            const fileName = `delivery_${Date.now()}_${file.name}`;
-            const { data, error } = await supabase.storage
-                .from('delivery-notes')
-                .upload(fileName, file);
-
-            if (error) throw error;
-
-            const { data: publicUrlData } = supabase.storage
-                .from('delivery-notes')
-                .getPublicUrl(fileName);
-
-            const publicUrl = publicUrlData.publicUrl;
-
-            addLog(`Uploaded delivery note: ${fileName}`);
-
-            // Construct mailto link
-            const subject = "Nouveau Bon de Livraison";
-            const body = `Bonjour,\n\nVoici un nouveau bon de livraison :\n${publicUrl}\n\nCordialement.`;
-            const mailtoLink = `mailto:materiaux@cd.atoomerp.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-            window.location.href = mailtoLink;
-
-        } catch (error) {
-            console.error('Error uploading:', error);
-            alert('Erreur lors de l\'envoi de la photo. Vérifiez votre connexion.');
-        }
+        setShowCamera(true);
     };
 
     // Determine color variables based on stats
@@ -99,15 +68,7 @@ const Dashboard = () => {
                 <p className="text-xl text-slate-300 font-light">Bienvenue sur votre espace de gestion</p>
             </div>
 
-            {/* Hidden Input for Camera */}
-            <input
-                type="file"
-                id="cameraInput"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handleFileUpload}
-            />
+
 
             {/* Delivery Note Action Button (Yellow/Amber) */}
             <div className="mb-10 text-center">
@@ -152,6 +113,8 @@ const Dashboard = () => {
                     </button>
                 ))}
             </div>
+
+            {showCamera && <DeliveryNoteModal onClose={() => setShowCamera(false)} />}
         </div>
     );
 };
