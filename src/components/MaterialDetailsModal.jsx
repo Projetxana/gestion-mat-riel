@@ -1,12 +1,41 @@
-import React, { useState } from 'react';
-import { X, MapPin, Truck, Wrench, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, MapPin, Truck, Wrench, AlertCircle, QrCode } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
 const MaterialDetailsModal = ({ tool, onClose }) => {
     const { sites, transferTool, updateMaterial, deleteMaterial, currentUser } = useAppContext();
     const [transferMode, setTransferMode] = useState(false);
     const [editMode, setEditMode] = useState(false);
     const [editData, setEditData] = useState({ ...tool });
+    const [isScanning, setIsScanning] = useState(false);
+
+    useEffect(() => {
+        let scanner = null;
+        if (isScanning) {
+            scanner = new Html5QrcodeScanner(
+                "edit-reader",
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                /* verbose= */ false
+            );
+            scanner.render(onScanSuccess, onScanFailure);
+        }
+
+        return () => {
+            if (scanner) {
+                scanner.clear().catch(error => console.error("Failed to clear scanner", error));
+            }
+        };
+    }, [isScanning]);
+
+    const onScanSuccess = (decodedText, decodedResult) => {
+        setEditData(prev => ({ ...prev, qrCode: decodedText }));
+        setIsScanning(false);
+    };
+
+    const onScanFailure = (error) => {
+        // console.warn(`Code scan error = ${error}`);
+    };
 
     const [selectedLocationType, setSelectedLocationType] = useState('site'); // site, warehouse, repair
     const [selectedSiteId, setSelectedSiteId] = useState('');
@@ -78,6 +107,18 @@ const MaterialDetailsModal = ({ tool, onClose }) => {
 
                     {editMode ? (
                         <form onSubmit={handleUpdate} className="mb-6 space-y-3 bg-slate-800 p-4 rounded-xl">
+                            {isScanning && (
+                                <div className="mb-4 p-4 bg-black rounded-lg">
+                                    <div id="edit-reader" className="w-full"></div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsScanning(false)}
+                                        className="mt-2 w-full py-2 bg-red-600 text-white rounded text-sm"
+                                    >
+                                        Arrêter le scan
+                                    </button>
+                                </div>
+                            )}
                             <div>
                                 <label className="text-xs text-slate-400">Nom</label>
                                 <input
@@ -96,11 +137,21 @@ const MaterialDetailsModal = ({ tool, onClose }) => {
                             </div>
                             <div>
                                 <label className="text-xs text-slate-400">QR Code</label>
-                                <input
-                                    className="w-full bg-slate-700 p-2 rounded text-white"
-                                    value={editData.qrCode}
-                                    onChange={e => setEditData({ ...editData, qrCode: e.target.value })}
-                                />
+                                <div className="flex gap-2">
+                                    <input
+                                        className="w-full bg-slate-700 p-2 rounded text-white"
+                                        value={editData.qrCode}
+                                        onChange={e => setEditData({ ...editData, qrCode: e.target.value })}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsScanning(!isScanning)}
+                                        className="p-2 bg-amber-500 text-white rounded hover:bg-amber-600 transition-colors"
+                                        title="Scanner QR"
+                                    >
+                                        <QrCode size={20} />
+                                    </button>
+                                </div>
                             </div>
                             <div className="flex gap-2 justify-end mt-2">
                                 <button type="button" onClick={() => setEditMode(false)} className="px-3 py-1 text-sm bg-slate-600 rounded">Annuler</button>
