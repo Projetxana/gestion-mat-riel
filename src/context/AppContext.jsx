@@ -88,11 +88,17 @@ export const AppProvider = ({ children }) => {
 
         let loadedUsers = u || [];
 
+        // Helper for fuzzy matching names (handles accents/case)
+        const normalizeName = (name) => name ? name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
+
         // --- SEED HILTI USERS IF MISSING ---
         // This ensures the users from the CSV exist in our app
         const newUsers = [];
         for (const userName of initialHiltiUsers) {
-            if (!loadedUsers.find(user => user.name === userName)) {
+            // Check if user exists (Normalized check to allow name corrections in DB)
+            const exists = loadedUsers.some(user => normalizeName(user.name) === normalizeName(userName));
+
+            if (!exists) {
                 // Create a placeholder user
                 const newUser = {
                     id: `generated-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -115,9 +121,9 @@ export const AppProvider = ({ children }) => {
         setUsers(loadedUsers);
 
         // --- LOAD HILTI TOOLS ---
-        // Map assigned_to_name -> assigned_to (ID)
+        // Map assigned_to_name -> assigned_to (ID) using the same normalized check
         const mappedHiltiTools = initialHiltiTools.map(tool => {
-            const assignee = loadedUsers.find(user => user.name === tool.assigned_to_name);
+            const assignee = loadedUsers.find(user => normalizeName(user.name) === normalizeName(tool.assigned_to_name));
             return {
                 ...tool,
                 assigned_to: assignee ? assignee.id : 'unassigned'
