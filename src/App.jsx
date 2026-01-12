@@ -7,7 +7,7 @@ import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import MaterialList from './pages/MaterialList';
 import PlaceholderPage from './pages/Placeholders';
-import SiteList from './pages/SiteList'; // Changed from SitesList to SiteList
+import SitesList from './pages/SitesList';
 import SiteDetails from './pages/SiteDetails';
 import Journal from './pages/Journal';
 import Dashboard from './pages/Dashboard';
@@ -76,7 +76,7 @@ const AppRoutes = () => {
       >
         <Route index element={<Dashboard />} />
         <Route path="material" element={<MaterialList />} />
-        <Route path="sites" element={<SiteList />} /> {/* Changed from SitesList to SiteList */}
+        <Route path="sites" element={<SitesList />} />
         <Route path="sites/:id" element={<SiteDetails />} />
         <Route path="journal" element={<Journal />} />
         <Route path="settings" element={<Settings />} />
