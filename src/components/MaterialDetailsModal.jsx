@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { X, MapPin, Truck, Wrench, AlertCircle, QrCode } from 'lucide-react';
+import { X, MapPin, Truck, Wrench, AlertCircle, QrCode, Send, Camera } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { Html5QrcodeScanner } from 'html5-qrcode';
+import { supabase } from '../supabaseClient';
 
 const MaterialDetailsModal = ({ tool, onClose }) => {
-    const { sites, transferTool, updateMaterial, deleteMaterial, currentUser } = useAppContext();
+    const { sites, transferTool, updateMaterial, deleteMaterial, currentUser, addLog } = useAppContext();
     const [transferMode, setTransferMode] = useState(false);
+    const [reportMode, setReportMode] = useState(false);
+    const [issueDescription, setIssueDescription] = useState('');
+    const [issueImage, setIssueImage] = useState(null);
+    const [isUploading, setIsUploading] = useState(false);
     const [editMode, setEditMode] = useState(false);
     const [editData, setEditData] = useState({ ...tool });
     const [isScanning, setIsScanning] = useState(false);
@@ -52,6 +57,56 @@ const MaterialDetailsModal = ({ tool, onClose }) => {
         e.preventDefault();
         updateMaterial(tool.id, editData);
         setEditMode(false);
+    };
+
+    const handleReportIssue = async (e) => {
+        e.preventDefault();
+        if (!issueDescription.trim()) return;
+
+        setIsUploading(true);
+        let imageUrl = '';
+
+        try {
+            // 0. Upload image if present
+            if (issueImage) {
+                const fileName = `issue_${Date.now()}_${tool.id}.jpg`;
+                const { data, error } = await supabase.storage
+                    .from('delivery-notes') // Reusing bucket for now
+                    .upload(fileName, issueImage);
+
+                if (!error) {
+                    const { data: publicData } = supabase.storage
+                        .from('delivery-notes')
+                        .getPublicUrl(fileName);
+                    imageUrl = publicData.publicUrl;
+                }
+            }
+
+            // 1. Update status to repair
+            updateMaterial(tool.id, { status: 'repair' });
+
+            // 2. Add log
+            addLog(`Reported issue for ${tool.name}: ${issueDescription}`);
+
+            // 3. Construct email
+            const subject = `Problème Matériel: ${tool.name} [${tool.serialNumber}]`;
+            let body = `Bonjour,\n\nJe signale un problème sur l'outil suivant :\n\nNom: ${tool.name}\nSérie: ${tool.serialNumber}\nQR: ${tool.qrCode}\n\nDescription du problème :\n${issueDescription}\n\n`;
+
+            if (imageUrl) {
+                body += `Photo du problème : ${imageUrl}\n\n`;
+            }
+
+            body += `Signalé par : ${currentUser?.name || 'Utilisateur'}\n\nCordialement.`;
+
+            window.location.href = `mailto:materiaux@cd.atoomerp.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+            onClose();
+        } catch (error) {
+            console.error(error);
+            alert("Erreur lors de l'envoi du rapport.");
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const handleDelete = () => {
@@ -178,7 +233,7 @@ const MaterialDetailsModal = ({ tool, onClose }) => {
                         </div>
                     )}
 
-                    {!transferMode ? (
+                    {!transferMode && !reportMode ? (
                         <div className="flex gap-3 pt-4 border-t border-slate-800">
                             <button
                                 onClick={() => setTransferMode(true)}
@@ -187,10 +242,78 @@ const MaterialDetailsModal = ({ tool, onClose }) => {
                                 <Truck size={20} />
                                 <span>Transférer / Affecter</span>
                             </button>
-                            <button className="btn btn-ghost border border-slate-700 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400">
+                            <button
+                                onClick={() => setReportMode(true)}
+                                className="btn btn-ghost border border-slate-700 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-400"
+                            >
                                 <Wrench size={20} />
                                 <span>Signaler Problème</span>
                             </button>
+                        </div>
+                    ) : reportMode ? (
+                        <div className="bg-slate-800 p-4 rounded-lg border border-slate-600 animate-in slide-in-from-top-2">
+                            <h3 className="font-bold mb-4 flex items-center gap-2 text-yellow-500">
+                                <AlertCircle size={20} />
+                                Signaler un Problème
+                            </h3>
+                            <form onSubmit={handleReportIssue} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-2">Description de la panne</label>
+                                    <textarea
+                                        required
+                                        rows={4}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:border-yellow-500"
+                                        placeholder="Décrivez le problème..."
+                                        value={issueDescription}
+                                        onChange={(e) => setIssueDescription(e.target.value)}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-2">Photo (Optionnel)</label>
+                                    <div className="flex items-center gap-3">
+                                        <label className="flex items-center gap-2 cursor-pointer bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded text-sm text-white transition-colors">
+                                            <Camera size={16} />
+                                            {issueImage ? 'Changer Photo' : 'Ajouter Photo'}
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                capture="environment"
+                                                className="hidden"
+                                                onChange={(e) => setIssueImage(e.target.files[0])}
+                                            />
+                                        </label>
+                                        {issueImage && (
+                                            <span className="text-xs text-green-400 truncate max-w-[150px]">
+                                                {issueImage.name}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setReportMode(false)}
+                                        className="btn btn-ghost text-sm"
+                                        disabled={isUploading}
+                                    >Annuler</button>
+                                    <button
+                                        type="submit"
+                                        className="btn btn-primary bg-yellow-600 hover:bg-yellow-500 border-none text-white shadow-lg shadow-yellow-900/20"
+                                        disabled={isUploading}
+                                    >
+                                        {isUploading ? (
+                                            "Envoi..."
+                                        ) : (
+                                            <>
+                                                <Send size={16} className="mr-2" />
+                                                Envoyer Rapport
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     ) : (
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-600 animate-in slide-in-from-top-2">
