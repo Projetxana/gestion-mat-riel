@@ -37,10 +37,15 @@ const SiteDetailsModal = ({ site, onClose }) => {
                                     value={editData.name}
                                     onChange={e => setEditData({ ...editData, name: e.target.value })}
                                 />
+                                value={editData.address}
+                                onChange={e => setEditData({ ...editData, address: e.target.value })}
+                                />
                                 <input
                                     className="bg-slate-800 p-2 rounded text-white border border-slate-600 text-sm"
-                                    value={editData.address}
-                                    onChange={e => setEditData({ ...editData, address: e.target.value })}
+                                    placeholder="Email du responsable"
+                                    type="email"
+                                    value={editData.email || ''}
+                                    onChange={e => setEditData({ ...editData, email: e.target.value })}
                                 />
                                 <div className="flex gap-2">
                                     <button type="button" onClick={() => setEditMode(false)} className="text-xs text-slate-400">Annuler</button>
@@ -68,6 +73,11 @@ const SiteDetailsModal = ({ site, onClose }) => {
                             <div className="flex items-center gap-2 text-slate-400">
                                 <MapPin size={16} />
                                 <p className="text-sm">{site.address}</p>
+                            </div>
+                        )}
+                        {!editMode && site.email && (
+                            <div className="flex items-center gap-2 text-slate-500 mt-1">
+                                <p className="text-sm ml-6">{site.email}</p>
                             </div>
                         )}
                     </div>
