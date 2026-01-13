@@ -117,8 +117,15 @@ const DailyReportModal = ({ onClose }) => {
 
             // Construct mailto link
             const selectedSite = sites.find(s => s.id === selectedSiteId);
-            const siteName = selectedSite ? selectedSite.name : 'Inconnu';
-            const recipientEmail = selectedSite?.email || 'materiaux@cd.atoomerp.com'; // Fallback if no email set
+
+            if (!selectedSite || !selectedSite.email) {
+                alert("Ce chantier n'a pas d'adresse email configurée. Impossible d'envoyer le rapport.");
+                setIsUploading(false);
+                return;
+            }
+
+            const siteName = selectedSite.name;
+            const recipientEmail = selectedSite.email;
 
             const dateStr = new Date().toLocaleDateString('fr-FR');
             const subject = `Rapport Journalier - ${siteName} - ${dateStr} - ${currentUser?.name || 'Technicien'}`;
