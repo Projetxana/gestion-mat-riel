@@ -179,7 +179,7 @@ const DailyReportModal = ({ onClose }) => {
             const timestamp = Date.now();
             let successCount = 0;
 
-            const selectedSite = sites.find(s => s.id === selectedSiteId);
+            const selectedSite = sites.find(s => String(s.id) === String(selectedSiteId));
 
             if (!selectedSite || !selectedSite.email) {
                 alert("Ce chantier n'a pas d'adresse email configurée. Impossible d'envoyer le rapport.");
