@@ -136,7 +136,7 @@ const DailyReportModal = ({ onClose }) => {
             for (let n = 0; n < words.length; n++) {
                 const testLine = line + words[n] + ' ';
                 const metrics = ctx.measureText(testLine);
-                consttestWidth = metrics.width;
+                const testWidth = metrics.width;
                 if (testWidth > maxWidth && n > 0) {
                     ctx.fillText(line, x, y);
                     line = words[n] + ' ';
