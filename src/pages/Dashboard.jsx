@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { Hammer, HardHat, AlertTriangle, Activity, Camera } from 'lucide-react';
+import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import DeliveryNoteModal from '../components/DeliveryNoteModal';
+import DailyReportModal from '../components/DailyReportModal';
 
 const Dashboard = () => {
     const { materials, sites, addLog } = useAppContext();
     const navigate = useNavigate();
     const [showCamera, setShowCamera] = useState(false);
+    const [showDailyReport, setShowDailyReport] = useState(false);
 
     const totalTools = materials.length;
     const toolsOnSite = materials.filter(m => m.locationType === 'site').length;
@@ -70,17 +72,35 @@ const Dashboard = () => {
 
 
 
-            {/* Delivery Note Action Button (Yellow/Amber) */}
-            <div className="mb-10 text-center">
+            {/* Action Buttons */}
+            <div className="mb-10 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Delivery Note */}
                 <button
                     onClick={handleCameraClick}
-                    className="group relative inline-flex items-center justify-center gap-3 px-8 py-4 text-lg font-bold text-white transition-all duration-300 bg-amber-500 border border-amber-400 rounded-full shadow-lg hover:bg-amber-400 hover:scale-105 hover:shadow-amber-500/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-slate-900"
+                    className="group relative flex flex-col items-center justify-center gap-3 px-8 py-6 text-lg font-bold text-white transition-all duration-300 bg-amber-500 border border-amber-400 rounded-2xl shadow-lg hover:bg-amber-400 hover:scale-[1.02] hover:shadow-amber-500/50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-slate-900"
                 >
-                    <Camera size={28} className="transition-transform group-hover:rotate-12" />
-                    <span>Scanner Bon de Livraison</span>
-                    <div className="absolute inset-0 rounded-full ring-2 ring-white/20 group-hover:ring-white/40 transition-all" />
+                    <div className="p-3 bg-white/20 rounded-full group-hover:rotate-12 transition-transform">
+                        <Camera size={32} />
+                    </div>
+                    <div>
+                        <span className="block text-xl">Bon de Livraison</span>
+                        <span className="text-sm text-amber-100 font-normal">Scanner et envoyer</span>
+                    </div>
                 </button>
-                <p className="mt-3 text-sm text-slate-400">Prend une photo et prépare l'email</p>
+
+                {/* Daily Report */}
+                <button
+                    onClick={() => setShowDailyReport(true)}
+                    className="group relative flex flex-col items-center justify-center gap-3 px-8 py-6 text-lg font-bold text-white transition-all duration-300 bg-emerald-500 border border-emerald-400 rounded-2xl shadow-lg hover:bg-emerald-400 hover:scale-[1.02] hover:shadow-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-slate-900"
+                >
+                    <div className="p-3 bg-white/20 rounded-full group-hover:rotate-12 transition-transform">
+                        <ClipboardList size={32} />
+                    </div>
+                    <div>
+                        <span className="block text-xl">Rapport Journalier</span>
+                        <span className="text-sm text-emerald-100 font-normal">Photos et notes du jour</span>
+                    </div>
+                </button>
             </div>
 
             {/* KPI Cards as Main Navigation */}
@@ -133,6 +153,7 @@ const Dashboard = () => {
             </div>
 
             {showCamera && <DeliveryNoteModal onClose={() => setShowCamera(false)} />}
+            {showDailyReport && <DailyReportModal onClose={() => setShowDailyReport(false)} />}
         </div>
     );
 };
