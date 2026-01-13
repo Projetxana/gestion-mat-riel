@@ -7,7 +7,8 @@ const AddSiteModal = ({ onClose }) => {
     const [formData, setFormData] = useState({
         name: '',
         address: '',
-        status: 'active'
+        status: 'active',
+        email: ''
     });
 
     const handleSubmit = (e) => {

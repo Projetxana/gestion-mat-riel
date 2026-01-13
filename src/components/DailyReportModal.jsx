@@ -4,12 +4,13 @@ import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 
 const DailyReportModal = ({ onClose }) => {
-    const { addLog, currentUser } = useAppContext();
+    const { addLog, currentUser, sites } = useAppContext();
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const [stream, setStream] = useState(null);
     const [photos, setPhotos] = useState([]); // Array of { blob, url }
     const [notes, setNotes] = useState('');
+    const [selectedSiteId, setSelectedSiteId] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [step, setStep] = useState('capture'); // 'capture' | 'review'
@@ -77,6 +78,10 @@ const DailyReportModal = ({ onClose }) => {
     };
 
     const handleSend = async () => {
+        if (!selectedSiteId) {
+            alert("Veuillez sélectionner un chantier.");
+            return;
+        }
         if (photos.length === 0) return;
         setIsUploading(true);
         setUploadProgress(0);
@@ -111,16 +116,20 @@ const DailyReportModal = ({ onClose }) => {
             addLog(`Sent daily report with ${photos.length} photos`);
 
             // Construct mailto link
+            const selectedSite = sites.find(s => s.id === selectedSiteId);
+            const siteName = selectedSite ? selectedSite.name : 'Inconnu';
+            const recipientEmail = selectedSite?.email || 'materiaux@cd.atoomerp.com'; // Fallback if no email set
+
             const dateStr = new Date().toLocaleDateString('fr-FR');
-            const subject = `Rapport Journalier - ${dateStr} - ${currentUser?.name || 'Technicien'}`;
+            const subject = `Rapport Journalier - ${siteName} - ${dateStr} - ${currentUser?.name || 'Technicien'}`;
 
             let linksText = uploadedUrls.map((url, i) => `Photo ${i + 1}: ${url}`).join('\n');
             const notesSection = notes ? `NOTES / ÉVÉNEMENT:\n${notes}\n\n` : '';
 
-            const body = `Bonjour,\n\nVoici le rapport journalier de ${currentUser?.name || 'Technicien'} du ${dateStr}.\n\n${notesSection}PHOTOS:\n${linksText}\n\nCordialement.`;
+            const body = `Bonjour,\n\nVoici le rapport journalier pour le chantier ${siteName} par ${currentUser?.name || 'Technicien'} le ${dateStr}.\n\n${notesSection}PHOTOS:\n${linksText}\n\nCordialement.`;
 
-            // Adjust recipient as needed
-            const mailtoLink = `mailto:materiaux@cd.atoomerp.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            // Adjust recipient
+            const mailtoLink = `mailto:${recipientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
             window.location.href = mailtoLink;
             onClose();
@@ -185,6 +194,22 @@ const DailyReportModal = ({ onClose }) => {
                             <FileText className="text-blue-400" />
                             Ajouter une note (Optionnel)
                         </h3>
+
+                        {/* Site Selector */}
+                        <div className="mb-6">
+                            <label className="block text-sm font-bold text-slate-400 mb-2">Chantier concerné <span className="text-red-500">*</span></label>
+                            <select
+                                className="w-full bg-slate-800 text-white p-4 rounded-xl border border-slate-700 outline-none focus:border-blue-500"
+                                value={selectedSiteId}
+                                onChange={(e) => setSelectedSiteId(e.target.value)}
+                            >
+                                <option value="">-- Sélectionner un chantier --</option>
+                                {sites.filter(s => s.status === 'active').map(site => (
+                                    <option key={site.id} value={site.id}>{site.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
                         <textarea
                             className="w-full flex-1 bg-slate-800 text-white p-4 rounded-xl border border-slate-700 outline-none focus:border-blue-500 resize-none mb-4"
                             placeholder="Décrivez un évènement particulier de la journée..."
