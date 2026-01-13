@@ -235,7 +235,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.2.7 (Debug Mode)
+                v0.2.8 (Fix Error Variable)
                 <button
                     onClick={() => {
                         alert("Nettoyage du cache et redémarrage...");
