@@ -77,6 +77,86 @@ const DailyReportModal = ({ onClose }) => {
         });
     };
 
+    // Helper: Generate an image from the text notes
+    const generateReportImage = async (siteName, userName, date, textNotes) => {
+        const width = 800;
+        const height = 1200;
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        // Background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+
+        // Header Blue Bar
+        ctx.fillStyle = '#1e3a8a'; // Blue-900
+        ctx.fillRect(0, 0, width, 150);
+
+        // Title
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 40px Arial';
+        ctx.fillText("RAPPORT JOURNALIER", 50, 90);
+
+        // Meta Info Container
+        ctx.fillStyle = '#f1f5f9'; // Slate-100
+        ctx.fillRect(50, 180, 700, 120);
+
+        // Meta Text
+        ctx.fillStyle = '#0f172a'; // Slate-900
+        ctx.font = 'bold 24px Arial';
+        ctx.fillText(`CHANTIER: ${siteName}`, 80, 230);
+        ctx.font = '24px Arial';
+        ctx.fillText(`Technicien: ${userName}`, 80, 270);
+        ctx.textAlign = 'right';
+        ctx.fillText(`Date: ${date}`, 720, 230);
+        ctx.textAlign = 'left';
+
+        // Notes Section
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText("ÉVÉNEMENT / NOTES:", 50, 360);
+
+        // Wrap Text Logic
+        ctx.font = '24px Arial';
+        const maxWidth = 700;
+        const lineHeight = 36;
+        const x = 50;
+        let y = 410;
+
+        if (!textNotes) {
+            ctx.fillStyle = '#94a3b8'; // Slate-400
+            ctx.fillText("(Aucune note particulière)", x, y);
+        } else {
+            ctx.fillStyle = '#334155'; // Slate-700
+            const words = textNotes.split(' ');
+            let line = '';
+
+            for (let n = 0; n < words.length; n++) {
+                const testLine = line + words[n] + ' ';
+                const metrics = ctx.measureText(testLine);
+                consttestWidth = metrics.width;
+                if (testWidth > maxWidth && n > 0) {
+                    ctx.fillText(line, x, y);
+                    line = words[n] + ' ';
+                    y += lineHeight;
+                } else {
+                    line = testLine;
+                }
+            }
+            ctx.fillText(line, x, y);
+        }
+
+        // Footer
+        ctx.fillStyle = '#64748b'; // Slate-500
+        ctx.font = 'italic 20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText("Généré automatiquement par l'application Gestion Matériel", width / 2, height - 30);
+
+        return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+    };
+
     const handleSend = async () => {
         if (!selectedSiteId) {
             alert("Veuillez sélectionner un chantier.");
@@ -91,6 +171,36 @@ const DailyReportModal = ({ onClose }) => {
             const timestamp = Date.now();
             let successCount = 0;
 
+            if (!selectedSite || !selectedSite.email) {
+                alert("Ce chantier n'a pas d'adresse email configurée. Impossible d'envoyer le rapport.");
+                setIsUploading(false);
+                return;
+            }
+
+            const siteName = selectedSite.name;
+            const recipientEmail = selectedSite.email;
+            const dateStr = new Date().toLocaleDateString('fr-FR');
+            const userName = currentUser?.name || 'Technicien';
+
+            // 1. Generate Document Image from Notes
+            const docBlob = await generateReportImage(siteName, userName, dateStr, notes);
+            const docFileName = `daily_report_doc_${currentUser?.id || 'anon'}_${timestamp}.jpg`;
+
+            // Upload Document
+            const { error: docError } = await supabase.storage
+                .from('delivery-notes')
+                .upload(docFileName, docBlob);
+
+            if (docError) throw docError;
+
+            const { data: docUrlData } = supabase.storage
+                .from('delivery-notes')
+                .getPublicUrl(docFileName);
+
+            const docUrl = docUrlData.publicUrl;
+
+
+            // 2. Upload Photos
             // Reusing 'delivery-notes' bucket to avoid permission issues, 
             // but prefixing appropriately.
             // Ideally we'd use a separate bucket, but this ensures it works NOW.
@@ -115,25 +225,13 @@ const DailyReportModal = ({ onClose }) => {
 
             addLog(`Sent daily report with ${photos.length} photos`);
 
-            // Construct mailto link
-            const selectedSite = sites.find(s => s.id === selectedSiteId);
-
-            if (!selectedSite || !selectedSite.email) {
-                alert("Ce chantier n'a pas d'adresse email configurée. Impossible d'envoyer le rapport.");
-                setIsUploading(false);
-                return;
-            }
-
-            const siteName = selectedSite.name;
-            const recipientEmail = selectedSite.email;
-
-            const dateStr = new Date().toLocaleDateString('fr-FR');
-            const subject = `Rapport Journalier - ${siteName} - ${dateStr} - ${currentUser?.name || 'Technicien'}`;
+            const subject = `Rapport Journalier - ${siteName} - ${dateStr} - ${userName}`;
 
             let linksText = uploadedUrls.map((url, i) => `Photo ${i + 1}: ${url}`).join('\n');
-            const notesSection = notes ? `NOTES / ÉVÉNEMENT:\n${notes}\n\n` : '';
+            // Simplified body, notes are now in the document image
+            const body = `Bonjour,\n\nVoici le rapport journalier pour le chantier ${siteName} par ${userName} le ${dateStr}.\n\nDOCUMENT OFFICIEL (Notes + Infos):\n${docUrl}\n\nPHOTOS JOINTES:\n${linksText}\n\nCordialement.`;
 
-            const body = `Bonjour,\n\nVoici le rapport journalier pour le chantier ${siteName} par ${currentUser?.name || 'Technicien'} le ${dateStr}.\n\n${notesSection}PHOTOS:\n${linksText}\n\nCordialement.`;
+
 
             // Adjust recipient
             const mailtoLink = `mailto:${recipientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
