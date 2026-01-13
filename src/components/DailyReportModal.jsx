@@ -154,7 +154,15 @@ const DailyReportModal = ({ onClose }) => {
         ctx.textAlign = 'center';
         ctx.fillText("Généré automatiquement par l'application Gestion Matériel", width / 2, height - 30);
 
-        return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+        return new Promise((resolve, reject) => {
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    resolve(blob);
+                } else {
+                    reject(new Error("Impossible de générer l'image du rapport."));
+                }
+            }, 'image/jpeg', 0.8);
+        });
     };
 
     const handleSend = async () => {
@@ -241,7 +249,7 @@ const DailyReportModal = ({ onClose }) => {
 
         } catch (error) {
             console.error("Upload error:", error);
-            alert("Erreur lors de l'envoi des photos. Veuillez réessayer.");
+            alert(`Erreur détaillée : ${error.message || error}`);
         } finally {
             setIsUploading(false);
         }
