@@ -235,7 +235,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.3.2 (Fallback Email)
+                v0.3.3 (Diag Mode)
                 <button
                     onClick={() => {
                         alert("Nettoyage du cache et redémarrage...");

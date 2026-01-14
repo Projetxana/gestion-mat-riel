@@ -253,8 +253,22 @@ const DailyReportModal = ({ onClose }) => {
             // 4. Send Email via Edge Function
             addLog(`Invoking send-email function for ${recipientEmail}`);
 
-            const { data: funcData, error: funcError } = await supabase.functions.invoke('send-email', {
-                body: {
+            // 4. Send Email via Edge Function (Using raw fetch for better error visibility)
+            addLog(`Invoking send-email function for ${recipientEmail}`);
+
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            if (!token) throw new Error("Session expirée. Veuillez vous reconnecter.");
+
+            const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`;
+
+            const response = await fetch(functionUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
                     recipient: recipientEmail,
                     subject: `Rapport Journalier - ${siteName} - ${dateStr} - ${userName}`,
                     html: `
@@ -267,10 +281,24 @@ const DailyReportModal = ({ onClose }) => {
                         <p><em>Généré par Antigravity</em></p>
                     `,
                     attachments: attachments
-                }
+                })
             });
 
-            if (funcError) throw funcError;
+            const responseText = await response.text();
+            let funcData;
+            try {
+                funcData = JSON.parse(responseText);
+            } catch (e) {
+                // If not JSON, it might be a raw HTML error page from Supabase
+                throw new Error(`Erreur Serveur (Raw): ${responseText.slice(0, 100)}...`);
+            }
+
+            if (!response.ok) {
+                // Now we can read the backend error even if status is 400/500
+                throw new Error(funcData.error || `Erreur Server ${response.status}: ${funcData.message || responseText}`);
+            }
+
+
             if (funcData && !funcData.success) throw new Error(funcData.error || "Erreur inconnue du serveur");
 
             alert("Rapport envoyé avec succès ! (Pièces jointes incluses)");
