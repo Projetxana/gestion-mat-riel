@@ -233,20 +233,46 @@ const DailyReportModal = ({ onClose }) => {
                 setUploadProgress(Math.round((successCount / photos.length) * 100));
             }
 
-            addLog(`Sent daily report with ${photos.length} photos`);
+            // 3. Prepare Attachments for Edge Function
+            const attachments = [];
 
-            const subject = `Rapport Journalier - ${siteName} - ${dateStr} - ${userName}`;
+            // Add Document Image
+            attachments.push({
+                filename: `Rapport_${dateStr.replace(/\//g, '-')}_${siteName.replace(/\s+/g, '_')}.jpg`,
+                path: docUrl
+            });
 
-            let linksText = uploadedUrls.map((url, i) => `Photo ${i + 1}: ${url}`).join('\n');
-            // Simplified body, notes are now in the document image
-            const body = `Bonjour,\n\nVoici le rapport journalier pour le chantier ${siteName} par ${userName} le ${dateStr}.\n\nDOCUMENT OFFICIEL (Notes + Infos):\n${docUrl}\n\nPHOTOS JOINTES:\n${linksText}\n\nCordialement.`;
+            // Add Photos
+            uploadedUrls.forEach((url, i) => {
+                attachments.push({
+                    filename: `Photo_${i + 1}.jpg`,
+                    path: url
+                });
+            });
 
+            // 4. Send Email via Edge Function
+            addLog(`Invoking send-email function for ${recipientEmail}`);
 
+            const { data: funcData, error: funcError } = await supabase.functions.invoke('send-email', {
+                body: {
+                    recipient: recipientEmail,
+                    subject: `Rapport Journalier - ${siteName} - ${dateStr} - ${userName}`,
+                    html: `
+                        <p>Bonjour,</p>
+                        <p>Voici le rapport journalier pour le chantier <strong>${siteName}</strong>.</p>
+                        <p><strong>Technicien :</strong> ${userName}</p>
+                        <p><strong>Date :</strong> ${dateStr}</p>
+                        <p>Vous trouverez le rapport officiel et les photos en pièces jointes.</p>
+                        <br/>
+                        <p><em>Généré par Antigravity</em></p>
+                    `,
+                    attachments: attachments
+                }
+            });
 
-            // Adjust recipient
-            const mailtoLink = `mailto:${recipientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            if (funcError) throw funcError;
 
-            window.location.href = mailtoLink;
+            alert("Rapport envoyé avec succès ! (Pièces jointes incluses)");
             onClose();
 
         } catch (error) {
