@@ -271,14 +271,26 @@ const DailyReportModal = ({ onClose }) => {
             });
 
             if (funcError) throw funcError;
-            if (funcData && funcData.error) throw new Error(funcData.error);
+            if (funcData && !funcData.success) throw new Error(funcData.error || "Erreur inconnue du serveur");
 
             alert("Rapport envoyé avec succès ! (Pièces jointes incluses)");
             onClose();
 
         } catch (error) {
             console.error("Upload error:", error);
-            alert(`Erreur détaillée : ${error.message || error}`);
+
+            // Fallback Logic
+            const errorMessage = error.message || error;
+            const useFallback = window.confirm(
+                `L'envoi automatique a échoué : ${errorMessage}\n\nVoulez-vous ouvrir votre application email habituelle (avec des liens au lieu des pièces jointes) ?`
+            );
+
+            if (useFallback) {
+                const subject = `Rapport Journalier - ${siteName} - ${dateStr} - ${userName}`;
+                const body = `Bonjour,\n\n(Envoi manuel suite erreur serveur)\n\nVoici le rapport pour ${siteName}.\n\nDOCUMENT:\n${docUrl}\n\nPHOTOS:\n${uploadedUrls.join('\n')}`;
+                window.location.href = `mailto:${recipientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                onClose();
+            }
         } finally {
             setIsUploading(false);
         }

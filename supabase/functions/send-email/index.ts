@@ -1,16 +1,12 @@
 
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
-
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// Modern Supabase Edge Function (No external imports for server)
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
     // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
@@ -18,14 +14,28 @@ serve(async (req) => {
 
     try {
         const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+
+        // Validate Configuration
         if (!RESEND_API_KEY) {
-            throw new Error('Missing RESEND_API_KEY environment variable');
+            throw new Error('CONFIG ERROR: RESEND_API_KEY is missing in Supabase Secrets.');
         }
 
-        const { recipient, subject, html, attachments } = await req.json();
+        // Parse Request
+        let body;
+        try {
+            body = await req.json();
+        } catch (e) {
+            throw new Error('INVALID REQUEST: Could not parse JSON body.');
+        }
 
-        console.log(`Sending email to ${recipient} with ${attachments?.length || 0} attachments`);
+        const { recipient, subject, html, attachments } = body;
 
+        // Validate Payload
+        if (!recipient) throw new Error('VALIDATION ERROR: Recipient is missing.');
+
+        console.log(`Sending email to ${recipient}`);
+
+        // Call Resend API
         const res = await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: {
@@ -33,11 +43,11 @@ serve(async (req) => {
                 'Authorization': `Bearer ${RESEND_API_KEY}`,
             },
             body: JSON.stringify({
-                from: 'Rapports Chantier <onboarding@resend.dev>', // Default testing domain
+                from: 'Rapports Chantier <onboarding@resend.dev>',
                 to: recipient,
                 subject: subject,
                 html: html,
-                attachments: attachments, // Array of { filename: string, path: string (url) }
+                attachments: attachments,
             }),
         });
 
@@ -45,19 +55,30 @@ serve(async (req) => {
 
         if (!res.ok) {
             console.error('Resend API Error:', data);
-            throw new Error(`Resend Error: ${data.name} - ${data.message}`);
+            // RETURN 200 with error info to bypass client exceptions
+            return new Response(JSON.stringify({
+                success: false,
+                error: `Resend Rejected: ${data.message || data.name}`
+            }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 200,
+            });
         }
 
-        return new Response(JSON.stringify(data), {
+        return new Response(JSON.stringify({ success: true, data }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 200,
         });
 
     } catch (error) {
-        console.error('Function Error:', error);
-        return new Response(JSON.stringify({ error: error.message }), {
+        console.error('Function Critical Error:', error);
+        // RETURN 200 with error info to bypass client exceptions
+        return new Response(JSON.stringify({
+            success: false,
+            error: `Server Error: ${error.message}`
+        }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
+            status: 200,
         });
     }
 });
