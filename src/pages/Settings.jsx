@@ -235,7 +235,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.3.0 (Pièces Jointes Réelles)
+                v0.3.1 (Fix Envoi)
                 <button
                     onClick={() => {
                         alert("Nettoyage du cache et redémarrage...");

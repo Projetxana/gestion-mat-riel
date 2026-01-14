@@ -271,6 +271,7 @@ const DailyReportModal = ({ onClose }) => {
             });
 
             if (funcError) throw funcError;
+            if (funcData && funcData.error) throw new Error(funcData.error);
 
             alert("Rapport envoyé avec succès ! (Pièces jointes incluses)");
             onClose();
