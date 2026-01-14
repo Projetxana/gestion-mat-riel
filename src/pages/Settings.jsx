@@ -235,7 +235,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.3.3 (Diag Mode)
+                v0.3.4 (Fix Auth)
                 <button
                     onClick={() => {
                         alert("Nettoyage du cache et redémarrage...");

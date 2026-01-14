@@ -257,8 +257,8 @@ const DailyReportModal = ({ onClose }) => {
             addLog(`Invoking send-email function for ${recipientEmail}`);
 
             const { data: { session } } = await supabase.auth.getSession();
-            const token = session?.access_token;
-            if (!token) throw new Error("Session expirée. Veuillez vous reconnecter.");
+            // Use User Token if available, otherwise fallback to Anon Key
+            const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
             const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`;
 
