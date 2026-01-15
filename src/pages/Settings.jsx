@@ -235,7 +235,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.3.4 (Fix Auth)
+                v0.3.5 (Data Guard)
                 <button
                     onClick={() => {
                         alert("Nettoyage du cache et redémarrage...");

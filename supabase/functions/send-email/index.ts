@@ -1,5 +1,6 @@
 
-// Modern Supabase Edge Function (No external imports for server)
+// Serveur Email SMTP (Gmail)
+import nodemailer from "npm:nodemailer@6.9.13";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -7,75 +8,56 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
-    // Handle CORS preflight requests
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
+    if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
     try {
-        const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+        // 1. Récupération des secrets
+        const SMTP_USER = Deno.env.get('SMTP_USER'); // Votre adresse Gmail
+        const SMTP_PASS = Deno.env.get('SMTP_PASS'); // Le mot de passe d'application (16 lettres)
 
-        // Validate Configuration
-        if (!RESEND_API_KEY) {
-            throw new Error('CONFIG ERROR: RESEND_API_KEY is missing in Supabase Secrets.');
+        if (!SMTP_USER || !SMTP_PASS) {
+            throw new Error('CONFIG ERROR: SMTP_USER ou SMTP_PASS manquant.');
         }
 
-        // Parse Request
+        // 2. Parsing de la requête
         let body;
-        try {
-            body = await req.json();
-        } catch (e) {
-            throw new Error('INVALID REQUEST: Could not parse JSON body.');
-        }
+        try { body = await req.json(); } catch (e) { throw new Error('Corps JSON invalide.'); }
 
         const { recipient, subject, html, attachments } = body;
+        if (!recipient) throw new Error('Destinataire manquant.');
 
-        // Validate Payload
-        if (!recipient) throw new Error('VALIDATION ERROR: Recipient is missing.');
+        console.log(`Préparation envoi GMAIL de ${SMTP_USER} vers ${recipient}`);
 
-        console.log(`Sending email to ${recipient}`);
-
-        // Call Resend API
-        const res = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-            },
-            body: JSON.stringify({
-                from: 'Rapports Chantier <onboarding@resend.dev>',
-                to: recipient,
-                subject: subject,
-                html: html,
-                attachments: attachments,
-            }),
+        // 3. Configuration du Transporteur (GMAIL)
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: SMTP_USER,
+                pass: SMTP_PASS,
+            }
         });
 
-        const data = await res.json();
+        // 4. Envoi
+        const info = await transporter.sendMail({
+            from: `"Rapports Chantier" <${SMTP_USER}>`, // Expéditeur (Votre Gmail)
+            to: recipient, // Email du chantier (Atoom ou autre)
+            subject: subject,
+            html: html,
+            attachments: attachments,
+        });
 
-        if (!res.ok) {
-            console.error('Resend API Error:', data);
-            // RETURN 200 with error info to bypass client exceptions
-            return new Response(JSON.stringify({
-                success: false,
-                error: `Resend Rejected: ${data.message || data.name}`
-            }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                status: 200,
-            });
-        }
+        console.log("Message envoyé: %s", info.messageId);
 
-        return new Response(JSON.stringify({ success: true, data }), {
+        return new Response(JSON.stringify({ success: true, messageId: info.messageId }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 200,
         });
 
     } catch (error) {
-        console.error('Function Critical Error:', error);
-        // RETURN 200 with error info to bypass client exceptions
+        console.error('Erreur Critique SMTP:', error);
         return new Response(JSON.stringify({
             success: false,
-            error: `Server Error: ${error.message}`
+            error: `Erreur GMAIL: ${error.message}`
         }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 200,

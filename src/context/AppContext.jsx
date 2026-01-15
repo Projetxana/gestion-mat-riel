@@ -68,7 +68,11 @@ export const AppProvider = ({ children }) => {
             { id: 3, name: 'DD 150-U', serial_number: '54321', qr_code: 'H-003', assigned_to: '2', status: 'repair' },
         ]);
 
-        const { data: m } = await supabase.from('materials').select('*');
+        const { data: m, error: matError } = await supabase.from('materials').select('*');
+        if (matError) {
+            console.error("Error fetching materials:", matError);
+            setDbError(`Materials Error: ${matError.message}`);
+        }
         if (m) setMaterials(m.map(item => ({
             ...item,
             serialNumber: item.serial_number,
@@ -77,7 +81,11 @@ export const AppProvider = ({ children }) => {
             locationId: item.location_id
         })));
 
-        const { data: s } = await supabase.from('sites').select('*');
+        const { data: s, error: siteError } = await supabase.from('sites').select('*');
+        if (siteError) {
+            console.error("Error fetching sites:", siteError);
+            setDbError(`Sites Error: ${siteError.message}`);
+        }
         if (s) setSites(s);
 
         const { data: u, error: userError } = await supabase.from('users').select('*');
