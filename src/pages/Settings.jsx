@@ -235,7 +235,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.4.1 (Burst Cam)
+                v0.4.2 (Detail Zone)
                 <button
                     onClick={() => {
                         alert("Nettoyage du cache et redémarrage...");

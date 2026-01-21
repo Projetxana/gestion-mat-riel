@@ -18,10 +18,9 @@ const DailyReportModal = ({ onClose }) => {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
 
-    // Sections State: Array of { id, level, customLevel, photos: [{blob, previewUrl}] }
-    // Note: 'blob' is needed for camera photos, 'file' for uploads. We'll use 'blob' as generic term.
+    // Sections State: Array of { id, level, customLevel, roomDetail, photos: [{blob, previewUrl}] }
     const [sections, setSections] = useState([
-        { id: Date.now(), level: 'Rez-de-chaussée', customLevel: '', photos: [] }
+        { id: Date.now(), level: 'Rez-de-chaussée', customLevel: '', roomDetail: '', photos: [] }
     ]);
 
     // Camera State
@@ -98,7 +97,7 @@ const DailyReportModal = ({ onClose }) => {
     const addSection = () => {
         setSections(prev => [
             ...prev,
-            { id: Date.now(), level: 'Rez-de-chaussée', customLevel: '', photos: [] }
+            { id: Date.now(), level: 'Rez-de-chaussée', customLevel: '', roomDetail: '', photos: [] }
         ]);
     };
 
@@ -191,8 +190,9 @@ const DailyReportModal = ({ onClose }) => {
 
         sections.forEach(s => {
             const levelName = s.level === 'Autre' ? (s.customLevel || 'Autre') : s.level;
+            const roomSuffix = s.roomDetail ? ` - ${s.roomDetail}` : '';
             const count = s.photos.length;
-            ctx.fillText(`• ${levelName} (${count} photos)`, 70, y);
+            ctx.fillText(`• ${levelName}${roomSuffix} (${count} photos)`, 70, y);
             y += 30;
         });
 
@@ -330,7 +330,10 @@ const DailyReportModal = ({ onClose }) => {
                         <p><strong>Technicien :</strong> ${userName}</p>
                         <hr/>
                         <h3>Résumé des zones :</h3>
-                        <ul>${sections.map(s => `<li><strong>${s.level === 'Autre' ? s.customLevel : s.level}</strong> : ${s.photos.length} photos</li>`).join('')}</ul>
+                        <ul>${sections.map(s => {
+                        const roomInfo = s.roomDetail ? ` <em>(${s.roomDetail})</em>` : '';
+                        return `<li><strong>${s.level === 'Autre' ? s.customLevel : s.level}</strong>${roomInfo} : ${s.photos.length} photos</li>`
+                    }).join('')}</ul>
                         <p><em>(Rapport et photos en pièces jointes)</em></p>
                     `,
                     attachments: attachments
@@ -439,11 +442,22 @@ const DailyReportModal = ({ onClose }) => {
                             >
                                 {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
                             </select>
+
+                            {/* Room Detail Input */}
+                            <input
+                                type="text"
+                                placeholder="Appart / Pièce (Optionnel)"
+                                className="w-full bg-slate-950 text-white p-3 rounded-lg border border-slate-700 outline-none focus:border-blue-500 transition-colors"
+                                value={section.roomDetail}
+                                onChange={(e) => updateSection(section.id, 'roomDetail', e.target.value)}
+                            />
+
+                            {/* Custom Level Input */}
                             {section.level === 'Autre' && (
                                 <input
                                     type="text"
-                                    placeholder="Précisez..."
-                                    className="w-full bg-slate-950 text-white p-3 rounded-lg border border-slate-700 outline-none"
+                                    placeholder="Précisez le niveau..."
+                                    className="w-full bg-slate-950 text-white p-3 rounded-lg border border-slate-700 outline-none mt-2 focus:border-blue-500 transition-colors"
                                     value={section.customLevel}
                                     onChange={(e) => updateSection(section.id, 'customLevel', e.target.value)}
                                 />
