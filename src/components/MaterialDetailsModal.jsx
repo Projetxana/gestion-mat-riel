@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, MapPin, Truck, Wrench, AlertCircle, QrCode, Send, Camera } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import { supabase } from '../supabaseClient';
 
 const MaterialDetailsModal = ({ tool, onClose }) => {
@@ -16,19 +16,25 @@ const MaterialDetailsModal = ({ tool, onClose }) => {
     const [isScanning, setIsScanning] = useState(false);
 
     useEffect(() => {
-        let scanner = null;
+        let html5QrCode = null;
         if (isScanning) {
-            scanner = new Html5QrcodeScanner(
-                "edit-reader",
-                { fps: 10, qrbox: { width: 250, height: 250 } },
-                /* verbose= */ false
-            );
-            scanner.render(onScanSuccess, onScanFailure);
+            html5QrCode = new Html5Qrcode("edit-reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                onScanSuccess,
+                onScanFailure
+            ).catch(err => {
+                console.error("Error starting scanner", err);
+                setIsScanning(false);
+            });
         }
 
         return () => {
-            if (scanner) {
-                scanner.clear().catch(error => console.error("Failed to clear scanner", error));
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
             }
         };
     }, [isScanning]);

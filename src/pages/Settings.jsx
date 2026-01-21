@@ -235,7 +235,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.3.5 (Data Guard)
+                v0.4.0 (Multi-Level)
                 <button
                     onClick={() => {
                         alert("Nettoyage du cache et redémarrage...");

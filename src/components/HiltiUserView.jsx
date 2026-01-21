@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Loader, QrCode } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import HiltiToolModal from './HiltiToolModal';
 
 const HiltiUserView = ({ targetUserId }) => {
@@ -92,9 +92,21 @@ const HiltiUserView = ({ targetUserId }) => {
 // Helper for Scanner Lifecycle
 const ScannerMounter = ({ onScan }) => {
     React.useEffect(() => {
-        const scanner = new Html5QrcodeScanner("hilti-reader", { fps: 10, qrbox: 250 }, false);
-        scanner.render(onScan, (err) => console.warn(err));
-        return () => scanner.clear();
+        const html5QrCode = new Html5Qrcode("hilti-reader");
+        const config = { fps: 10, qrbox: 250 };
+
+        html5QrCode.start(
+            { facingMode: "environment" },
+            config,
+            onScan,
+            (err) => { } // console.warn(err)
+        ).catch(err => console.error("Error starting scanner", err));
+
+        return () => {
+            if (html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
+            }
+        };
     }, []);
     return null;
 };

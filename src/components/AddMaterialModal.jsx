@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, QrCode } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 
 const AddMaterialModal = ({ onClose }) => {
     const { addMaterial } = useAppContext();
@@ -16,19 +16,26 @@ const AddMaterialModal = ({ onClose }) => {
     });
 
     useEffect(() => {
-        let scanner = null;
+        let html5QrCode = null;
         if (isScanning) {
-            scanner = new Html5QrcodeScanner(
-                "reader",
-                { fps: 10, qrbox: { width: 250, height: 250 } },
-                /* verbose= */ false
-            );
-            scanner.render(onScanSuccess, onScanFailure);
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            // Start scanning with rear camera preference
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                onScanSuccess,
+                onScanFailure
+            ).catch(err => {
+                console.error("Error starting scanner", err);
+                setIsScanning(false);
+            });
         }
 
         return () => {
-            if (scanner) {
-                scanner.clear().catch(error => console.error("Failed to clear scanner", error));
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
             }
         };
     }, [isScanning]);
