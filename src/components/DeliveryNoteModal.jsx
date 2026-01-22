@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 
 const DeliveryNoteModal = ({ onClose }) => {
-    const { addLog } = useAppContext();
+    const { addLog, currentUser } = useAppContext();
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const [stream, setStream] = useState(null);
@@ -80,9 +80,10 @@ const DeliveryNoteModal = ({ onClose }) => {
         setUploadProgress(0);
 
         try {
-            const uploadedUrls = [];
+            const uploadedAttachments = [];
             const timestamp = Date.now();
             let successCount = 0;
+            const userName = currentUser?.name || 'Utilisateur';
 
             for (let i = 0; i < photos.length; i++) {
                 const { blob } = photos[i];
@@ -98,25 +99,56 @@ const DeliveryNoteModal = ({ onClose }) => {
                     .from('delivery-notes')
                     .getPublicUrl(fileName);
 
-                uploadedUrls.push(publicUrlData.publicUrl);
+                uploadedAttachments.push({
+                    filename: fileName,
+                    path: publicUrlData.publicUrl
+                });
+
                 successCount++;
                 setUploadProgress(Math.round((successCount / photos.length) * 100));
             }
 
-            addLog(`Uploaded ${photos.length} photos for delivery note`);
+            addLog(`Envoi bon de livraison par ${userName}`);
 
-            // Construct mailto link
-            const subject = "Nouveau Bon de Livraison";
-            const linksText = uploadedUrls.join('\n');
-            const body = `Bonjour,\n\nVoici les photos du bon de livraison :\n\n${linksText}\n\nCordialement.`;
-            const mailtoLink = `mailto:materiaux@cd.atoomerp.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            // Send Email via Edge Function
+            const recipientEmail = "materiaux@cd.atoomerp.com";
+            const dateStr = new Date().toLocaleDateString('fr-FR');
 
-            window.location.href = mailtoLink;
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    recipient: recipientEmail,
+                    subject: `Bon de Livraison - ${userName} - ${dateStr}`,
+                    html: `
+                        <h2>Nouveau Bon de Livraison</h2>
+                        <p><strong>Envoyé par :</strong> ${userName}</p>
+                        <p><strong>Date :</strong> ${dateStr}</p>
+                        <p><strong>Nombre de photos :</strong> ${photos.length}</p>
+                        <br/>
+                        <p><em>Photos en pièces jointes.</em></p>
+                    `,
+                    attachments: uploadedAttachments
+                })
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Erreur email: ${text}`);
+            }
+
+            alert("Bon de livraison envoyé avec succès !");
             onClose();
 
         } catch (error) {
-            console.error("Upload error:", error);
-            alert("Erreur lors de l'envoi. Veuillez réessayer.");
+            console.error("Upload/Email error:", error);
+            alert(`Erreur lors de l'envoi : ${error.message}`);
         } finally {
             setIsUploading(false);
         }
