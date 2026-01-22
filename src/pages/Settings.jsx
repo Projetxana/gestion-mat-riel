@@ -39,7 +39,7 @@ const Settings = () => {
                 <div>
                     <h1 className="page-title text-slate-800">Paramètres</h1>
                     <p className="text-slate-500">Gérez les détails de l'entreprise et les utilisateurs</p>
-                    <p className="text-slate-500">v0.7.0 (Module Heures)</p>
+                    <p className="text-slate-500">v0.7.1 (Heures UI Refined)</p>
                 </div>
             </div>
 
@@ -202,7 +202,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.7.0 (Module Heures)
+                v0.7.1 (Heures UI Refined)
                 <button
                     onClick={async () => {
                         if (!window.confirm("Cela va effacer le cache et recharger l'application. Continuer ?")) return;

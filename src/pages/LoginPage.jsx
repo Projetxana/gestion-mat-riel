@@ -70,7 +70,7 @@ const LoginPage = () => {
                 </form>
 
                 <div className="mt-8 text-center text-xs text-slate-500">
-                    <p>Antigravity - v0.7.0 (Module Heures)</p>
+                    <p>Antigravity - v0.7.1 (Heures UI Refined)</p>
                 </div>
             </div>
         </div>
