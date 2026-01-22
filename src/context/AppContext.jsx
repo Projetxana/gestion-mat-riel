@@ -112,14 +112,49 @@ export const AppProvider = ({ children }) => {
         return deg * (Math.PI / 180);
     }
 
-    // Geofence Logic
+    // Helper for fuzzy matching names
+    const normalizeName = (name) => name ? name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
+
+    const sitesRef = React.useRef(sites);
+
+    // Keep Ref updated
+    useEffect(() => {
+        sitesRef.current = sites;
+    }, [sites]);
+
     const checkGeofences = (lat, lng) => {
-        // Need access to current sites state. Since useEffect dependency is empty, 'sites' is stale here.
-        // We really should iterate over 'sites' from state or ref.
-        // Quick fix: Since 'fetchData' loads sites, we might need to rely on a Ref for sites access in the callback 
-        // OR move this logic. simpler: use valid scope.
-        // BUT accessing state inside a closure created on mount is bad.
-        // Let's optimize: We can restart the watcher if sites change? Or use a Ref.
+        if (!sitesRef.current || sitesRef.current.length === 0) return;
+
+        let insideSite = null;
+
+        for (const site of sitesRef.current) {
+            if (site.geofence_lat && site.geofence_lng) {
+                const dist = getDistanceFromLatLonInKm(lat, lng, site.geofence_lat, site.geofence_lng);
+                const radius = site.geofence_radius_m || 150;
+
+                if (dist <= radius) {
+                    insideSite = site;
+                    break;
+                }
+            }
+        }
+
+        setCurrentGeofenceSiteId(prev => {
+            if (insideSite) {
+                if (prev !== insideSite.id) {
+                    console.log(`Geofence ENTRY: ${insideSite.name}`);
+                    setLastGeofenceEntry({ siteId: insideSite.id, entryAt: new Date() });
+                    setLastGeofenceExit(null);
+                }
+                return insideSite.id;
+            } else {
+                if (prev) {
+                    console.log(`Geofence EXIT (Left Site ID ${prev})`);
+                    setLastGeofenceExit({ siteId: prev, exitAt: new Date() });
+                }
+                return null;
+            }
+        });
     };
 
     const fetchData = async () => {
@@ -158,65 +193,9 @@ export const AppProvider = ({ children }) => {
 
         let loadedUsers = u || [];
 
-        const sitesRef = React.useRef(sites);
-
-        // Keep Ref updated
-        useEffect(() => {
-            sitesRef.current = sites;
-        }, [sites]);
 
 
-        // Geofence Logic with Ref
-        const checkGeofences = (lat, lng) => {
-            if (!sitesRef.current || sitesRef.current.length === 0) return;
 
-            let insideSite = null;
-
-            for (const site of sitesRef.current) {
-                // Check if site has geofence
-                if (site.geofence_lat && site.geofence_lng) {
-                    const dist = getDistanceFromLatLonInKm(lat, lng, site.geofence_lat, site.geofence_lng);
-                    const radius = site.geofence_radius_m || 150;
-
-                    if (dist <= radius) {
-                        insideSite = site;
-                        break; // Assume 1 site at a time
-                    }
-                }
-            }
-
-            // State Machine for Entry/Exit
-            setCurrentGeofenceSiteId(prev => {
-                if (insideSite) {
-                    // We are inside a site
-                    if (prev !== insideSite.id) {
-                        // ENTRY DETECTED (or switch)
-                        console.log(`Geofence ENTRY: ${insideSite.name}`);
-                        setLastGeofenceEntry({
-                            siteId: insideSite.id,
-                            entryAt: new Date()
-                        });
-                        // Reset exit if we just entered
-                        setLastGeofenceExit(null);
-                    }
-                    return insideSite.id;
-                } else {
-                    // We are outside
-                    if (prev) {
-                        // EXIT DETECTED
-                        console.log(`Geofence EXIT (Left Site ID ${prev})`);
-                        setLastGeofenceExit({
-                            siteId: prev,
-                            exitAt: new Date()
-                        });
-                    }
-                    return null;
-                }
-            });
-        };
-
-        // Helper for fuzzy matching names (handles accents/case)
-        const normalizeName = (name) => name ? name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
 
         // --- SEED HILTI USERS IF MISSING ---
         // This ensures the users from the CSV exist in our app
