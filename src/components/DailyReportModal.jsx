@@ -314,7 +314,7 @@ const DailyReportModal = ({ onClose }) => {
             }
 
             // 3. Email
-            addLog(`Envoi rapport multi-zone à ${recipientEmail}`);
+
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -347,6 +347,8 @@ const DailyReportModal = ({ onClose }) => {
             if (!response.ok || (funcData && !funcData.success)) {
                 throw new Error(funcData.error || responseText);
             }
+
+            addLog(`[EMAIL CONFIRMED] Rapport journalier envoyé par ${userName}`);
 
             alert("Rapport envoyé !");
             onClose();

@@ -120,7 +120,7 @@ const InvoiceModal = ({ onClose }) => {
             const recipientEmail = "materiaux@cd.atoomerp.com";
             const dateStr = new Date().toLocaleDateString('fr-FR');
 
-            addLog(`Envoi factures par ${userName} à ${recipientEmail}`);
+
 
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -151,6 +151,8 @@ const InvoiceModal = ({ onClose }) => {
             if (!result.success) {
                 throw new Error(result.error || "Erreur inconnue lors de l'envoi");
             }
+
+            addLog(`[EMAIL CONFIRMED] Factures envoyées par ${userName} à ${recipientEmail}`);
 
             alert("Factures envoyées avec succès !");
             onClose();

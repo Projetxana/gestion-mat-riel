@@ -108,7 +108,7 @@ const DeliveryNoteModal = ({ onClose }) => {
                 setUploadProgress(Math.round((successCount / photos.length) * 100));
             }
 
-            addLog(`Envoi bon de livraison par ${userName}`);
+
 
             // Send Email via Edge Function
             const recipientEmail = "materiaux@cd.atoomerp.com";
@@ -143,6 +143,8 @@ const DeliveryNoteModal = ({ onClose }) => {
             if (!result.success) {
                 throw new Error(result.error || "Erreur inconnue lors de l'envoi");
             }
+
+            addLog(`[EMAIL CONFIRMED] Bon de livraison envoyé par ${userName}`);
 
             alert("Bon de livraison envoyé avec succès !");
             onClose();
