@@ -56,6 +56,7 @@ const Settings = () => {
                 <div>
                     <h1 className="page-title text-slate-800">Paramètres</h1>
                     <p className="text-slate-500">Gérez les détails de l'entreprise et les utilisateurs</p>
+                    <p className="text-slate-500 text-sm mt-1">v0.5.0 (Redesign)</p>
                 </div>
             </div>
 
@@ -235,19 +236,35 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.4.2 (Detail Zone)
+                v0.5.0 (Redesign)
                 <button
-                    onClick={() => {
-                        alert("Nettoyage du cache et redémarrage...");
-                        if ('serviceWorker' in navigator) {
-                            navigator.serviceWorker.getRegistrations().then(function (registrations) {
-                                for (let registration of registrations) {
-                                    registration.unregister();
+                    onClick={async () => {
+                        if (!window.confirm("Cela va effacer le cache et recharger l'application. Continuer ?")) return;
+
+                        try {
+                            // 1. Unregister Service Workers
+                            if ('serviceWorker' in navigator) {
+                                const registrations = await navigator.serviceWorker.getRegistrations();
+                                for (const registration of registrations) {
+                                    await registration.unregister();
                                 }
-                                window.location.reload(true);
-                            });
-                        } else {
-                            window.location.reload(true);
+                            }
+
+                            // 2. Clear Caches
+                            if ('caches' in window) {
+                                const cacheNames = await caches.keys();
+                                await Promise.all(
+                                    cacheNames.map(name => caches.delete(name))
+                                );
+                            }
+
+                            // 3. Force Reload with Cache Busting
+                            alert("Mise à jour effectuée. L'application va redémarrer.");
+                            window.location.href = window.location.origin + '?t=' + new Date().getTime();
+
+                        } catch (error) {
+                            console.error("Update failed:", error);
+                            window.location.reload();
                         }
                     }}
                     className="block mx-auto mt-2 text-xs text-blue-400 hover:text-blue-300 underline"
