@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList } from 'lucide-react';
+import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import InvoiceModal from '../components/InvoiceModal';
 

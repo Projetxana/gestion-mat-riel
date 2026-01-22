@@ -236,7 +236,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.6.0 (Factures)
+                v0.6.1 (Fix Factures)
                 <button
                     onClick={async () => {
                         if (!window.confirm("Cela va effacer le cache et recharger l'application. Continuer ?")) return;
