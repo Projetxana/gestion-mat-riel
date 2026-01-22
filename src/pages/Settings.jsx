@@ -114,6 +114,25 @@ const Settings = () => {
                 </div>
             </div>
 
+            {/* Admin Links */}
+            {(currentUser?.role === 'admin' || currentUser?.role === 'foreman') && (
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+                    <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-slate-800">
+                        <Users className="text-amber-600" size={24} />
+                        Administration
+                    </h2>
+                    <div className="flex gap-4">
+                        <a
+                            href="/timetracking/validation"
+                            className="px-6 py-3 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl font-bold border border-amber-200 transition-colors flex items-center gap-2"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+                            Validation des Heures
+                        </a>
+                    </div>
+                </div>
+            )}
+
             {/* User Management */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
                 <div className="flex items-center justify-between mb-8">

@@ -45,6 +45,12 @@ const SiteDetails = () => {
                         <div className="flex items-center gap-2 text-slate-400">
                             <MapPin size={18} />
                             <p>{site.address}</p>
+                            {(site.geofence_lat && site.geofence_lng) && (
+                                <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-blue-900/50 text-blue-300 border border-blue-800">
+                                    <MapPin size={10} />
+                                    GPS Actif
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -13,7 +13,9 @@ import Journal from './pages/Journal';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import HiltiPage from './pages/HiltiPage';
-import TimeTracking from './pages/TimeTracking'; // Added TimeTracking
+import TimeTracking from './pages/TimeTracking';
+import ManualEntry from './pages/ManualEntry';
+import ValidationPage from './pages/ValidationPage';
 
 const ProtectedRoute = ({ children }) => {
   const { currentUser } = useAppContext();
@@ -82,7 +84,10 @@ const AppRoutes = () => {
         <Route path="journal" element={<Journal />} />
         <Route path="settings" element={<Settings />} />
         <Route path="hilti" element={<HiltiPage />} />
-        <Route path="hours" element={<TimeTracking />} /> {/* Added TimeTracking route */}
+        <Route path="hours" element={<TimeTracking />} />
+        <Route path="timetracking" element={<TimeTracking />} />
+        <Route path="timetracking/manual" element={<ManualEntry />} />
+        <Route path="timetracking/validation" element={<ValidationPage />} />
         <Route path="*" element={<PlaceholderPage title="Page Non Trouvée" />} /> {/* Added catch-all route */}
       </Route>
     </Routes>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { Clock, Play, Square, RefreshCw, MapPin, AlertCircle, ChevronRight, ArrowLeft, Calendar, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import SmartCorrectionPopup from '../components/SmartCorrectionPopup';
 
 const TimeTracking = () => {
     const {
@@ -12,6 +13,8 @@ const TimeTracking = () => {
         startTimeSession,
         endTimeSession,
         switchTask,
+        lastGeofenceExit,
+        lastGeofenceEntry
     } = useAppContext();
     const navigate = useNavigate();
 
@@ -149,12 +152,49 @@ const TimeTracking = () => {
         }
     };
 
+    // CORRECTION STATE
+    const [showCorrection, setShowCorrection] = useState(false);
+    const [pendingEndSession, setPendingEndSession] = useState(false); // To resume after popup
+
+    // Removed redundant declaration since we already have it from context destructuring at the top
+
     const handleEndDay = async () => {
+        // W3: Workflow End Day
+        // Check Smart Correction condition (W4)
+        // If GPS exit exists and is diff > 5 mins from now, show popup. 
+        // For MVP, if we have ANY geofence exit recorded that hasn't been used, we could propose it.
+        // OR simply: If we are OUTSIDE the site right now (lastGeofenceExit is set).
+
+        const exit = lastGeofenceExit;
+        // Check if exit matches current session site
+        const isRelevantExit = exit && String(exit.siteId) === String(activeSession.site_id);
+
+        if (isRelevantExit) {
+            // Check diff
+            const diffMin = Math.abs(new Date().getTime() - new Date(exit.exitAt).getTime()) / 60000;
+            if (diffMin > 5) {
+                // Show Popup
+                console.log("Smart Correction Triggered: Exit was", exit.exitAt);
+                setPendingEndSession(true);
+                setShowCorrection(true);
+                return;
+            }
+        }
+
+        // Standard End
         if (!window.confirm("Terminer la journée ?")) return;
+        confirmEndDay(null);
+    };
+
+    const confirmEndDay = async (correction) => {
         setIsSubmitting(true);
-        const mockGps = { exitAt: new Date() };
-        await endTimeSession(activeSession.id, mockGps);
+        // If we have a correction, use it. Else use standard or GPS exit if available (W3 step 1)
+        const mockGps = lastGeofenceExit ? { exitAt: lastGeofenceExit.exitAt } : { exitAt: new Date() };
+
+        await endTimeSession(activeSession.id, mockGps, correction);
         setIsSubmitting(false);
+        setShowCorrection(false);
+        setPendingEndSession(false);
         setViewMode('INITIAL');
     };
 
@@ -257,7 +297,10 @@ const TimeTracking = () => {
 
                 {/* Secondary Action */}
                 <div className="text-center">
-                    <button className="text-sm text-slate-400 font-medium hover:text-slate-600 underline">
+                    <button
+                        onClick={() => navigate('/timetracking/manual')}
+                        className="text-sm text-slate-400 font-medium hover:text-slate-600 underline"
+                    >
                         Ajouter une entrée manuellement
                     </button>
                 </div>
@@ -429,6 +472,16 @@ const TimeTracking = () => {
                 {/* Companion View below active card */}
                 {renderCompanionView()}
 
+                {showCorrection && (
+                    <SmartCorrectionPopup
+                        title="Correction - Départ"
+                        punchTime={new Date()}
+                        gpsTime={lastGeofenceExit?.exitAt}
+                        type="end"
+                        onConfirm={(time, isModified) => confirmEndDay({ time, isModified })}
+                        onCancel={() => confirmEndDay(null)}
+                    />
+                )}
             </div>
         );
     }

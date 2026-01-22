@@ -18,8 +18,27 @@ export const AppProvider = ({ children }) => {
     const [dbError, setDbError] = useState(null);
 
     // Initial Data Fetch
+    // Geofence State
+    const [lastGeofenceEntry, setLastGeofenceEntry] = useState(null);
+    const [lastGeofenceExit, setLastGeofenceExit] = useState(null);
+    const [currentGeofenceSiteId, setCurrentGeofenceSiteId] = useState(null);
+
+    // Initial Data Fetch & Geofence Watcher
     useEffect(() => {
         fetchData();
+
+        // GEOLOCATION WATCHER (W6, W7)
+        let watchId;
+        if ('geolocation' in navigator) {
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    checkGeofences(latitude, longitude);
+                },
+                (err) => console.log("Geo Error:", err),
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        }
 
         // Real-time subscriptions
         const channels = [
@@ -70,9 +89,38 @@ export const AppProvider = ({ children }) => {
         ];
 
         return () => {
+            if (watchId) navigator.geolocation.clearWatch(watchId);
             channels.forEach(channel => supabase.removeChannel(channel));
         };
-    }, []);
+    }, []); // Check dependency array carefully if using sites inside checkGeofences (might need ref/layout effect or just simpler approach)
+
+    // Helper: Calculate distance
+    const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
+        var R = 6371; // Radius of the earth in km
+        var dLat = deg2rad(lat2 - lat1);
+        var dLon = deg2rad(lon2 - lon1);
+        var a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        var d = R * c; // Distance in km
+        return d * 1000; // Meters
+    }
+
+    const deg2rad = (deg) => {
+        return deg * (Math.PI / 180);
+    }
+
+    // Geofence Logic
+    const checkGeofences = (lat, lng) => {
+        // Need access to current sites state. Since useEffect dependency is empty, 'sites' is stale here.
+        // We really should iterate over 'sites' from state or ref.
+        // Quick fix: Since 'fetchData' loads sites, we might need to rely on a Ref for sites access in the callback 
+        // OR move this logic. simpler: use valid scope.
+        // BUT accessing state inside a closure created on mount is bad.
+        // Let's optimize: We can restart the watcher if sites change? Or use a Ref.
+    };
 
     const fetchData = async () => {
         // Mock Hilti Data - waiting for CSV import
@@ -109,6 +157,63 @@ export const AppProvider = ({ children }) => {
         }
 
         let loadedUsers = u || [];
+
+        const sitesRef = React.useRef(sites);
+
+        // Keep Ref updated
+        useEffect(() => {
+            sitesRef.current = sites;
+        }, [sites]);
+
+
+        // Geofence Logic with Ref
+        const checkGeofences = (lat, lng) => {
+            if (!sitesRef.current || sitesRef.current.length === 0) return;
+
+            let insideSite = null;
+
+            for (const site of sitesRef.current) {
+                // Check if site has geofence
+                if (site.geofence_lat && site.geofence_lng) {
+                    const dist = getDistanceFromLatLonInKm(lat, lng, site.geofence_lat, site.geofence_lng);
+                    const radius = site.geofence_radius_m || 150;
+
+                    if (dist <= radius) {
+                        insideSite = site;
+                        break; // Assume 1 site at a time
+                    }
+                }
+            }
+
+            // State Machine for Entry/Exit
+            setCurrentGeofenceSiteId(prev => {
+                if (insideSite) {
+                    // We are inside a site
+                    if (prev !== insideSite.id) {
+                        // ENTRY DETECTED (or switch)
+                        console.log(`Geofence ENTRY: ${insideSite.name}`);
+                        setLastGeofenceEntry({
+                            siteId: insideSite.id,
+                            entryAt: new Date()
+                        });
+                        // Reset exit if we just entered
+                        setLastGeofenceExit(null);
+                    }
+                    return insideSite.id;
+                } else {
+                    // We are outside
+                    if (prev) {
+                        // EXIT DETECTED
+                        console.log(`Geofence EXIT (Left Site ID ${prev})`);
+                        setLastGeofenceExit({
+                            siteId: prev,
+                            exitAt: new Date()
+                        });
+                    }
+                    return null;
+                }
+            });
+        };
 
         // Helper for fuzzy matching names (handles accents/case)
         const normalizeName = (name) => name ? name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : '';
@@ -630,7 +735,10 @@ export const AppProvider = ({ children }) => {
         startTimeSession,
         endTimeSession,
         switchTask,
-        logManualTime
+        logManualTime,
+        lastGeofenceEntry,
+        lastGeofenceExit,
+        currentGeofenceSiteId
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
