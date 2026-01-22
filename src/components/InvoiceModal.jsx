@@ -146,9 +146,10 @@ const InvoiceModal = ({ onClose }) => {
                 })
             });
 
-            if (!response.ok) {
-                const text = await response.text();
-                throw new Error(`Erreur email: ${text}`);
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || "Erreur inconnue lors de l'envoi");
             }
 
             alert("Factures envoyées avec succès !");
