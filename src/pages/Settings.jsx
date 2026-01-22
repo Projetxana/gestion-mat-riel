@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { Save, UserPlus, Shield, Users, Database } from 'lucide-react';
+import { Save, UserPlus, Shield, Users } from 'lucide-react';
 import UserModal from '../components/UserModal';
-import { legacyMaterials } from '../data/legacyMaterials';
 
 const Settings = () => {
-    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, addMaterial, dbError } = useAppContext();
+    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, dbError } = useAppContext();
     const [localCompanyValues, setLocalCompanyValues] = useState({ name: '', address: '' });
     const [isEditing, setIsEditing] = useState(false);
     const [showUserModal, setShowUserModal] = useState(false);
@@ -22,23 +21,7 @@ const Settings = () => {
         setIsEditing(false);
     };
 
-    const handleImportData = async () => {
-        if (!window.confirm(`Voulez-vous importer ${legacyMaterials.length} outils ?`)) return;
 
-        let successCount = 0;
-        let skipCount = 0;
-
-        for (const item of legacyMaterials) {
-            const result = await addMaterial(item);
-            if (result && !result.error) {
-                successCount++;
-            } else {
-                skipCount++;
-            }
-        }
-
-        alert(`Import terminé !\nSuccès: ${successCount}\nDoublons ignorés: ${skipCount}`);
-    };
 
     if (currentUser?.role !== 'admin') {
         return (
@@ -56,7 +39,7 @@ const Settings = () => {
                 <div>
                     <h1 className="page-title text-slate-800">Paramètres</h1>
                     <p className="text-slate-500">Gérez les détails de l'entreprise et les utilisateurs</p>
-                    <p className="text-slate-500">v0.6.0 (Factures)</p>
+                    <p className="text-slate-500">v0.6.3 (Clean Import)</p>
                 </div>
             </div>
 
@@ -207,24 +190,7 @@ const Settings = () => {
                 </div>
             </div>
 
-            {/* Import Data */}
-            <div className="bg-blue-50 rounded-2xl shadow-sm border border-blue-100 p-8">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-700">
-                    <Database className="text-blue-600" size={24} />
-                    Import de Données
-                </h2>
-                <p className="text-blue-600 mb-6">
-                    Importer massivement la liste d'inventaire initiale ({legacyMaterials.length} éléments).
-                    Les numéros de série en double seront ignorés.
-                </p>
-                <button
-                    onClick={handleImportData}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-md shadow-blue-500/20 transition-all flex items-center gap-2"
-                >
-                    <Database size={18} />
-                    Lancer l'importation
-                </button>
-            </div>
+
 
 
 
@@ -236,7 +202,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.6.2 (Fix Boutons)
+                v0.6.3 (Clean Import)
                 <button
                     onClick={async () => {
                         if (!window.confirm("Cela va effacer le cache et recharger l'application. Continuer ?")) return;

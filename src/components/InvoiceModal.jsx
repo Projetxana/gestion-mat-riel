@@ -117,7 +117,7 @@ const InvoiceModal = ({ onClose }) => {
             }
 
             // Send Email via Edge Function
-            const recipientEmail = "materiaux@protectioncd.ca";
+            const recipientEmail = "materiaux@cd.atoomerp.com";
             const dateStr = new Date().toLocaleDateString('fr-FR');
 
             addLog(`Envoi factures par ${userName} à ${recipientEmail}`);
