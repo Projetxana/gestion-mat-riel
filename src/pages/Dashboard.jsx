@@ -1,18 +1,27 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList, Image as ImageIcon } from 'lucide-react';
+import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList, Image as ImageIcon, Users } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import DeliveryNoteModal from '../components/DeliveryNoteModal';
 import DailyReportModal from '../components/DailyReportModal';
 import InvoiceModal from '../components/InvoiceModal';
+import SiteOccupancyModal from '../components/SiteOccupancyModal';
 
 const Dashboard = () => {
-    const { materials, sites, addLog } = useAppContext();
+    const { materials, sites, addLog, timeSessions, currentUser } = useAppContext();
     const navigate = useNavigate();
     const [showCamera, setShowCamera] = useState(false);
     const [showDailyReport, setShowDailyReport] = useState(false);
     const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+    const [selectedSiteForOccupancy, setSelectedSiteForOccupancy] = useState(null);
+
+    // Live View Logic
+    const activeSessions = timeSessions.filter(s => s.punch_end_at === null);
+    const activeSitesWithCount = sites.map(site => {
+        const count = activeSessions.filter(s => String(s.site_id) === String(site.id)).length;
+        return { ...site, activeCount: count };
+    }).filter(s => s.activeCount > 0).sort((a, b) => b.activeCount - a.activeCount);
 
     const totalTools = materials.length;
     const toolsOnSite = materials.filter(m => m.locationType === 'site').length;
@@ -107,6 +116,34 @@ const Dashboard = () => {
                 </div>
             </Link>
 
+            {/* Live Site View (Admin Only) */}
+            {(currentUser?.role === 'admin' || currentUser?.role === 'foreman' || currentUser?.level === "Chef d'équipe") && activeSitesWithCount.length > 0 && (
+                <div className="mb-6">
+                    <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        En Direct sur Chantier
+                    </h3>
+                    <div className="space-y-3">
+                        {activeSitesWithCount.map(site => (
+                            <button
+                                key={site.id}
+                                onClick={() => setSelectedSiteForOccupancy(site)}
+                                className="w-full bg-slate-800 hover:bg-slate-750 p-4 rounded-xl border border-slate-700 shadow-md flex justify-between items-center transition-all group"
+                            >
+                                <div className="text-left">
+                                    <h4 className="font-bold text-white group-hover:text-blue-400 transition-colors">{site.name}</h4>
+                                    <p className="text-xs text-slate-500">{site.address || 'Aucune adresse'}</p>
+                                </div>
+                                <div className="flex items-center gap-2 bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-700">
+                                    <Users size={14} className="text-blue-400" />
+                                    <span className="font-mono font-bold text-white">{site.activeCount}</span>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3 mb-4">
                 {stats.map((stat, index) => (
@@ -147,6 +184,12 @@ const Dashboard = () => {
             {showCamera && <DeliveryNoteModal onClose={() => setShowCamera(false)} />}
             {showDailyReport && <DailyReportModal onClose={() => setShowDailyReport(false)} />}
             {showInvoiceModal && <InvoiceModal onClose={() => setShowInvoiceModal(false)} />}
+            {selectedSiteForOccupancy && (
+                <SiteOccupancyModal
+                    site={selectedSiteForOccupancy}
+                    onClose={() => setSelectedSiteForOccupancy(null)}
+                />
+            )}
         </div>
     );
 };

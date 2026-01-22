@@ -65,9 +65,18 @@ const Layout = () => {
             {showEntryPopup && entrySite && (
                 <SmartCorrectionPopup
                     type="entry"
-                    gpsTime={entrySite.name} // Hack: Passing site name as gpsTime for entry mode
+                    gpsTime={entrySite.name}
                     onConfirm={handleStartDay}
                     onCancel={() => setShowEntryPopup(false)}
+                />
+            )}
+
+            {showReminderPopup && (
+                <SmartCorrectionPopup
+                    type="reminder"
+                    gpsTime={new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    onConfirm={handleStartReminder}
+                    onCancel={() => setShowReminderPopup(false)}
                 />
             )}
         </div>

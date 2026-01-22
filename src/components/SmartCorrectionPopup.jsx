@@ -49,6 +49,44 @@ const SmartCorrectionPopup = ({
         );
     }
 
+    if (type === 'reminder') {
+        const timeString = gpsTime; // Hack: passing formatted time string
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="bg-amber-500 p-6 text-white text-center">
+                        <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <Clock className="text-white" size={24} />
+                        </div>
+                        <h2 className="text-xl font-bold">Rappel Horaire</h2>
+                        <p className="text-amber-100 text-sm mt-1">
+                            Il est <span className="font-bold text-white">{timeString}</span>.
+                        </p>
+                    </div>
+                    <div className="p-6">
+                        <p className="text-slate-600 text-center font-medium mb-6">
+                            La journée commence à 6h00. Vous n'avez pas encore démarré votre session.
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={onCancel}
+                                className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors"
+                            >
+                                Ignorer
+                            </button>
+                            <button
+                                onClick={onConfirm}
+                                className="flex-1 py-3 bg-amber-500 text-white font-bold hover:bg-amber-600 rounded-xl shadow-lg shadow-amber-500/30 transition-all"
+                            >
+                                Démarrer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     // Default Correction Mode (Start/End)
     const [selectedSource, setSelectedSource] = useState(null); // 'punch' or 'gps'
 
