@@ -11,6 +11,45 @@ const SmartCorrectionPopup = ({
     // If diff is small (< 5 mins), maybe skip? User requirement implies showing it if exists.
     // We'll trust the parent to decide when to show this.
 
+    if (type === 'entry') {
+        const siteName = gpsTime; // Hack: In entry mode, gpsTime argument is siteName
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="bg-blue-600 p-6 text-white text-center">
+                        <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <MapPin className="text-white" size={24} />
+                        </div>
+                        <h2 className="text-xl font-bold">Arrivée Détectée</h2>
+                        <p className="text-blue-100 text-sm mt-1">
+                            Vous êtes arrivé à <span className="font-bold text-white">{siteName}</span>
+                        </p>
+                    </div>
+                    <div className="p-6">
+                        <p className="text-slate-600 text-center font-medium mb-6">
+                            Voulez-vous démarrer votre journée de travail maintenant ?
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={onCancel}
+                                className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-colors"
+                            >
+                                Non, plus tard
+                            </button>
+                            <button
+                                onClick={onConfirm}
+                                className="flex-1 py-3 bg-blue-600 text-white font-bold hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-500/30 transition-all"
+                            >
+                                Oui, Démarrer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Default Correction Mode (Start/End)
     const [selectedSource, setSelectedSource] = useState(null); // 'punch' or 'gps'
 
     const formatTime = (date) => {
@@ -58,8 +97,8 @@ const SmartCorrectionPopup = ({
                         <button
                             onClick={() => setSelectedSource('punch')}
                             className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${selectedSource === 'punch'
-                                    ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-200'
-                                    : 'border-slate-100 bg-white hover:bg-slate-50'
+                                ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-200'
+                                : 'border-slate-100 bg-white hover:bg-slate-50'
                                 }`}
                         >
                             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Punché</span>
@@ -71,8 +110,8 @@ const SmartCorrectionPopup = ({
                         <button
                             onClick={() => setSelectedSource('gps')}
                             className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${selectedSource === 'gps'
-                                    ? 'border-green-600 bg-green-50 ring-2 ring-green-200'
-                                    : 'border-slate-100 bg-white hover:bg-slate-50'
+                                ? 'border-green-600 bg-green-50 ring-2 ring-green-200'
+                                : 'border-slate-100 bg-white hover:bg-slate-50'
                                 }`}
                         >
                             <span className="text-xs font-bold text-green-600 uppercase tracking-wider flex items-center gap-1">
@@ -103,8 +142,8 @@ const SmartCorrectionPopup = ({
                         onClick={handleConfirm}
                         disabled={!selectedSource}
                         className={`flex-1 py-3 rounded-xl font-bold shadow-lg transition-all ${selectedSource
-                                ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-500/30'
-                                : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                            ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-500/30'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                             }`}
                     >
                         Confirmer

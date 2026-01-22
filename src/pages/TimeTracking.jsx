@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { Clock, Play, Square, RefreshCw, MapPin, AlertCircle, ChevronRight, ArrowLeft, Calendar, BarChart3 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import SmartCorrectionPopup from '../components/SmartCorrectionPopup';
 
 const TimeTracking = () => {
@@ -31,6 +31,15 @@ const TimeTracking = () => {
     const [companionStats, setCompanionStats] = useState(null);
 
     // --- EFFECTS ---
+
+    // 0. Handle Auto-Selection from Geofence
+    useEffect(() => {
+        if (location.state?.autoSelectSiteId && viewMode === 'INITIAL') {
+            handleSelectSite(location.state.autoSelectSiteId);
+            // Clear state to prevent re-trigger on simple renders (though location state persists, navigate replace or just logic check usually fine)
+            window.history.replaceState({}, document.title)
+        }
+    }, [location.state, viewMode]);
 
     // 1. Check for Active Session
     useEffect(() => {
