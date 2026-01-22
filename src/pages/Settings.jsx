@@ -116,7 +116,7 @@ const Settings = () => {
             </div>
 
             {/* Admin Links */}
-            {(currentUser?.role === 'admin' || currentUser?.role === 'foreman') && (
+            {(currentUser?.role === 'admin' || currentUser?.role === 'foreman' || currentUser?.level === "Chef d'équipe" || currentUser?.level === 'Compagnon') && (
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
                     <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-slate-800">
                         <Users className="text-amber-600" size={24} />
@@ -166,6 +166,7 @@ const Settings = () => {
                             <tr className="border-b border-slate-100 text-slate-500 text-sm">
                                 <th className="py-4 px-4 font-semibold">Nom</th>
                                 <th className="py-4 px-4 font-semibold">Email</th>
+                                <th className="py-4 px-4 font-semibold">Niveau</th>
                                 <th className="py-4 px-4 font-semibold">Rôle</th>
                                 <th className="py-4 px-4 font-semibold text-right">Actions</th>
                             </tr>
@@ -175,6 +176,13 @@ const Settings = () => {
                                 <tr key={user.id} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors">
                                     <td className="py-4 px-4 font-medium text-slate-900">{user.name}</td>
                                     <td className="py-4 px-4 text-slate-500">{user.email}</td>
+                                    <td className="py-4 px-4">
+                                        {user.level && (
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                                {user.level}
+                                            </span>
+                                        )}
+                                    </td>
                                     <td className="py-4 px-4">
                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${user.role === 'admin'
                                             ? 'bg-blue-50 text-blue-700 border-blue-100'

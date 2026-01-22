@@ -11,7 +11,13 @@ const ValidationPage = () => {
     const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
 
     useEffect(() => {
-        if (currentUser?.role !== 'admin' && currentUser?.role !== 'foreman') {
+        const canValidate =
+            currentUser?.role === 'admin' ||
+            currentUser?.role === 'foreman' ||
+            currentUser?.level === "Chef d'équipe" ||
+            currentUser?.level === 'Compagnon';
+
+        if (!canValidate) {
             navigate('/timetracking'); // Redirect unauthorized
         }
     }, [currentUser, navigate]);

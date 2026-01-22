@@ -8,7 +8,9 @@ const UserModal = ({ onClose, userToEdit = null }) => {
         name: '',
         email: '',
         password: '',
-        role: 'user'
+        password: '',
+        role: 'user',
+        level: ''
     });
     const [inviteLink, setInviteLink] = useState('');
     const [shouldInvite, setShouldInvite] = useState(false);
@@ -19,7 +21,9 @@ const UserModal = ({ onClose, userToEdit = null }) => {
                 name: userToEdit.name,
                 email: userToEdit.email,
                 password: userToEdit.password,
-                role: userToEdit.role
+                password: userToEdit.password,
+                role: userToEdit.role,
+                level: userToEdit.level || ''
             });
         } else {
             // Generate random password for new users
@@ -146,6 +150,23 @@ const UserModal = ({ onClose, userToEdit = null }) => {
                                 <span className="text-slate-700">Administrateur</span>
                             </label>
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Niveau</label>
+                        <select
+                            value={formData.level || ''}
+                            onChange={(e) => setFormData({ ...formData, level: e.target.value })}
+                            className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-900 bg-white"
+                        >
+                            <option value="">Sélectionner un niveau</option>
+                            <option value="Chef d'équipe">Chef d'équipe</option>
+                            <option value="Compagnon">Compagnon</option>
+                            <option value="Apprenti 4">Apprenti 4</option>
+                            <option value="Apprenti 3">Apprenti 3</option>
+                            <option value="Apprenti 2">Apprenti 2</option>
+                            <option value="Apprenti 1">Apprenti 1</option>
+                        </select>
                     </div>
 
                     <div className="pt-6 flex justify-end gap-3">
