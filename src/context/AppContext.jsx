@@ -10,6 +10,8 @@ export const AppProvider = ({ children }) => {
     const [sites, setSites] = useState([]);
     const [users, setUsers] = useState([]);
     const [logs, setLogs] = useState([]);
+    const [tasks, setTasks] = useState([]); // Time Tracking
+    const [timeSessions, setTimeSessions] = useState([]); // Time Tracking
     const [hiltiTools, setHiltiTools] = useState([]); // Hilti State
     const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
     const [currentUser, setCurrentUser] = useState(null);
@@ -52,6 +54,18 @@ export const AppProvider = ({ children }) => {
 
             supabase.channel('public:company_info').on('postgres_changes', { event: '*', schema: 'public', table: 'company_info' }, payload => {
                 if (payload.eventType === 'UPDATE') setCompanyInfo(payload.new);
+            }).subscribe(),
+
+            supabase.channel('public:tasks').on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, payload => {
+                if (payload.eventType === 'INSERT') setTasks(prev => [...prev, payload.new]);
+                if (payload.eventType === 'UPDATE') setTasks(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
+                if (payload.eventType === 'DELETE') setTasks(prev => prev.filter(item => item.id !== payload.old.id));
+            }).subscribe(),
+
+            supabase.channel('public:time_sessions').on('postgres_changes', { event: '*', schema: 'public', table: 'time_sessions' }, payload => {
+                if (payload.eventType === 'INSERT') setTimeSessions(prev => [payload.new, ...prev]);
+                if (payload.eventType === 'UPDATE') setTimeSessions(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
+                if (payload.eventType === 'DELETE') setTimeSessions(prev => prev.filter(item => item.id !== payload.old.id));
             }).subscribe()
         ];
 
@@ -141,6 +155,31 @@ export const AppProvider = ({ children }) => {
 
         const { data: l } = await supabase.from('logs').select('*').order('timestamp', { ascending: false });
         if (l) setLogs(l.map(item => ({ ...item, userId: item.user_id })));
+
+        // --- LOAD TASKS & SESSIONS ---
+        const { data: t } = await supabase.from('tasks').select('*').order('id');
+        if (t && t.length > 0) {
+            setTasks(t);
+        } else {
+            // Auto-seed tasks if missing (Client-side fallback/init)
+            const initialTasks = [
+                { name: 'Installation' }, { name: 'Inspection' },
+                { name: 'Maintenance' }, { name: 'Transport' }, { name: 'Autre' }
+            ];
+            // Try to insert them if table exists but empty
+            const { data: newTasks, error: seedError } = await supabase.from('tasks').insert(initialTasks).select();
+            if (newTasks) setTasks(newTasks);
+            else {
+                // Fallback if table doesn't exist yet (Mock mode preventing crash)
+                setTasks(initialTasks.map((task, i) => ({ id: i + 1, ...task })));
+            }
+        }
+
+        const { data: sessions, error: sessError } = await supabase.from('time_sessions').select('*').order('punch_start_at', { ascending: false });
+        if (sessions) setTimeSessions(sessions);
+        if (sessError && sessError.code !== 'PGRST116') { // Ignore if table missing
+            console.log("Time Sessions table missing or empty");
+        }
 
         const { data: c } = await supabase.from('company_info').select('*').single();
         if (c) setCompanyInfo(c);
@@ -466,6 +505,91 @@ export const AppProvider = ({ children }) => {
         addLog('System data reset (Admin Action)');
     };
 
+    // --- TIME TRACKING ACTIONS ---
+    const startTimeSession = async (siteId, taskId, gpsData = null) => {
+        if (!currentUser) return;
+
+        const timestamp = new Date();
+        const payload = {
+            user_id: currentUser.id,
+            site_id: siteId,
+            task_id: taskId,
+            punch_start_at: timestamp,
+            gps_first_entry_at: gpsData?.entryAt || null,
+            manual_entry: false
+        };
+
+        // Optimistic
+        const tempId = `temp-session-${Date.now()}`;
+        setTimeSessions(prev => [{ ...payload, id: tempId, punch_end_at: null }, ...prev]);
+
+        const { data, error } = await supabase.from('time_sessions').insert([payload]).select().single();
+
+        if (!error && data) {
+            setTimeSessions(prev => prev.map(s => s.id === tempId ? data : s));
+
+            // Log
+            const site = sites.find(s => String(s.id) === String(siteId));
+            const task = tasks.find(t => String(t.id) === String(taskId));
+            addLog(`GOPUNCH: ${currentUser.name} started ${task?.name} at ${site?.name}`);
+            return { success: true };
+        } else {
+            setTimeSessions(prev => prev.filter(s => s.id !== tempId));
+            console.error("Punch Error", error);
+            return { error: error?.message };
+        }
+    };
+
+    const endTimeSession = async (sessionId, gpsData = null) => {
+        const timestamp = new Date();
+        let payload = { punch_end_at: timestamp };
+
+        if (gpsData?.exitAt) {
+            payload.gps_last_exit_at = gpsData.exitAt;
+        }
+
+        // Optimistic
+        setTimeSessions(prev => prev.map(s => s.id === sessionId ? { ...s, ...payload } : s));
+
+        const { error } = await supabase.from('time_sessions').update(payload).eq('id', sessionId);
+
+        if (!error) {
+            addLog(`STOPPUNCH: ${currentUser?.name} ended session`);
+            return { success: true };
+        } else {
+            return { error: error.message };
+        }
+    };
+
+    // Smart helper: Switch = End current + Start new
+    const switchTask = async (currentSessionId, siteId, newTaskId, gpsData = null) => {
+        const endResult = await endTimeSession(currentSessionId, gpsData);
+        if (endResult.success) {
+            return await startTimeSession(siteId, newTaskId, gpsData);
+        }
+        return endResult;
+    };
+
+    const logManualTime = async (siteId, taskId, startAt, endAt) => {
+        const payload = {
+            user_id: currentUser?.id,
+            site_id: siteId,
+            task_id: taskId,
+            punch_start_at: startAt,
+            punch_end_at: endAt,
+            manual_entry: true,
+            created_at: new Date()
+        };
+
+        const { data, error } = await supabase.from('time_sessions').insert([payload]).select().single();
+        if (!error && data) {
+            setTimeSessions(prev => [data, ...prev]);
+            addLog(`MANUAL TIME: ${currentUser?.name} added ${Math.round((new Date(endAt) - new Date(startAt)) / 3600000 * 10) / 10}h`);
+            return { success: true };
+        }
+        return { error: error?.message };
+    };
+
     const addLog = async (details) => {
         // Fire and forget log
         await supabase.from('logs').insert([{
@@ -481,6 +605,8 @@ export const AppProvider = ({ children }) => {
         sites,
         users,
         logs,
+        tasks,
+        timeSessions,
         currentUser,
         companyInfo,
         login,
@@ -500,7 +626,11 @@ export const AppProvider = ({ children }) => {
         deleteSite,
         hiltiTools,
         updateHiltiTool,
-        clearData
+        clearData,
+        startTimeSession,
+        endTimeSession,
+        switchTask,
+        logManualTime
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

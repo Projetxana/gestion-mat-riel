@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Hammer, HardHat, ClipboardList, Settings } from 'lucide-react';
+import { LayoutDashboard, Hammer, HardHat, ClipboardList, Settings, Clock } from 'lucide-react';
 
 const BottomNav = () => {
     const navItems = [
@@ -8,6 +8,8 @@ const BottomNav = () => {
         { icon: Hammer, label: 'Matériel', path: '/material' },
         { icon: HardHat, label: 'Chantiers', path: '/sites' },
         { icon: ClipboardList, label: 'Journal', path: '/journal' },
+        { icon: ClipboardList, label: 'Journal', path: '/journal' },
+        { icon: Clock, label: 'Heures', path: '/hours' },
         { icon: Settings, label: 'Param.', path: '/settings' },
     ];
 
