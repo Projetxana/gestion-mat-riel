@@ -3,14 +3,14 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import DeliveryNoteModal from '../components/DeliveryNoteModal';
-import DailyReportModal from '../components/DailyReportModal';
+import InvoiceModal from '../components/InvoiceModal';
 
 const Dashboard = () => {
     const { materials, sites, addLog } = useAppContext();
     const navigate = useNavigate();
     const [showCamera, setShowCamera] = useState(false);
     const [showDailyReport, setShowDailyReport] = useState(false);
+    const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
     const totalTools = materials.length;
     const toolsOnSite = materials.filter(m => m.locationType === 'site').length;
@@ -68,7 +68,7 @@ const Dashboard = () => {
             </div>
 
             {/* Quick Actions */}
-            <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="grid grid-cols-2 gap-3 mb-4">
                 <button
                     onClick={handleCameraClick}
                     className="flex flex-col items-center justify-center p-4 bg-amber-500 rounded-2xl shadow-lg active:scale-95 transition-transform"
@@ -90,6 +90,21 @@ const Dashboard = () => {
                 </button>
             </div>
 
+            {/* Hilti Module - Moved Up */}
+            <Link to="/hilti" className="block relative overflow-hidden p-4 rounded-2xl bg-gradient-to-r from-red-900 to-slate-900 border border-red-900/50 shadow-lg active:scale-95 transition-transform mb-4">
+                <div className="flex items-center justify-between relative z-10">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white/10 rounded-xl">
+                            <img src="/hilti-logo.png" alt="Hilti" className="h-5 w-auto object-contain" />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-white text-sm">Module HILTI</h3>
+                            <p className="text-xs text-slate-400">Gestion outillage spécifique</p>
+                        </div>
+                    </div>
+                </div>
+            </Link>
+
             {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3 mb-4">
                 {stats.map((stat, index) => (
@@ -109,23 +124,27 @@ const Dashboard = () => {
                 ))}
             </div>
 
-            {/* Hilti Module - Compact */}
-            <Link to="/hilti" className="mt-auto block relative overflow-hidden p-4 rounded-2xl bg-gradient-to-r from-red-900 to-slate-900 border border-red-900/50 shadow-lg active:scale-95 transition-transform">
+            {/* Invoices Module - New Block */}
+            <button
+                onClick={() => setShowInvoiceModal(true)}
+                className="block w-full relative overflow-hidden p-4 rounded-2xl bg-gradient-to-r from-slate-800 to-slate-900 border border-slate-700 shadow-lg active:scale-95 transition-transform mt-auto"
+            >
                 <div className="flex items-center justify-between relative z-10">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-white/10 rounded-xl">
-                            <img src="/hilti-logo.png" alt="Hilti" className="h-4 w-auto object-contain" />
+                        <div className="p-2 bg-blue-500/20 rounded-xl">
+                            <ImageIcon className="text-blue-400" size={20} />
                         </div>
-                        <div>
-                            <h3 className="font-bold text-white text-sm">Module HILTI</h3>
-                            <p className="text-xs text-slate-400">Gestion outillage spécifique</p>
+                        <div className="text-left">
+                            <h3 className="font-bold text-white text-sm">Mes Factures</h3>
+                            <p className="text-xs text-slate-400">Envoyer des photos</p>
                         </div>
                     </div>
                 </div>
-            </Link>
+            </button>
 
             {showCamera && <DeliveryNoteModal onClose={() => setShowCamera(false)} />}
             {showDailyReport && <DailyReportModal onClose={() => setShowDailyReport(false)} />}
+            {showInvoiceModal && <InvoiceModal onClose={() => setShowInvoiceModal(false)} />}
         </div>
     );
 };
