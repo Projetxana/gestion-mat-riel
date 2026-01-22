@@ -3,6 +3,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import DeliveryNoteModal from '../components/DeliveryNoteModal';
+import DailyReportModal from '../components/DailyReportModal';
 import InvoiceModal from '../components/InvoiceModal';
 
 const Dashboard = () => {

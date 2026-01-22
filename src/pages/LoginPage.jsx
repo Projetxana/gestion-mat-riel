@@ -70,7 +70,7 @@ const LoginPage = () => {
                 </form>
 
                 <div className="mt-8 text-center text-xs text-slate-500">
-                    <p>Antigravity - v0.6.1 (Fix Factures)</p>
+                    <p>Antigravity - v0.6.2 (Fix Boutons)</p>
                 </div>
             </div>
         </div>
