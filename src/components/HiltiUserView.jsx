@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Loader, QrCode } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -91,7 +91,7 @@ const HiltiUserView = ({ targetUserId }) => {
 
 // Helper for Scanner Lifecycle
 const ScannerMounter = ({ onScan }) => {
-    React.useEffect(() => {
+    useEffect(() => {
         const html5QrCode = new Html5Qrcode("hilti-reader");
         const config = { fps: 10, qrbox: 250 };
 

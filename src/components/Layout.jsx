@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import Sidebar from './Sidebar';
@@ -36,6 +36,41 @@ const Layout = () => {
         setShowEntryPopup(false);
         // Navigate to TimeTracking with site pre-selection intent (passed via state)
         navigate('/timetracking', { state: { autoSelectSiteId: entrySite?.id } });
+    };
+
+    // Morning Discipline Logic
+    const [showReminderPopup, setShowReminderPopup] = useState(false);
+
+    useEffect(() => {
+        const checkTime = () => {
+            const now = new Date();
+            const day = now.getDay(); // 0 is Sunday
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            const totalMinutes = hours * 60 + minutes;
+
+            // Weekdays only, between 6:05 AM (365) and 10:00 AM (600)
+            if (day >= 1 && day <= 5 && totalMinutes >= 365 && totalMinutes <= 600) {
+                if (currentUser && !timeSessions.find(s => s.user_id === currentUser.id && s.punch_end_at === null)) {
+                    const today = new Date().toLocaleDateString();
+                    const lastReminded = localStorage.getItem('lastMorningReminder');
+
+                    if (lastReminded !== today) {
+                        setShowReminderPopup(true);
+                    }
+                }
+            }
+        };
+
+        checkTime();
+        const interval = setInterval(checkTime, 60000);
+        return () => clearInterval(interval);
+    }, [currentUser, timeSessions]);
+
+    const handleStartReminder = () => {
+        localStorage.setItem('lastMorningReminder', new Date().toLocaleDateString());
+        setShowReminderPopup(false);
+        navigate('/timetracking');
     };
 
     return (
