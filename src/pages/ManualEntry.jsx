@@ -62,35 +62,55 @@ const ManualEntry = () => {
                 {/* Site */}
                 <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Chantier</label>
-                    <select
-                        value={siteId}
-                        onChange={e => setSiteId(e.target.value)}
-                        className="w-full p-4 bg-white border border-slate-200 rounded-xl"
-                    >
-                        <option value="">Sélectionner...</option>
-                        {sites.filter(s => s.status === 'active').map(s => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                    </select>
+                    <div className="relative">
+                        <select
+                            value={siteId}
+                            onChange={e => {
+                                setSiteId(e.target.value);
+                                setTaskId(''); // Reset task on site change
+                            }}
+                            className="w-full p-4 rounded-xl font-bold appearance-none border border-slate-300 shadow-sm focus:ring-2 focus:ring-blue-500"
+                            style={{
+                                backgroundColor: '#ffffff',
+                                color: '#000000',
+                                WebkitTextFillColor: '#000000',
+                                opacity: 1
+                            }}
+                        >
+                            <option value="" disabled>Sélectionner un chantier...</option>
+                            {sites.filter(s => s.status === 'active').sort((a, b) => a.name.localeCompare(b.name)).map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                            <ArrowLeft className="-rotate-90" size={20} />
+                        </div>
+                    </div>
                 </div>
 
                 {/* Task */}
                 <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Tâche</label>
                     <div className="grid grid-cols-2 gap-2">
-                        {tasks.map(t => (
-                            <button
-                                key={t.id}
-                                type="button"
-                                onClick={() => setTaskId(t.id)}
-                                className={`p-3 rounded-xl border text-sm font-bold transition-all ${String(taskId) === String(t.id)
+                        {(() => {
+                            const selectedSite = sites.find(s => String(s.id) === String(siteId));
+                            const siteTasks = selectedSite && selectedSite.tasks && selectedSite.tasks.length > 0 ? selectedSite.tasks : tasks;
+
+                            return siteTasks.map(t => (
+                                <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => setTaskId(t.id)}
+                                    className={`p-3 rounded-xl border text-sm font-bold transition-all ${String(taskId) === String(t.id)
                                         ? 'bg-blue-600 border-blue-600 text-white'
-                                        : 'bg-white border-slate-200 text-slate-600'
-                                    }`}
-                            >
-                                {t.name}
-                            </button>
-                        ))}
+                                        : 'bg-white border-slate-200 text-slate-600 hover:border-blue-400'
+                                        }`}
+                                >
+                                    {t.name}
+                                </button>
+                            ));
+                        })()}
+                        {!siteId && <p className="col-span-2 text-xs text-slate-400 italic text-center p-2">Veuillez d'abord sélectionner un chantier</p>}
                     </div>
                 </div>
 

@@ -9,6 +9,9 @@ const SiteDetailsModal = ({ site, onClose }) => {
     const [editMode, setEditMode] = useState(false);
     const [editData, setEditData] = useState({ ...site });
 
+    // Ensure tasks array exists
+    if (!editData.tasks) editData.tasks = [];
+
     const handleUpdate = (e) => {
         e.preventDefault();
         updateSite(site.id, editData);
@@ -37,8 +40,10 @@ const SiteDetailsModal = ({ site, onClose }) => {
                                     value={editData.name}
                                     onChange={e => setEditData({ ...editData, name: e.target.value })}
                                 />
-                                value={editData.address}
-                                onChange={e => setEditData({ ...editData, address: e.target.value })}
+                                <textarea
+                                    className="bg-slate-800 p-2 rounded text-white border border-slate-600 text-sm resize-none"
+                                    value={editData.address}
+                                    onChange={e => setEditData({ ...editData, address: e.target.value })}
                                 />
                                 <input
                                     className="bg-slate-800 p-2 rounded text-white border border-slate-600 text-sm"
@@ -91,53 +96,121 @@ const SiteDetailsModal = ({ site, onClose }) => {
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6">
-                    <div className="grid grid-cols-2 gap-4 mb-8">
-                        <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800">
-                            <p className="text-3xl font-bold text-white">{siteTools.length}</p>
-                            <p className="text-xs text-slate-500 uppercase font-medium">Matériel Assigné</p>
-                        </div>
-                        <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800">
-                            <p className="text-3xl font-bold text-white">{siteTools.filter(t => t.status === 'in_use').length}</p>
-                            <p className="text-xs text-slate-500 uppercase font-medium">En Utilisation</p>
-                        </div>
-                    </div>
-
-                    <h3 className="text-lg font-bold mb-4">Liste du Matériel</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {siteTools.map((tool) => (
-                            <div
-                                key={tool.id}
-                                onClick={() => setSelectedTool(tool)}
-                                className="bg-slate-800/30 border border-slate-800 p-4 rounded-xl flex items-center justify-between group hover:border-blue-500/30 hover:bg-slate-800/50 transition-all cursor-pointer"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="p-2 rounded-lg bg-slate-800/80 text-blue-400">
-                                        <Hammer size={20} />
-                                    </div>
-                                    <div>
-                                        <p className="font-bold text-slate-200">{tool.name}</p>
-                                        <p className="text-xs text-slate-500">{tool.serialNumber}</p>
-                                    </div>
+                    {editMode ? (
+                        /* EDIT MODE CONTENT */
+                        <div className="space-y-6">
+                            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                                <h3 className="text-sm font-bold text-slate-300 mb-3 uppercase">Gérer les Tâches</h3>
+                                <div className="space-y-2 mb-4">
+                                    {(editData.tasks || []).map(task => (
+                                        <div key={task.id} className="flex justify-between items-center bg-slate-800 p-3 rounded-lg border border-slate-700">
+                                            <span className="text-white">{task.name}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const newTasks = (editData.tasks || []).filter(t => t.id !== task.id);
+                                                    setEditData({ ...editData, tasks: newTasks });
+                                                }}
+                                                className="text-slate-500 hover:text-red-400 p-1"
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {(!editData.tasks || editData.tasks.length === 0) && (
+                                        <p className="text-sm text-slate-500 italic text-center py-2">Aucune tâche définie</p>
+                                    )}
                                 </div>
-                                <ExternalLink size={16} className="text-slate-600 group-hover:text-blue-400 transition-colors" />
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Nouvelle tâche..."
+                                        id="newTaskInput"
+                                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:border-blue-500 outline-none"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                const val = e.target.value.trim();
+                                                if (val) {
+                                                    const newTask = { id: `t-${Date.now()}`, name: val };
+                                                    const currentTasks = editData.tasks || [];
+                                                    setEditData({ ...editData, tasks: [...currentTasks, newTask] });
+                                                    e.target.value = '';
+                                                }
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const input = document.getElementById('newTaskInput');
+                                            const val = input.value.trim();
+                                            if (val) {
+                                                const newTask = { id: `t-${Date.now()}`, name: val };
+                                                const currentTasks = editData.tasks || [];
+                                                setEditData({ ...editData, tasks: [...currentTasks, newTask] });
+                                                input.value = '';
+                                            }
+                                        }}
+                                        className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-lg font-medium text-sm"
+                                    >
+                                        Ajouter
+                                    </button>
+                                </div>
                             </div>
-                        ))}
-                        {siteTools.length === 0 && (
-                            <div className="col-span-full py-12 text-center text-slate-500 bg-slate-800/20 rounded-xl border border-dashed border-slate-800">
-                                <p>Aucun matériel sur ce site.</p>
-                                <p className="text-sm mt-2">Allez dans "Matériel" pour affecter de l'équipement.</p>
+                        </div>
+                    ) : (
+                        /* VIEW MODE CONTENT */
+                        <>
+                            <div className="grid grid-cols-2 gap-4 mb-8">
+                                <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800">
+                                    <p className="text-3xl font-bold text-white">{siteTools.length}</p>
+                                    <p className="text-xs text-slate-500 uppercase font-medium">Matériel Assigné</p>
+                                </div>
+                                <div className="bg-slate-800/30 p-4 rounded-xl border border-slate-800">
+                                    <p className="text-3xl font-bold text-white">{siteTools.filter(t => t.status === 'in_use').length}</p>
+                                    <p className="text-xs text-slate-500 uppercase font-medium">En Utilisation</p>
+                                </div>
                             </div>
-                        )}
-                    </div>
-                </div>
-            </div>
 
-            {selectedTool && (
-                <MaterialDetailsModal
-                    tool={selectedTool}
-                    onClose={() => setSelectedTool(null)}
-                />
-            )}
+                            <h3 className="text-lg font-bold mb-4">Liste du Matériel</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {siteTools.map((tool) => (
+                                    <div
+                                        key={tool.id}
+                                        onClick={() => setSelectedTool(tool)}
+                                        className="bg-slate-800/30 border border-slate-800 p-4 rounded-xl flex items-center justify-between group hover:border-blue-500/30 hover:bg-slate-800/50 transition-all cursor-pointer"
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className="p-2 rounded-lg bg-slate-800/80 text-blue-400">
+                                                <Hammer size={20} />
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-slate-200">{tool.name}</p>
+                                                <p className="text-xs text-slate-500">{tool.serialNumber}</p>
+                                            </div>
+                                        </div>
+                                        <ExternalLink size={16} className="text-slate-600 group-hover:text-blue-400 transition-colors" />
+                                    </div>
+                                ))}
+                                {siteTools.length === 0 && (
+                                    <div className="col-span-full py-12 text-center text-slate-500 bg-slate-800/20 rounded-xl border border-dashed border-slate-800">
+                                        <p>Aucun matériel sur ce site.</p>
+                                        <p className="text-sm mt-2">Allez dans "Matériel" pour affecter de l'équipement.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {selectedTool && (
+                    <MaterialDetailsModal
+                        tool={selectedTool}
+                        onClose={() => setSelectedTool(null)}
+                    />
+                )}
+            </div>
         </div>
     );
 };

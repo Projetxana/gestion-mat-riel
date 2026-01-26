@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      selfDestroying: true, // NUCLEAR OPTION: Unregisters existing SW to fix cache issues
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'logo192.png', 'logo512.png', 'apple-touch-icon.png', 'hilti-logo.png'],
       manifest: {
@@ -33,11 +34,6 @@ export default defineConfig({
         display: 'standalone',
         theme_color: '#0f172a',
         background_color: '#0f172a'
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        cleanupOutdatedCaches: true,
-        skipWaiting: true
       }
     })
   ],

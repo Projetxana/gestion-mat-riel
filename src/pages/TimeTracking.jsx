@@ -164,6 +164,7 @@ const TimeTracking = () => {
     // CORRECTION STATE
     const [showCorrection, setShowCorrection] = useState(false);
     const [pendingEndSession, setPendingEndSession] = useState(false); // To resume after popup
+    const [showChangeTaskModal, setShowChangeTaskModal] = useState(false);
 
     // Removed redundant declaration since we already have it from context destructuring at the top
 
@@ -223,14 +224,31 @@ const TimeTracking = () => {
     };
 
 
-    // --- HELPERS ---
-    const getTaskName = (id) => tasks.find(t => String(t.id) === String(id))?.name || 'Inconnu';
+    // Helper to find task name across sites or global
+    const getTaskName = (taskId, siteId = null) => {
+        // Try to find in specific site first
+        if (siteId) {
+            const site = sites.find(s => String(s.id) === String(siteId));
+            const task = site?.tasks?.find(t => String(t.id) === String(taskId));
+            if (task) return task.name;
+        }
+        // Fallback to global tasks (legacy or default)
+        const globalTask = tasks.find(t => String(t.id) === String(taskId));
+        if (globalTask) return globalTask.name;
 
+        // Deep search in all sites (slow but safe fallback)
+        for (const s of sites) {
+            const t = s.tasks?.find(k => String(k.id) === String(taskId));
+            if (t) return t.name;
+        }
+
+        return 'Tâche Inconnue';
+    };
 
     // --- RENDERERS ---
 
     const renderCompanionView = () => {
-        if (!companionStats) return null; // Or show generic "Select a site to see progress"
+        if (!companionStats) return null;
 
         return (
             <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-xl">
@@ -314,23 +332,6 @@ const TimeTracking = () => {
                     </button>
                 </div>
 
-                {/* Companion View Placeholder showing "Last Site" or "Most Frequent" could be nice here. 
-                    For now, finding the most recent session's site to show stats. */}
-                {(() => {
-                    const lastSession = timeSessions.find(s => String(s.user_id) === String(currentUser?.id));
-                    if (lastSession) {
-                        // Calc stats only if not already set or different site
-                        // Safe to call inline render if we trigger calc in effect? 
-                        // Better to use an Effect to set initial companion stats based on history.
-                        // For MVP: Effect above handles active session. 
-                        // Let's rely on user selecting site in wizard to see stats, 
-                        // OR show last visited if available. 
-                        // (Requires refactor to set companionStats on mount).
-                        return null; // Keep simple for now
-                    }
-                    return null;
-                })()}
-
                 {/* Hint */}
                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-800 text-sm flex gap-3">
                     <AlertCircle className="shrink-0 text-blue-500" size={20} />
@@ -377,7 +378,11 @@ const TimeTracking = () => {
 
     // 3. WIZARD STEP 2: TASK
     if (viewMode === 'WIZARD_TASK') {
-        const siteName = sites.find(s => String(s.id) === String(selectedSiteId))?.name;
+        const site = sites.find(s => String(s.id) === String(selectedSiteId));
+        // Use site specific tasks or default global
+        const siteTasks = site?.tasks && site.tasks.length > 0 ? site.tasks : tasks;
+
+        const [selectedTaskId, setSelectedTaskId] = useState('');
 
         return (
             <div className="max-w-md mx-auto pb-24 flex flex-col h-[calc(100vh-140px)]">
@@ -387,25 +392,46 @@ const TimeTracking = () => {
                     </button>
                     <h2 className="text-xl font-bold text-slate-800">Quelle tâche ?</h2>
                 </div>
-                <p className="text-sm text-slate-500 mb-6 ml-10">Sur : <span className="font-bold text-blue-600">{siteName}</span></p>
+                <p className="text-sm text-slate-500 mb-6 ml-10">Sur : <span className="font-bold text-black">{site?.name}</span></p>
 
                 {/* Show Site Stats here for motivation */}
                 <div className="mb-6">
                     {renderCompanionView()}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pb-4">
-                    {tasks.map(task => (
-                        <button
-                            key={task.id}
-                            disabled={isSubmitting}
-                            onClick={() => handleStartSession(task.id)}
-                            className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:bg-blue-50 hover:border-blue-200 hover:shadow-md transition-all flex flex-col items-center gap-3 text-center h-32 justify-center active:scale-95"
-                        >
-                            {/* Icons could be mapped here based on task name */}
-                            <span className="font-bold text-slate-800">{task.name}</span>
-                        </button>
-                    ))}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Sélectionnez une activité</label>
+                        <div className="relative">
+                            <select
+                                className="w-full appearance-none bg-slate-50 border border-slate-300 text-slate-900 text-lg rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-4 pr-10"
+                                value={selectedTaskId}
+                                onChange={(e) => setSelectedTaskId(e.target.value)}
+                            >
+                                <option value="" disabled>-- Choisir --</option>
+                                {siteTasks.map(task => (
+                                    <option key={task.id} value={task.id}>
+                                        {task.name}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                                <ChevronRight className="rotate-90" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        disabled={!selectedTaskId || isSubmitting}
+                        onClick={() => handleStartSession(selectedTaskId)}
+                        className={`w-full py-4 rounded-xl font-bold flex flex-col items-center justify-center gap-1 shadow-lg transition-all ${!selectedTaskId
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/30'
+                            }`}
+                    >
+                        <Play size={24} fill="currentColor" className="mb-1" />
+                        <span className="text-lg">COMMENCER</span>
+                    </button>
                 </div>
             </div>
         );
@@ -413,9 +439,6 @@ const TimeTracking = () => {
 
     // 4. ACTIVE SESSION
     if (viewMode === 'ACTIVE' && activeSession) {
-        // Ensure companion stats are visible for active session
-        // (Handled by Effect 1, but safe to render)
-
         return (
             <div className="max-w-md mx-auto pb-24 space-y-6">
                 <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -441,7 +464,7 @@ const TimeTracking = () => {
                         <div className="space-y-4">
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                 <p className="text-xs text-slate-400 uppercase font-bold text-left mb-1">Chantier</p>
-                                <p className="text-lg font-bold text-slate-800 text-left truncate">
+                                <p className="text-lg font-bold text-black text-left truncate">
                                     {sites.find(s => String(s.id) === String(activeSession.site_id))?.name}
                                 </p>
                             </div>
@@ -452,14 +475,21 @@ const TimeTracking = () => {
                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                                         <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
                                     </span>
-                                    {getTaskName(activeSession.task_id)}
+                                    {getTaskName(activeSession.task_id, activeSession.site_id)}
                                 </p>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 pt-2">
                             <button
-                                onClick={handleChangeTask}
+                                onClick={() => {
+                                    // Hacky but effective: Reuse a prompt, OR ideally a modal.
+                                    // Since user asked for Dropdown menu...
+                                    // Let's implement a quick native prompt with options? No can't do that.
+                                    // Proper way: Set a "changingTask" state and render a modal.
+                                    // Trying to keep file changes minimal, let's inject a modal for this.
+                                    setShowChangeTaskModal(true);
+                                }}
                                 disabled={isSubmitting}
                                 className="py-4 bg-white border-2 border-slate-100 hover:border-slate-300 text-slate-700 rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all active:bg-slate-50"
                             >
@@ -490,6 +520,45 @@ const TimeTracking = () => {
                         onConfirm={(time, isModified) => confirmEndDay({ time, isModified })}
                         onCancel={() => confirmEndDay(null)}
                     />
+                )}
+
+                {showChangeTaskModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="bg-white w-full max-w-sm rounded-2xl p-6 space-y-4 shadow-2xl">
+                            <h3 className="text-lg font-bold text-slate-800">Changer d'activité</h3>
+                            <p className="text-sm text-slate-500">Sélectionnez la nouvelle tâche en cours.</p>
+
+                            <div className="relative">
+                                <select
+                                    className="w-full appearance-none bg-slate-50 border border-slate-300 text-slate-900 rounded-xl p-3 pr-10 focus:ring-blue-500"
+                                    onChange={(e) => {
+                                        if (e.target.value) {
+                                            if (window.confirm('Confirmer le changement ?')) {
+                                                switchTask(activeSession.id, activeSession.site_id, e.target.value);
+                                                setShowChangeTaskModal(false);
+                                            }
+                                        }
+                                    }}
+                                    defaultValue=""
+                                >
+                                    <option value="" disabled>-- Sélectionner --</option>
+                                    {(sites.find(s => s.id === activeSession.site_id)?.tasks || tasks).map(task => (
+                                        <option key={task.id} value={task.id}>{task.name}</option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                                    <ChevronRight className="rotate-90" />
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => setShowChangeTaskModal(false)}
+                                className="w-full py-3 text-slate-500 font-bold"
+                            >
+                                Annuler
+                            </button>
+                        </div>
+                    </div>
                 )}
             </div>
         );

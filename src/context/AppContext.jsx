@@ -497,17 +497,31 @@ export const AppProvider = ({ children }) => {
     };
 
     const addSite = async (site) => {
+        // Default tasks if none provided
+        const defaultTasks = site.tasks || [
+            { id: 't1', name: 'Installation' },
+            { id: 't2', name: 'Inspection' },
+            { id: 't3', name: 'Maintenance' },
+            { id: 't4', name: 'Transport' },
+            { id: 't5', name: 'Autre' }
+        ];
+
+        const siteWithTasks = { ...site, tasks: defaultTasks };
+
         // Optimistic
         const tempId = `temp-${Date.now()}`;
-        const optimSite = { ...site, id: tempId };
+        const optimSite = { ...siteWithTasks, id: tempId };
         setSites(prev => [...prev, optimSite]);
 
-        const { data, error } = await supabase.from('sites').insert([{ ...site, created_at: new Date() }]).select();
+        const { data, error } = await supabase.from('sites').insert([{ ...siteWithTasks, created_at: new Date() }]).select();
 
         if (!error && data) {
             setSites(prev => prev.map(s => s.id === tempId ? data[0] : s));
             addLog(`Created site: ${site.name}`);
         } else {
+            console.error("Error creating site:", error);
+            // If error is due to missing column 'tasks', we might need to warn user
+            // For now, we rollback
             setSites(prev => prev.filter(s => s.id !== tempId));
         }
     };
