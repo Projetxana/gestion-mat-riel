@@ -273,18 +273,28 @@ const SiteDetails = () => {
                         return <p className="text-slate-500 text-sm italic">Données insuffisantes (Heures prévues, Date de fin ou Date de début manquantes).</p>;
                     }
 
-                    // 1. Theoretical Hours to Date
-                    const start = new Date(site.start_date || site.created_at).getTime();
-                    const end = new Date(site.end_date).getTime();
-                    const now = new Date().getTime();
+                    // 1. Theoretical Hours to Date (Day-based precision)
+                    const startDate = new Date(site.start_date || site.created_at);
+                    const endDate = new Date(site.end_date);
+                    const today = new Date();
 
-                    if (end <= start) return <p className="text-red-500 text-sm">Erreur: Date de fin antérieure au début.</p>;
+                    // Normalize to set time to midnight to calculate pure days difference
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate.setHours(0, 0, 0, 0);
+                    today.setHours(0, 0, 0, 0);
 
-                    const totalProjectDuration = end - start;
-                    const elapsedDuration = Math.max(0, now - start);
-                    const percentTime = Math.min(1, elapsedDuration / totalProjectDuration);
+                    if (endDate <= startDate) return <p className="text-red-500 text-sm">Erreur: Date de fin antérieure au début.</p>;
 
-                    const theoreticalHours = Math.round(site.planned_hours * percentTime);
+                    const totalDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
+                    const elapsedDays = Math.max(0, (today - startDate) / (1000 * 60 * 60 * 24));
+
+                    let theoreticalHours = 0;
+                    if (today >= endDate) {
+                        theoreticalHours = site.planned_hours;
+                    } else {
+                        const hoursPerDay = site.planned_hours / totalDays;
+                        theoreticalHours = Math.round(hoursPerDay * elapsedDays);
+                    }
 
                     // 2. Realized Hours
                     const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
