@@ -83,6 +83,13 @@ const Layout = () => {
                 </div>
             </div>
 
+            {/* DEMO BANNER */}
+            {useAppContext().isDemo && (
+                <div className="bg-orange-600 text-white text-xs font-bold text-center py-1 z-50 sticky top-[57px] md:top-0">
+                    MODE DÉMO - DONNÉES FICTIVES
+                </div>
+            )}
+
             {/* Sidebar */}
             <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
 
