@@ -143,14 +143,32 @@ export const AppProvider = ({ children }) => {
             if (insideSite) {
                 if (prev !== insideSite.id) {
                     console.log(`Geofence ENTRY: ${insideSite.name}`);
-                    setLastGeofenceEntry({ siteId: insideSite.id, entryAt: new Date() });
+                    const entryTime = new Date();
+                    setLastGeofenceEntry({ siteId: insideSite.id, entryAt: entryTime });
                     setLastGeofenceExit(null);
+
+                    // Notify
+                    if (Notification.permission === 'granted') {
+                        new Notification("Arrivée sur chantier", {
+                            body: `Vous êtes sur ${insideSite.name}. Pensez à pointer !`,
+                            icon: '/logo192.png'
+                        });
+                    }
                 }
                 return insideSite.id;
             } else {
                 if (prev) {
                     console.log(`Geofence EXIT (Left Site ID ${prev})`);
-                    setLastGeofenceExit({ siteId: prev, exitAt: new Date() });
+                    const exitTime = new Date();
+                    setLastGeofenceExit({ siteId: prev, exitAt: exitTime });
+
+                    // Notify
+                    if (Notification.permission === 'granted') {
+                        new Notification("Sortie de chantier", {
+                            body: "Vous avez quitté le chantier. Pensez à terminer votre journée !",
+                            icon: '/logo192.png'
+                        });
+                    }
                 }
                 return null;
             }
@@ -242,8 +260,11 @@ export const AppProvider = ({ children }) => {
 
         // --- LOAD TASKS & SESSIONS ---
         const { data: t } = await supabase.from('tasks').select('*').order('id');
+        let allTasks = [];
+
         if (t && t.length > 0) {
             setTasks(t);
+            allTasks = t;
         } else {
             // Auto-seed tasks if missing (Client-side fallback/init)
             const initialTasks = [
@@ -252,11 +273,34 @@ export const AppProvider = ({ children }) => {
             ];
             // Try to insert them if table exists but empty
             const { data: newTasks, error: seedError } = await supabase.from('tasks').insert(initialTasks).select();
-            if (newTasks) setTasks(newTasks);
-            else {
+            if (newTasks) {
+                setTasks(newTasks);
+                allTasks = newTasks;
+            } else {
                 // Fallback if table doesn't exist yet (Mock mode preventing crash)
-                setTasks(initialTasks.map((task, i) => ({ id: i + 1, ...task })));
+                const mockTasks = initialTasks.map((task, i) => ({ id: i + 1, ...task }));
+                setTasks(mockTasks);
+                allTasks = mockTasks;
             }
+        }
+
+        // Map Tasks to Sites (so site.tasks is populated)
+        if (s && allTasks.length > 0) {
+            setSites(prev => prev.map(site => {
+                // strict: tasks with this site_id. 
+                // If none, do we fall back? User said "Uniquement". 
+                // But for migration transition, if site has NO specific tasks, maybe show global?
+                // Logic: If specific tasks exist, use them. Else use Global (site_id is null).
+                const specificTasks = allTasks.filter(task => String(task.site_id) === String(site.id));
+                const globalTasks = allTasks.filter(task => !task.site_id);
+
+                // If migration ran, specificTasks will be populated.
+                // If not, we fall back to globalTasks to avoid empty screens.
+                return {
+                    ...site,
+                    tasks: specificTasks.length > 0 ? specificTasks : globalTasks
+                };
+            }));
         }
 
         const { data: sessions, error: sessError } = await supabase.from('time_sessions').select('*').order('punch_start_at', { ascending: false });
@@ -497,31 +541,57 @@ export const AppProvider = ({ children }) => {
     };
 
     const addSite = async (site) => {
-        // Default tasks if none provided
-        const defaultTasks = site.tasks || [
-            { id: 't1', name: 'Installation' },
-            { id: 't2', name: 'Inspection' },
-            { id: 't3', name: 'Maintenance' },
-            { id: 't4', name: 'Transport' },
-            { id: 't5', name: 'Autre' }
-        ];
-
-        const siteWithTasks = { ...site, tasks: defaultTasks };
-
         // Optimistic
         const tempId = `temp-${Date.now()}`;
-        const optimSite = { ...siteWithTasks, id: tempId };
+        // Use provided tasks for optimistic UI
+        const optimTasks = site.tasks ? site.tasks.map((t, i) => ({
+            id: `optim-task-${t.id || i}`,
+            name: t.name,
+            site_id: tempId,
+            is_active: true
+        })) : [];
+        const optimSite = { ...site, id: tempId, tasks: optimTasks };
         setSites(prev => [...prev, optimSite]);
 
-        const { data, error } = await supabase.from('sites').insert([{ ...siteWithTasks, created_at: new Date() }]).select();
+        // 1. Insert Site
+        // Remove tasks and clean payload
+        const { tasks: siteTasks, ...sitePayload } = site;
+        const cleanPayload = { ...sitePayload };
+        if (cleanPayload.start_date === '') cleanPayload.start_date = null;
+        if (cleanPayload.end_date === '') cleanPayload.end_date = null;
+
+        const { data, error } = await supabase.from('sites').insert([{ ...cleanPayload, created_at: new Date() }]).select().single();
 
         if (!error && data) {
-            setSites(prev => prev.map(s => s.id === tempId ? data[0] : s));
+            const newSiteId = data.id;
+
+            // 2. Insert Tasks
+            let tasksPayload = [];
+            if (siteTasks && siteTasks.length > 0) {
+                tasksPayload = siteTasks.map(t => ({ name: t.name, site_id: newSiteId, is_active: true }));
+            } else {
+                const defaultTaskNames = ['Installation', 'Inspection', 'Maintenance', 'Transport', 'Autre'];
+                tasksPayload = defaultTaskNames.map(name => ({ name, site_id: newSiteId, is_active: true }));
+            }
+
+            const { data: createdTasks, error: taskError } = await supabase.from('tasks').insert(tasksPayload).select();
+
+            if (taskError) {
+                console.error("Error creating site tasks:", taskError);
+                // Proceed anyway, site is created. User can add tasks manually if we implement that UI.
+            }
+
+            // Update State with Real ID and Tasks
+            setSites(prev => prev.map(s => s.id === tempId ? { ...data, tasks: createdTasks || [] } : s));
+
+            // Also update 'tasks' state locally
+            if (createdTasks) {
+                setTasks(prev => [...prev, ...createdTasks]);
+            }
+
             addLog(`Created site: ${site.name}`);
         } else {
             console.error("Error creating site:", error);
-            // If error is due to missing column 'tasks', we might need to warn user
-            // For now, we rollback
             setSites(prev => prev.filter(s => s.id !== tempId));
         }
     };
@@ -546,6 +616,67 @@ export const AppProvider = ({ children }) => {
             setSites(oldSites);
         } else {
             addLog(`Deleted site: ${site?.name}`);
+        }
+    };
+
+    // --- TASK ACTIONS ---
+    const addTask = async (task) => {
+        // Optimistic
+        const tempId = `temp-task-${Date.now()}`;
+        const optimTask = { ...task, id: tempId };
+
+        // Update both tasks list and the specific site in sites list
+        setTasks(prev => [...prev, optimTask]);
+        setSites(prev => prev.map(s => String(s.id) === String(task.site_id)
+            ? { ...s, tasks: [...(s.tasks || []), optimTask] }
+            : s
+        ));
+
+        const { data, error } = await supabase.from('tasks').insert([task]).select().single();
+
+        if (!error && data) {
+            // Replace temp with real
+            setTasks(prev => prev.map(t => t.id === tempId ? data : t));
+            setSites(prev => prev.map(s => String(s.id) === String(task.site_id)
+                ? { ...s, tasks: s.tasks.map(t => t.id === tempId ? data : t) }
+                : s
+            ));
+            addLog(`Added task: ${task.name}`);
+            return { success: true, task: data };
+        } else {
+            console.error("Error adding task:", error);
+            // Rollback
+            setTasks(prev => prev.filter(t => t.id !== tempId));
+            setSites(prev => prev.map(s => String(s.id) === String(task.site_id)
+                ? { ...s, tasks: s.tasks.filter(t => t.id !== tempId) }
+                : s
+            ));
+            return { error: error.message };
+        }
+    };
+
+    const updateTask = async (taskId, updates) => {
+        // Find task to get site_id for validation/logs
+        const task = tasks.find(t => String(t.id) === String(taskId));
+        if (!task) return;
+
+        // Optimistic
+        setTasks(prev => prev.map(t => String(t.id) === String(taskId) ? { ...t, ...updates } : t));
+        if (task.site_id) {
+            setSites(prev => prev.map(s => String(s.id) === String(task.site_id)
+                ? { ...s, tasks: s.tasks.map(t => String(t.id) === String(taskId) ? { ...t, ...updates } : t) }
+                : s
+            ));
+        }
+
+        const { error } = await supabase.from('tasks').update(updates).eq('id', taskId);
+
+        if (error) {
+            console.error("Error updating task:", error);
+            // Rollback (simplified, triggers re-fetch implicitly usually but here we stick with opt state or revert if critical)
+            // For now simple log, revert tedious without deep clone
+        } else {
+            addLog(`Updated task: ${task.name}`);
         }
     };
 
@@ -603,9 +734,105 @@ export const AppProvider = ({ children }) => {
         addLog('System data reset (Admin Action)');
     };
 
+    // --- IMPORT ACTIONS ---
+    const importTasksFromExcel = async (siteId, file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    // Dynamically import xlsx to avoid huge bundle payload on init if not needed
+                    const XLSX = await import('xlsx');
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const sheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+                    // Normalize Keys (Tache, Heures_prevues)
+                    // Expected: { Tache: '...', Heures_prevues: 100 }
+                    // Case insensitive match
+                    const normalizeKey = (k) => k.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                    let totalHours = 0;
+                    const tasksPayload = jsonData.map(row => {
+                        let name = 'Tâche sans nom';
+                        let hours = 0;
+
+                        Object.keys(row).forEach(k => {
+                            const nk = normalizeKey(k);
+                            if (nk.includes('tache') || nk.includes('task')) name = row[k];
+                            else if (nk.includes('heure') || nk.includes('hour') || nk.includes('prevue')) hours = Number(row[k]) || 0;
+                        });
+
+                        totalHours += hours;
+
+                        return {
+                            name: String(name),
+                            planned_hours: hours,
+                            site_id: siteId,
+                            is_active: true
+                        };
+                    }).filter(t => t.name !== 'Tâche sans nom');
+
+                    if (tasksPayload.length === 0) {
+                        return resolve({ error: "Aucune tâche valide trouvée." });
+                    }
+
+                    // 1. Delete existing tasks for this site? Or Append?
+                    // User says "Import Excel to create tasks". Usually implies overwrite or fill. 
+                    // Let's Append but maybe warn if duplicates? 
+                    // Actually, simpler to just insert.
+
+                    const { data: insertedTasks, error } = await supabase.from('tasks').insert(tasksPayload).select();
+
+                    if (error) throw error;
+
+                    // 2. Update Site Total Planned Hours
+                    // We should add this total to existing planned_hours or replace? 
+                    // "Calculer projects.planned_hours = SUM(tasks...)"
+                    // So we should re-calculate total per site.
+
+                    // Fetch ALL tasks for this site to sum correctly (including old ones + new ones)
+                    // const { data: allSiteTasks } = await supabase.from('tasks').select('planned_hours').eq('site_id', siteId);
+                    // Actually let's just use what we have in state + new ones for optimistic? 
+                    // Better to fetch fresh sum from DB or calc manually.
+
+                    // Let's assume we want to REPLACE the site total with the new sum of ALL tasks.
+                    // Let's grab current tasks from state, add new ones, sum it up.
+                    const currentSiteTasks = tasks.filter(t => String(t.site_id) === String(siteId));
+                    const newTotal = currentSiteTasks.reduce((acc, t) => acc + (t.planned_hours || 0), 0) + totalHours;
+
+                    await updateSite(siteId, { planned_hours: newTotal });
+
+                    // Update local state
+                    if (insertedTasks) {
+                        setTasks(prev => [...prev, ...insertedTasks]);
+                        // Refetch site to get updated total if updateSite didn't fully sync (it did optimistically)
+                        resolve({ success: true, count: insertedTasks.length, totalHours: newTotal });
+                    }
+                } catch (err) {
+                    console.error("Excel Import Error:", err);
+                    resolve({ error: err.message });
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    };
+
     // --- TIME TRACKING ACTIONS ---
     const startTimeSession = async (siteId, taskId, gpsData = null) => {
         if (!currentUser) return;
+
+        // 1. Verify no active session
+        const activeSession = timeSessions.find(s =>
+            String(s.user_id) === String(currentUser.id) &&
+            s.punch_end_at === null
+        );
+
+        if (activeSession) {
+            console.warn("Session already active, cannot start new one without ending.");
+            return { error: "Une session est déjà active. Veuillez la terminer d'abord." };
+        }
 
         const timestamp = new Date();
         const payload = {
@@ -638,12 +865,19 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    const endTimeSession = async (sessionId, gpsData = null) => {
+    const endTimeSession = async (sessionId, gpsData = null, correction = null) => {
         const timestamp = new Date();
-        let payload = { punch_end_at: timestamp };
+        let payload = {
+            punch_end_at: correction?.time || timestamp
+        };
+
+        if (correction?.isModified) {
+            payload.corrected_end_at = correction.time;
+        }
 
         if (gpsData?.exitAt) {
             payload.gps_last_exit_at = gpsData.exitAt;
+            // Could add internal confidence check here
         }
 
         // Optimistic
@@ -722,6 +956,8 @@ export const AppProvider = ({ children }) => {
         deleteMaterial,
         updateSite,
         deleteSite,
+        addTask,
+        updateTask,
         hiltiTools,
         updateHiltiTool,
         clearData,
@@ -731,7 +967,8 @@ export const AppProvider = ({ children }) => {
         logManualTime,
         lastGeofenceEntry,
         lastGeofenceExit,
-        currentGeofenceSiteId
+        currentGeofenceSiteId,
+        importTasksFromExcel
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

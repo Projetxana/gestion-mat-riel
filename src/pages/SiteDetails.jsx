@@ -7,8 +7,10 @@ import MaterialDetailsModal from '../components/MaterialDetailsModal';
 const SiteDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { sites, materials, timeSessions, tasks } = useAppContext();
+    const { sites, materials, timeSessions, tasks, importTasksFromExcel, updateSite, updateTask, addTask } = useAppContext();
     const [selectedTool, setSelectedTool] = useState(null);
+    const [isEditingSite, setIsEditingSite] = useState(false);
+    const [editPlannedHours, setEditPlannedHours] = useState(0);
 
     const site = sites.find(s => s.id === Number(id));
     const siteTools = materials.filter(m => m.locationType === 'site' && m.locationId === Number(id));
@@ -89,8 +91,10 @@ const SiteDetails = () => {
                                     {(() => {
                                         const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
                                         const totalMs = siteSessions.reduce((acc, s) => {
-                                            const start = new Date(s.punch_start_at).getTime();
-                                            const end = s.punch_end_at ? new Date(s.punch_end_at).getTime() : new Date().getTime();
+                                            const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
+                                            const end = (s.corrected_end_at || s.punch_end_at)
+                                                ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
+                                                : new Date().getTime();
                                             return acc + (end - start);
                                         }, 0);
                                         const totalHours = Math.round(totalMs / (1000 * 60 * 60));
@@ -106,8 +110,10 @@ const SiteDetails = () => {
                                         width: `${(() => {
                                             const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
                                             const totalMs = siteSessions.reduce((acc, s) => {
-                                                const start = new Date(s.punch_start_at).getTime();
-                                                const end = s.punch_end_at ? new Date(s.punch_end_at).getTime() : new Date().getTime();
+                                                const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
+                                                const end = (s.corrected_end_at || s.punch_end_at)
+                                                    ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
+                                                    : new Date().getTime();
                                                 return acc + (end - start);
                                             }, 0);
                                             const totalHours = Math.round(totalMs / (1000 * 60 * 60));
@@ -119,63 +125,358 @@ const SiteDetails = () => {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                                <p className="text-xs text-slate-500 uppercase font-bold">Réalisées</p>
-                                <p className="text-2xl font-bold text-white">
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="bg-slate-800/50 p-2 rounded-xl border border-slate-700 text-center">
+                                <p className="text-[10px] text-slate-500 uppercase font-bold">Réalisées</p>
+                                <p className="text-xl font-bold text-white">
                                     {(() => {
                                         const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
                                         const totalMs = siteSessions.reduce((acc, s) => {
-                                            const start = new Date(s.punch_start_at).getTime();
-                                            const end = s.punch_end_at ? new Date(s.punch_end_at).getTime() : new Date().getTime();
+                                            const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
+                                            const end = (s.corrected_end_at || s.punch_end_at)
+                                                ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
+                                                : new Date().getTime();
                                             return acc + (end - start);
                                         }, 0);
                                         return Math.round(totalMs / (1000 * 60 * 60));
                                     })()} h
                                 </p>
                             </div>
-                            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                                <p className="text-xs text-slate-500 uppercase font-bold">Prévues</p>
-                                <p className="text-2xl font-bold text-slate-400">{site.planned_hours || 0} h</p>
+                            <div className="bg-slate-800/50 p-2 rounded-xl border border-slate-700 text-center">
+                                <p className="text-[10px] text-slate-500 uppercase font-bold">Prévues</p>
+                                <p className="text-xl font-bold text-slate-400">{site.planned_hours || 0} h</p>
+                            </div>
+                            <div className="bg-slate-800/50 p-2 rounded-xl border border-slate-700 text-center">
+                                <p className="text-[10px] text-slate-500 uppercase font-bold">Restantes</p>
+                                <p className="text-xl font-bold text-green-400">
+                                    {(() => {
+                                        const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
+                                        const totalMs = siteSessions.reduce((acc, s) => {
+                                            const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
+                                            const end = (s.corrected_end_at || s.punch_end_at)
+                                                ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
+                                                : new Date().getTime();
+                                            return acc + (end - start);
+                                        }, 0);
+                                        const realized = Math.round(totalMs / (1000 * 60 * 60));
+                                        const planned = site.planned_hours || 0;
+                                        return Math.max(0, planned - realized);
+                                    })()} h
+                                </p>
                             </div>
                         </div>
+
+                        {/* RHYTHM INDICATOR */}
+                        {(site.start_date || site.created_at) && site.end_date && site.planned_hours > 0 && (
+                            <div className="mt-4 bg-slate-800/80 p-3 rounded-lg border border-slate-700">
+                                {(() => {
+                                    // 1. Calculate Time Totals
+                                    // Use explicit start_date if available, else created_at
+                                    const start = new Date(site.start_date || site.created_at).getTime();
+                                    const end = new Date(site.end_date).getTime();
+                                    const now = new Date().getTime();
+
+                                    if (end <= start) return null;
+
+                                    const totalDays = (end - start) / (1000 * 60 * 60 * 24);
+                                    const elapsedDays = Math.max(0.1, (now - start) / (1000 * 60 * 60 * 24)); // Avoid div by zero, min 0.1 day
+
+                                    if (elapsedDays <= 0) return null; // Not started yet
+
+                                    // 2. Planned Burn Rate (Hours per Day)
+                                    const plannedHoursPerDay = site.planned_hours / totalDays;
+
+                                    // 3. Realized Burn Rate (Hours per Day)
+                                    const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
+                                    const totalMs = siteSessions.reduce((acc, s) => {
+                                        const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
+                                        const end = (s.corrected_end_at || s.punch_end_at)
+                                            ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
+                                            : new Date().getTime();
+                                        return acc + (end - start);
+                                    }, 0);
+                                    const totalRealizedHours = totalMs / (1000 * 60 * 60);
+                                    const realizedHoursPerDay = totalRealizedHours / elapsedDays;
+
+                                    // 4. Comparison Ratio
+                                    // If Realized > Planned * 1.15 -> Drift
+                                    const ratio = realizedHoursPerDay / plannedHoursPerDay;
+
+                                    if (ratio > 1.15) {
+                                        const percentOver = Math.round((ratio - 1) * 100);
+                                        return (
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-red-500/20 text-red-500 rounded-full animate-pulse">
+                                                    <BarChart3 size={20} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-red-500">Rythme du chantier</p>
+                                                    <p className="text-xs text-slate-300">⚠️ Consommation + rapide (+{percentOver}%)</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    } else if (ratio > 1.10) {
+                                        const percentOver = Math.round((ratio - 1) * 100);
+                                        return (
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-amber-500/20 text-amber-500 rounded-full">
+                                                    <BarChart3 size={20} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-amber-500">Rythme du chantier</p>
+                                                    <p className="text-xs text-slate-300">🟠 À surveiller (+{percentOver}%)</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    } else {
+                                        return (
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-green-500/20 text-green-400 rounded-full">
+                                                    <BarChart3 size={20} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-green-400">Rythme du chantier</p>
+                                                    <p className="text-xs text-slate-300">✅ Rythme normal</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                })()}
+                            </div>
+                        )}
                     </div>
 
-                    {/* Task Breakdown */}
-                    <div className="col-span-1 md:col-span-2">
-                        <h3 className="text-sm font-bold text-slate-400 uppercase mb-4">Répartition par tâche</h3>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            {(() => {
-                                const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
-                                const taskBreakdown = {};
-                                siteSessions.forEach(s => {
-                                    const tId = s.task_id;
-                                    if (!taskBreakdown[tId]) taskBreakdown[tId] = 0;
-                                    const start = new Date(s.punch_start_at).getTime();
-                                    const end = s.punch_end_at ? new Date(s.punch_end_at).getTime() : new Date().getTime();
-                                    taskBreakdown[tId] += (end - start);
-                                });
-
-                                return Object.entries(taskBreakdown)
-                                    .map(([tId, ms]) => ({
-                                        name: tasks.find(t => String(t.id) === String(tId))?.name || 'Inconnu',
-                                        hours: Math.round((ms / (1000 * 60 * 60)) * 10) / 10
-                                    }))
-                                    .sort((a, b) => b.hours - a.hours)
-                                    .map(stat => (
-                                        <div key={stat.name} className="bg-slate-800 p-3 rounded-lg border border-slate-700 flex justify-between items-center text-sm">
-                                            <span className="text-slate-300 font-medium">{stat.name}</span>
-                                            <span className="text-white font-mono font-bold">{stat.hours}h</span>
-                                        </div>
-                                    ));
-                            })()}
-                            {(!timeSessions?.some(s => String(s.site_id) === String(id))) && (
-                                <p className="text-slate-500 text-sm italic col-span-full">Aucune heure enregistrée.</p>
-                            )}
-                        </div>
-                    </div>
                 </div>
             </div>
+
+            {/* SUIVI PLANIFIÉ (Admin / Foreman Only) */}
+            <div className="glass-panel p-8 mb-8">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-sm font-bold text-slate-400 uppercase">Suivi Planifié</h3>
+                    <button
+                        onClick={() => {
+                            if (isEditingSite) {
+                                updateSite(site.id, { planned_hours: Number(editPlannedHours) });
+                                setIsEditingSite(false);
+                            } else {
+                                setEditPlannedHours(site.planned_hours || 0);
+                                setIsEditingSite(true);
+                            }
+                        }}
+                        className="text-xs bg-slate-800 hover:bg-slate-700 text-blue-400 px-3 py-1 rounded border border-slate-700 transition-colors"
+                    >
+                        {isEditingSite ? 'Enregistrer' : 'Modifier Heures'}
+                    </button>
+                </div>
+                {(() => {
+                    if (!site.planned_hours || !site.end_date || (!site.start_date && !site.created_at)) {
+                        return <p className="text-slate-500 text-sm italic">Données insuffisantes (Heures prévues, Date de fin ou Date de début manquantes).</p>;
+                    }
+
+                    // 1. Theoretical Hours to Date
+                    const start = new Date(site.start_date || site.created_at).getTime();
+                    const end = new Date(site.end_date).getTime();
+                    const now = new Date().getTime();
+
+                    if (end <= start) return <p className="text-red-500 text-sm">Erreur: Date de fin antérieure au début.</p>;
+
+                    const totalProjectDuration = end - start;
+                    const elapsedDuration = Math.max(0, now - start);
+                    const percentTime = Math.min(1, elapsedDuration / totalProjectDuration);
+
+                    const theoreticalHours = Math.round(site.planned_hours * percentTime);
+
+                    // 2. Realized Hours
+                    const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
+                    const totalMs = siteSessions.reduce((acc, s) => {
+                        const startH = new Date(s.corrected_start_at || s.punch_start_at).getTime();
+                        const endH = (s.corrected_end_at || s.punch_end_at)
+                            ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
+                            : new Date().getTime();
+                        return acc + (endH - startH);
+                    }, 0);
+                    const realizedHours = Math.round(totalMs / (1000 * 60 * 60));
+
+                    // 3. Gap Calculation
+                    const gap = realizedHours - theoreticalHours; // Positive = Over-consumption
+                    const gapPercent = theoreticalHours > 0 ? (gap / theoreticalHours) : 0;
+
+                    // Color Coding
+                    let gapColor = 'text-green-400';
+                    let gapBg = 'bg-green-500/10 border-green-500/20';
+                    let gapIcon = '✅';
+
+                    if (gapPercent > 0.20) {
+                        gapColor = 'text-red-400';
+                        gapBg = 'bg-red-500/10 border-red-500/20';
+                        gapIcon = '🔴';
+                    } else if (gapPercent > 0.10) {
+                        gapColor = 'text-amber-400';
+                        gapBg = 'bg-amber-500/10 border-amber-500/20';
+                        gapIcon = '🟠';
+                    } else if (gapPercent < -0.10) {
+                        gapColor = 'text-blue-400'; // Under budget (good)
+                        gapBg = 'bg-blue-500/10 border-blue-500/20';
+                        gapIcon = '❄️';
+                    }
+
+                    return (
+                        <div className={`p-4 rounded-xl border ${gapBg} flex flex-col sm:flex-row justify-between items-center gap-4`}>
+                            <div className="space-y-1 text-center sm:text-left">
+                                <p className="text-xs text-slate-400 uppercase font-bold">Heures Prévues</p>
+                                {isEditingSite ? (
+                                    <input
+                                        type="number"
+                                        className="bg-slate-900 border border-slate-700 text-white rounded p-1 w-24 font-bold"
+                                        value={editPlannedHours}
+                                        onChange={(e) => setEditPlannedHours(e.target.value)}
+                                    />
+                                ) : (
+                                    <p className="text-xl font-mono font-bold text-white">{site.planned_hours} h</p>
+                                )}
+                            </div>
+                            <div className="space-y-1 text-center sm:text-left">
+                                <p className="text-xs text-slate-400 uppercase font-bold">Théoriques à date</p>
+                                <p className="text-xl font-mono font-bold text-slate-300">{theoreticalHours} h</p>
+                            </div>
+                            <div className="space-y-1 text-center sm:text-left">
+                                <p className="text-xs text-slate-400 uppercase font-bold">Réalisées</p>
+                                <p className="text-xl font-mono font-bold text-white">{realizedHours} h</p>
+                            </div>
+                            <div className="bg-slate-900/50 p-3 rounded-lg text-center min-w-[120px]">
+                                <p className="text-xs text-slate-500 uppercase font-bold mb-1">Écart</p>
+                                <div className={`text-2xl font-bold ${gapColor} flex items-center justify-center gap-2`}>
+                                    <span>{gap > 0 ? '+' : ''}{gap} h</span>
+                                    <span className="text-sm">{gapIcon}</span>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+            </div>
+
+            {/* Task Breakdown */}
+            <div className="glass-panel p-8 mb-8">
+                <div className="flex flex-wrap gap-2 justify-between items-end mb-4">
+                    <h3 className="text-sm font-bold text-slate-400 uppercase">Répartition par tâche</h3>
+                    <div className="flex gap-2">
+                        <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-lg border border-slate-700 transition-colors flex items-center gap-2">
+                            <span>Imp. Excel</span>
+                            <input
+                                type="file"
+                                accept=".xlsx, .xls"
+                                className="hidden"
+                                onChange={async (e) => {
+                                    const file = e.target.files[0];
+                                    if (file) {
+                                        if (window.confirm(`Importer les tâches depuis ${file.name} ?`)) {
+                                            const result = await importTasksFromExcel(Number(id), file);
+                                            if (result.success) alert(`Succès ! ${result.count} tâches importées.`);
+                                            else alert(`Erreur: ${result.error}`);
+                                        }
+                                    }
+                                    e.target.value = '';
+                                }}
+                            />
+                        </label>
+                    </div>
+                </div>
+
+                {/* Add Task Form */}
+                <div className="mb-4 bg-slate-900/30 p-3 rounded-lg border border-slate-800 flex gap-2 items-center">
+                    <input type="text" placeholder="Nouvelle tâche..." id="new-task-name" className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white" />
+                    <input type="number" placeholder="Heures" id="new-task-hours" className="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white" />
+                    <button
+                        onClick={() => {
+                            const nameEl = document.getElementById('new-task-name');
+                            const hoursEl = document.getElementById('new-task-hours');
+                            if (nameEl.value) {
+                                addTask({
+                                    name: nameEl.value,
+                                    planned_hours: Number(hoursEl.value) || 0,
+                                    site_id: Number(id), // Ensuring number type for match
+                                    is_active: true
+                                });
+                                nameEl.value = '';
+                                hoursEl.value = '';
+                            }
+                        }}
+                        className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded font-bold"
+                    >
+                        Ajouter
+                    </button>
+                </div>
+
+                <div className="space-y-3">
+                    {/* TABLE HEADER */}
+                    <div className="grid grid-cols-4 gap-4 px-3 py-2 text-[10px] uppercase font-bold text-slate-500">
+                        <div className="col-span-1">Tâche</div>
+                        <div className="text-right">Prévu</div>
+                        <div className="text-right">Réalisé</div>
+                        <div className="text-right">Écart</div>
+                    </div>
+
+                    {(() => {
+                        const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
+                        const siteSpecificTasks = tasks.filter(t => String(t.site_id) === String(id));
+
+                        // Merge tasks from DB and tasks found in sessions (if legacy/global)
+                        const allTaskIds = new Set([
+                            ...siteSpecificTasks.map(t => t.id),
+                            ...siteSessions.map(s => s.task_id)
+                        ]);
+
+                        const stats = Array.from(allTaskIds).map(tId => {
+                            const taskDef = tasks.find(t => String(t.id) === String(tId));
+                            const name = taskDef?.name || 'Inconnu';
+                            const planned = taskDef?.planned_hours || 0;
+
+                            const relevantSessions = siteSessions.filter(s => String(s.task_id) === String(tId));
+                            const totalMs = relevantSessions.reduce((acc, s) => {
+                                const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
+                                const end = (s.corrected_end_at || s.punch_end_at)
+                                    ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
+                                    : new Date().getTime();
+                                return acc + (end - start);
+                            }, 0);
+
+                            const realized = Math.round((totalMs / (1000 * 60 * 60)) * 100) / 100; // 2 decimals
+                            const gap = realized - planned;
+
+                            return { name, planned, realized, gap };
+                        }).sort((a, b) => b.realized - a.realized);
+
+                        if (stats.length === 0) return <p className="text-slate-500 text-sm italic px-3">Aucune tâche configurée.</p>;
+
+                        return stats.map((stat, idx) => (
+                            <div key={idx} className="bg-slate-800/50 hover:bg-slate-800 p-3 rounded-lg border border-slate-700 grid grid-cols-4 gap-4 items-center text-sm transition-colors">
+                                <div className="font-medium text-slate-200 truncate" title={stat.name}>{stat.name}</div>
+                                <div className="text-right">
+                                    <input
+                                        type="number"
+                                        className="bg-transparent border-b border-slate-600 w-16 text-right font-mono text-slate-400 focus:text-white focus:border-blue-500 outline-none"
+                                        defaultValue={stat.planned}
+                                        onBlur={(e) => {
+                                            // Find task ID to update
+                                            const t = tasks.find(t => t.name === stat.name && String(t.site_id) === String(id));
+                                            if (t && Number(e.target.value) !== t.planned_hours) {
+                                                updateTask(t.id, { planned_hours: Number(e.target.value) });
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <div className="text-right font-mono text-white font-bold">{stat.realized}h</div>
+                                <div className={`text-right font-mono font-bold ${stat.planned === 0 ? 'text-slate-600' :
+                                    stat.gap > 0 ? 'text-red-400' : 'text-green-400'
+                                    }`}>
+                                    {stat.planned > 0 ? (stat.gap > 0 ? '+' : '') + Math.round(stat.gap * 10) / 10 : '-'}
+                                </div>
+                            </div>
+                        ));
+                    })()}
+                </div>
+            </div>
+
             <h2 className="text-xl font-bold mb-4">Matériel Assigné</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {siteTools.map((tool) => (
@@ -205,15 +506,13 @@ const SiteDetails = () => {
                 )}
             </div>
 
-            {
-                selectedTool && (
-                    <MaterialDetailsModal
-                        tool={selectedTool}
-                        onClose={() => setSelectedTool(null)}
-                    />
-                )
-            }
-        </div >
+            {selectedTool && (
+                <MaterialDetailsModal
+                    tool={selectedTool}
+                    onClose={() => setSelectedTool(null)}
+                />
+            )}
+        </div>
     );
 };
 

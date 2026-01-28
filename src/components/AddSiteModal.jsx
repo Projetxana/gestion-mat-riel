@@ -65,6 +65,18 @@ const AddSiteModal = ({ onClose }) => {
                         </div>
 
                         <div>
+                            <label className="block text-sm font-medium text-slate-400 mb-1">Heures Prévues (Total Chantier)</label>
+                            <input
+                                type="number"
+                                min="0"
+                                placeholder="ex: 450"
+                                value={formData.planned_hours || ''}
+                                onChange={(e) => setFormData({ ...formData, planned_hours: Number(e.target.value) })}
+                                className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
+
+                        <div>
                             <label className="block text-sm font-medium text-slate-400 mb-1">Adresse / Lieu</label>
                             <textarea
                                 required
@@ -74,6 +86,27 @@ const AddSiteModal = ({ onClose }) => {
                                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                                 className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                             />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">Date de Début</label>
+                                <input
+                                    type="date"
+                                    value={formData.start_date || ''}
+                                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">Date de Fin (Estimée)</label>
+                                <input
+                                    type="date"
+                                    value={formData.end_date || ''}
+                                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
                         </div>
 
                         <div>

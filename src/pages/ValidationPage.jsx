@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { CheckCircle, AlertTriangle, Clock, MapPin, Search } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Clock, MapPin, Search, X } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
@@ -108,10 +108,18 @@ const ValidationPage = () => {
                                                 <span className="text-xs text-slate-400">• {new Date(session.punch_start_at).toLocaleDateString()}</span>
                                                 {hasFlag && <AlertTriangle size={14} className="text-amber-500" />}
                                             </div>
-                                            <div className="text-sm text-slate-600 mb-2">
+                                            <div className="text-sm text-slate-600 mb-2 flex items-center gap-2">
                                                 <span className="font-semibold text-blue-600">{site?.name}</span>
-                                                <span className="mx-2 text-slate-300">|</span>
+                                                <span className="text-slate-300">|</span>
                                                 <span>{task?.name}</span>
+                                                <span className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded-full text-slate-500">
+                                                    GPS:
+                                                    {/* GPS Logic: Check if we have entry OR manual confidence */}
+                                                    {(session.gps_first_entry_at || session.manual_entry === false) && !hasFlag
+                                                        ? <CheckCircle size={12} className="text-green-500" />
+                                                        : <X size={12} className="text-red-400" />
+                                                    }
+                                                </span>
                                             </div>
 
                                             <div className="flex items-center gap-6 text-sm">

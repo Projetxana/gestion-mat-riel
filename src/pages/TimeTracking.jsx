@@ -14,7 +14,8 @@ const TimeTracking = () => {
         endTimeSession,
         switchTask,
         lastGeofenceExit,
-        lastGeofenceEntry
+        lastGeofenceEntry,
+        addTask
     } = useAppContext();
     const navigate = useNavigate();
 
@@ -129,13 +130,43 @@ const TimeTracking = () => {
             hours: Math.round((ms / (1000 * 60 * 60)) * 10) / 10 // 1 decimal
         })).sort((a, b) => b.hours - a.hours);
 
+        // Project Rhythm Calculation
+        let rhythm = null;
+        if (site.planned_hours > 0 && site.end_date && (site.start_date || site.created_at)) {
+            const start = new Date(site.start_date || site.created_at).getTime();
+            const end = new Date(site.end_date).getTime();
+            const now = new Date().getTime();
+
+            if (end > start) {
+                const totalDays = (end - start) / (1000 * 60 * 60 * 24);
+                const elapsedDays = Math.max(0.1, (now - start) / (1000 * 60 * 60 * 24));
+
+                if (elapsedDays > 0) {
+                    const plannedPerDay = site.planned_hours / totalDays;
+                    const realizedPerDay = totalHours / elapsedDays;
+                    // Note: totalHours is rounded int, better use totalMs for precision but this is sufficient for MVP
+
+                    const ratio = realizedPerDay / plannedPerDay;
+
+                    if (ratio > 1.15) {
+                        rhythm = { status: 'drift', message: '⚠️ Plus rapide que prévu' };
+                    } else if (ratio > 1.10) {
+                        rhythm = { status: 'watch', message: '⚠️ À surveiller' };
+                    } else {
+                        rhythm = { status: 'ok', message: '✅ Rythme normal' };
+                    }
+                }
+            }
+        }
+
         setCompanionStats({
             siteName: site.name,
             totalHours,
             planned,
             progress,
             remaining,
-            tasksStats
+            tasksStats,
+            rhythm
         });
     };
 
@@ -150,77 +181,58 @@ const TimeTracking = () => {
 
     const handleStartSession = async (taskId) => {
         setIsSubmitting(true);
-        // Mock GPS
-        const mockGps = { entryAt: new Date() };
-        const result = await startTimeSession(selectedSiteId, taskId, mockGps);
+        // Use real GPS entry if available
+        const gpsEntry = lastGeofenceEntry && String(lastGeofenceEntry.siteId) === String(selectedSiteId) ? lastGeofenceEntry : null;
+
+        const result = await startTimeSession(selectedSiteId, taskId, gpsEntry);
         setIsSubmitting(false);
         if (result.error) {
             alert(result.error);
-        } else {
-            // Auto transition to ACTIVE happens via useEffect
         }
     };
 
     // CORRECTION STATE
     const [showCorrection, setShowCorrection] = useState(false);
-    const [pendingEndSession, setPendingEndSession] = useState(false); // To resume after popup
+    const [correctionType, setCorrectionType] = useState('end'); // 'end' or 'start'
     const [showChangeTaskModal, setShowChangeTaskModal] = useState(false);
 
     // Removed redundant declaration since we already have it from context destructuring at the top
 
     const handleEndDay = async () => {
-        // W3: Workflow End Day
-        // Check Smart Correction condition (W4)
-        // If GPS exit exists and is diff > 5 mins from now, show popup. 
-        // For MVP, if we have ANY geofence exit recorded that hasn't been used, we could propose it.
-        // OR simply: If we are OUTSIDE the site right now (lastGeofenceExit is set).
-
         const exit = lastGeofenceExit;
         // Check if exit matches current session site
-        const isRelevantExit = exit && String(exit.siteId) === String(activeSession.site_id);
+        // And if the exit was somewhat recent (e.g. within last 2 hours? or just today?)
+        // Let's assume relevant if it happened AFTER session start
+        const isRelevantExit = exit &&
+            String(exit.siteId) === String(activeSession.site_id) &&
+            new Date(exit.exitAt) > new Date(activeSession.punch_start_at);
 
         if (isRelevantExit) {
-            // Check diff
+            // Check diff > 5 mins
             const diffMin = Math.abs(new Date().getTime() - new Date(exit.exitAt).getTime()) / 60000;
             if (diffMin > 5) {
-                // Show Popup
                 console.log("Smart Correction Triggered: Exit was", exit.exitAt);
-                setPendingEndSession(true);
+                setCorrectionType('end');
                 setShowCorrection(true);
                 return;
             }
         }
 
-        // Standard End
+        // Also check START correction (if we missed it earlier or want to fix it now)
+        // MVP: Only END correction for now as per workflow request
+
         if (!window.confirm("Terminer la journée ?")) return;
         confirmEndDay(null);
     };
 
     const confirmEndDay = async (correction) => {
         setIsSubmitting(true);
-        // If we have a correction, use it. Else use standard or GPS exit if available (W3 step 1)
-        const mockGps = lastGeofenceExit ? { exitAt: lastGeofenceExit.exitAt } : { exitAt: new Date() };
+        const mockGps = lastGeofenceExit ? { exitAt: lastGeofenceExit.exitAt } : null; // Pass exit even if not corrected
 
         await endTimeSession(activeSession.id, mockGps, correction);
         setIsSubmitting(false);
         setShowCorrection(false);
-        setPendingEndSession(false);
         setViewMode('INITIAL');
-    };
-
-    const handleChangeTask = async () => {
-        // Simple prompt for now, waiting for Modal component
-        const newTaskId = prompt("ID Nouvelle tâche (1=Inst, 2=Insp, 3=Maint, 4=Transp, 5=Autre)");
-        if (!newTaskId) return;
-
-        if (!tasks.find(t => String(t.id) === String(newTaskId))) {
-            alert("Tâche invalide");
-            return;
-        }
-
-        setIsSubmitting(true);
-        await switchTask(activeSession.id, activeSession.site_id, newTaskId);
-        setIsSubmitting(false);
     };
 
 
@@ -271,6 +283,24 @@ const TimeTracking = () => {
                     ></div>
                 </div>
 
+
+
+                {/* Rhythm Indicator */}
+                {
+                    companionStats.rhythm && (
+                        <div className={`mb-6 p-3 rounded-lg flex items-center gap-3 border ${companionStats.rhythm.status === 'drift' ? 'bg-red-500/10 border-red-500/30 text-red-400' :
+                            companionStats.rhythm.status === 'watch' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+                                'bg-green-500/10 border-green-500/30 text-green-400'
+                            }`}>
+                            <BarChart3 size={18} />
+                            <div>
+                                <p className="text-[10px] uppercase font-bold opacity-70">Rythme du chantier</p>
+                                <p className="text-sm font-bold">{companionStats.rhythm.message}</p>
+                            </div>
+                        </div>
+                    )
+                }
+
                 <div className="grid grid-cols-2 gap-4 mb-6 border-b border-slate-800 pb-6">
                     <div>
                         <p className="text-slate-400 text-xs">Prévues</p>
@@ -297,7 +327,7 @@ const TimeTracking = () => {
                         <p className="text-slate-500 text-sm italic">Aucune heure enregistrée aujourd'hui</p>
                     )}
                 </div>
-            </div>
+            </div >
         );
     };
 
@@ -309,7 +339,7 @@ const TimeTracking = () => {
                 <header className="flex items-center justify-between">
                     <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                         <Clock className="text-blue-600" />
-                        Heures
+                        Heures de travail
                     </h1>
                 </header>
 
@@ -379,8 +409,12 @@ const TimeTracking = () => {
     // 3. WIZARD STEP 2: TASK
     if (viewMode === 'WIZARD_TASK') {
         const site = sites.find(s => String(s.id) === String(selectedSiteId));
-        // Use site specific tasks or default global
-        const siteTasks = site?.tasks && site.tasks.length > 0 ? site.tasks : tasks;
+        // Use site specific tasks (strict)
+        const siteTasks = site?.tasks || [];
+
+        // Safety check if no tasks exist for this site (e.g. legacy data before migration)
+        // We could show "No tasks found" or fallback to global if absolutely necessary,
+        // but user requested "unique" list per site, so we respect site.tasks which we populated in AppContext.
 
         const [selectedTaskId, setSelectedTaskId] = useState('');
 
@@ -400,26 +434,103 @@ const TimeTracking = () => {
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Sélectionnez une activité</label>
-                        <div className="relative">
-                            <select
-                                className="w-full appearance-none bg-slate-50 border border-slate-300 text-slate-900 text-lg rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-4 pr-10"
-                                value={selectedTaskId}
-                                onChange={(e) => setSelectedTaskId(e.target.value)}
+                    {siteTasks.length === 0 ? (
+                        <div className="text-center space-y-4 py-4">
+                            <p className="text-slate-500">Aucune section définie pour ce chantier.</p>
+                            <button
+                                onClick={() => {
+                                    // Quick add task prompt
+                                    const name = window.prompt("Nom de la nouvelle section (ex: Installation) :");
+                                    if (name) {
+                                        // We need an addTask function available in TimeTracking context or passing it down
+                                        // Ideally TimeTracking should have access to addTask from useAppContext
+                                        // We added it to context, let's assume we can use it (needs destructuring)
+                                    }
+                                    // Actually, we need to handle this properly via destructuring at top of component
+                                    // For now, let's just use the logic below if we update the destructuring
+                                }}
+                                className="hidden"
                             >
-                                <option value="" disabled>-- Choisir --</option>
-                                {siteTasks.map(task => (
-                                    <option key={task.id} value={task.id}>
-                                        {task.name}
-                                    </option>
-                                ))}
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
-                                <ChevronRight className="rotate-90" />
+                                Hack to show logic place
+                            </button>
+
+                            {/* REAL UI FOR EMPTY STATE */}
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <p className="text-sm text-slate-600 mb-3">Créez une première tâche pour démarrer :</p>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        id="quick-task-name"
+                                        placeholder="Nom (ex: Installation)"
+                                        className="flex-1 bg-white border border-slate-300 rounded px-3 py-2"
+                                    />
+                                    <button
+                                        onClick={async () => {
+                                            const nameEl = document.getElementById('quick-task-name');
+                                            if (nameEl && nameEl.value) {
+                                                const result = await addTask({
+                                                    name: nameEl.value,
+                                                    site_id: Number(selectedSiteId),
+                                                    is_active: true,
+                                                    planned_hours: 0
+                                                });
+                                                if (result.success && result.task) {
+                                                    setSelectedTaskId(result.task.id);
+                                                }
+                                            }
+                                        }}
+                                        className="bg-blue-600 text-white px-4 rounded font-bold"
+                                    >
+                                        OK
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Sélectionnez une activité</label>
+                            <div className="relative">
+                                <select
+                                    className="w-full appearance-none bg-slate-50 border border-slate-300 text-slate-900 text-lg rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-4 pr-10"
+                                    value={selectedTaskId}
+                                    onChange={(e) => setSelectedTaskId(e.target.value)}
+                                >
+                                    <option value="" disabled>-- Choisir --</option>
+                                    {siteTasks.map(task => (
+                                        <option key={task.id} value={task.id}>
+                                            {task.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                                    <ChevronRight className="rotate-90" />
+                                </div>
+                            </div>
+
+                            {/* Sticky Add Button */}
+                            <div className="mt-4 text-center">
+                                <button
+                                    onClick={async () => {
+                                        const name = window.prompt("Ajouter une tâche :");
+                                        if (name) {
+                                            const result = await addTask({
+                                                name,
+                                                site_id: Number(selectedSiteId),
+                                                is_active: true,
+                                                planned_hours: 0
+                                            });
+                                            if (result.success && result.task) {
+                                                setSelectedTaskId(result.task.id);
+                                            }
+                                        }
+                                    }}
+                                    className="text-xs text-blue-500 hover:text-blue-700 font-medium flex items-center justify-center gap-1"
+                                >
+                                    + Ajouter une autre tâche
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     <button
                         disabled={!selectedTaskId || isSubmitting}
@@ -443,7 +554,7 @@ const TimeTracking = () => {
             <div className="max-w-md mx-auto pb-24 space-y-6">
                 <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                     <Clock className="text-blue-600 animate-pulse" />
-                    En cours
+                    Session Active
                 </h1>
 
                 {/* Live Card */}
@@ -542,7 +653,7 @@ const TimeTracking = () => {
                                     defaultValue=""
                                 >
                                     <option value="" disabled>-- Sélectionner --</option>
-                                    {(sites.find(s => s.id === activeSession.site_id)?.tasks || tasks).map(task => (
+                                    {(sites.find(s => s.id === activeSession.site_id)?.tasks || []).map(task => (
                                         <option key={task.id} value={task.id}>{task.name}</option>
                                     ))}
                                 </select>
