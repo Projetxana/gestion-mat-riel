@@ -40,16 +40,26 @@ const ProjectMonitoringModal = ({ onClose }) => {
                                         const siteStats = sites
                                             .filter(s => s.status === 'active' && s.planned_hours > 0 && s.end_date && (s.start_date || s.created_at))
                                             .map(site => {
-                                                const start = new Date(site.start_date || site.created_at).getTime();
-                                                const end = new Date(site.end_date).getTime();
-                                                const now = new Date().getTime();
+                                                const startDate = new Date(site.start_date || site.created_at);
+                                                const endDate = new Date(site.end_date);
+                                                const today = new Date();
 
-                                                if (end <= start) return null;
+                                                startDate.setHours(0, 0, 0, 0);
+                                                endDate.setHours(0, 0, 0, 0);
+                                                today.setHours(0, 0, 0, 0);
 
-                                                const totalDuration = end - start;
-                                                const elapsedDuration = Math.max(0, Math.min(now - start, totalDuration)); // Cap at 100%
-                                                const percentTime = elapsedDuration / totalDuration;
-                                                const theoreticalHours = Math.round(site.planned_hours * percentTime);
+                                                if (endDate <= startDate) return null;
+
+                                                const totalDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
+                                                const elapsedDays = Math.max(0, (today - startDate) / (1000 * 60 * 60 * 24));
+
+                                                let theoreticalHours = 0;
+                                                if (today >= endDate) {
+                                                    theoreticalHours = site.planned_hours;
+                                                } else {
+                                                    const hoursPerDay = site.planned_hours / totalDays;
+                                                    theoreticalHours = Math.round(hoursPerDay * elapsedDays);
+                                                }
 
                                                 const siteSessions = timeSessions.filter(s => String(s.site_id) === String(site.id));
                                                 const totalMs = siteSessions.reduce((acc, s) => {
