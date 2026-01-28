@@ -7,6 +7,7 @@ import DeliveryNoteModal from '../components/DeliveryNoteModal';
 import DailyReportModal from '../components/DailyReportModal';
 import InvoiceModal from '../components/InvoiceModal';
 import SiteOccupancyModal from '../components/SiteOccupancyModal';
+import ProjectMonitoringModal from '../components/ProjectMonitoringModal';
 
 const Dashboard = () => {
     const { materials, sites, addLog, timeSessions, currentUser } = useAppContext();
@@ -15,6 +16,7 @@ const Dashboard = () => {
     const [showDailyReport, setShowDailyReport] = useState(false);
     const [showInvoiceModal, setShowInvoiceModal] = useState(false);
     const [selectedSiteForOccupancy, setSelectedSiteForOccupancy] = useState(null);
+    const [showProjectMonitoring, setShowProjectMonitoring] = useState(false);
 
     // Live View Logic
     const activeSessions = timeSessions.filter(s => s.punch_end_at === null);
@@ -211,92 +213,24 @@ const Dashboard = () => {
                 </div>
             )}
 
-            {/* SUIVI DIRECTION (Admin / Foreman Only) */}
+            {/* SUIVI PROJETS (Admin / Foreman Only) */}
             {(currentUser?.role === 'admin' || currentUser?.role === 'foreman') && (
-                <div className="mb-6">
-                    <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <Activity size={14} />
-                        Vue Direction : Écarts Heures
-                    </h3>
-                    <div className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-slate-900/50 text-slate-400 uppercase text-[10px]">
-                                    <tr>
-                                        <th className="p-3">Chantier</th>
-                                        <th className="p-3 text-right">Prévu</th>
-                                        <th className="p-3 text-right">Réalisé</th>
-                                        <th className="p-3 text-right">Théorique</th>
-                                        <th className="p-3 text-right">Écart</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-700">
-                                    {(() => {
-                                        const siteStats = sites
-                                            .filter(s => s.status === 'active' && s.planned_hours > 0 && s.end_date && (s.start_date || s.created_at))
-                                            .map(site => {
-                                                const start = new Date(site.start_date || site.created_at).getTime();
-                                                const end = new Date(site.end_date).getTime();
-                                                const now = new Date().getTime();
-
-                                                if (end <= start) return null;
-
-                                                const totalDuration = end - start;
-                                                const elapsedDuration = Math.max(0, Math.min(now - start, totalDuration)); // Cap at 100%
-                                                const percentTime = elapsedDuration / totalDuration;
-                                                const theoreticalHours = Math.round(site.planned_hours * percentTime);
-
-                                                const siteSessions = timeSessions.filter(s => String(s.site_id) === String(site.id));
-                                                const totalMs = siteSessions.reduce((acc, s) => {
-                                                    const startH = new Date(s.corrected_start_at || s.punch_start_at).getTime();
-                                                    const endH = (s.corrected_end_at || s.punch_end_at)
-                                                        ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
-                                                        : new Date().getTime();
-                                                    return acc + (endH - startH);
-                                                }, 0);
-                                                const realizedHours = Math.round(totalMs / (1000 * 60 * 60));
-                                                const gap = realizedHours - theoreticalHours;
-
-                                                return { ...site, theoreticalHours, realizedHours, gap };
-                                            })
-                                            .filter(s => s !== null)
-                                            .sort((a, b) => b.gap - a.gap); // Sort by highest gap (most problematic first)
-
-                                        if (siteStats.length === 0) {
-                                            return (
-                                                <tr>
-                                                    <td colSpan="5" className="p-4 text-center text-slate-500 italic">
-                                                        Aucune donnée disponible
-                                                    </td>
-                                                </tr>
-                                            );
-                                        }
-
-                                        return siteStats.map(site => {
-                                            const gapPercent = site.theoreticalHours > 0 ? (site.gap / site.theoreticalHours) : 0;
-                                            let gapColor = 'text-green-400';
-                                            if (gapPercent > 0.20) gapColor = 'text-red-400 font-bold';
-                                            else if (gapPercent > 0.10) gapColor = 'text-amber-400 font-bold';
-                                            else if (gapPercent < -0.10) gapColor = 'text-blue-400';
-
-                                            return (
-                                                <tr key={site.id} onClick={() => navigate(`/sites/${site.id}`)} className="hover:bg-slate-700/50 cursor-pointer transition-colors">
-                                                    <td className="p-3 font-medium text-white">{site.name}</td>
-                                                    <td className="p-3 text-right text-slate-400 font-mono">{site.planned_hours}</td>
-                                                    <td className="p-3 text-right text-white font-mono">{site.realizedHours}</td>
-                                                    <td className="p-3 text-right text-slate-500 font-mono">{site.theoreticalHours}</td>
-                                                    <td className={`p-3 text-right font-mono ${gapColor}`}>
-                                                        {site.gap > 0 ? '+' : ''}{site.gap}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        });
-                                    })()}
-                                </tbody>
-                            </table>
+                <button
+                    onClick={() => setShowProjectMonitoring(true)}
+                    className="block w-full relative overflow-hidden p-4 rounded-2xl bg-gradient-to-r from-indigo-900 to-slate-900 border border-indigo-900/50 shadow-lg active:scale-95 transition-transform mb-4"
+                >
+                    <div className="flex items-center justify-between relative z-10">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-indigo-500/20 rounded-xl">
+                                <Activity className="text-indigo-400" size={20} />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-white text-sm">Suivi Projets</h3>
+                                <p className="text-xs text-slate-400">Vue direction : Écarts Heures</p>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </button>
             )}
 
             {/* Stats Grid */}
@@ -345,6 +279,7 @@ const Dashboard = () => {
                     onClose={() => setSelectedSiteForOccupancy(null)}
                 />
             )}
+            {showProjectMonitoring && <ProjectMonitoringModal onClose={() => setShowProjectMonitoring(false)} />}
         </div>
     );
 };
