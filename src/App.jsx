@@ -96,14 +96,14 @@ const AppRoutes = () => {
 
 function App() {
   return (
-    <AppProvider>
+    <>
       <ReloadPrompt />
       <BrowserRouter>
         <ErrorBoundary>
           <AppRoutes />
         </ErrorBoundary>
       </BrowserRouter>
-    </AppProvider>
+    </>
   );
 }
 

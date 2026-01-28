@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { initialHiltiTools, initialHiltiUsers } from '../data/hiltiData';
 
-const AppContext = createContext();
+export const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
     // State

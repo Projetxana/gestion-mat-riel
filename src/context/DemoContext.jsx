@@ -1,6 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-
-const DemoContext = createContext();
+import React, { useContext, useState, useEffect } from 'react';
+import { AppContext } from './AppContext';
 
 export const DemoProvider = ({ children }) => {
     // --- MOCK STATE ---
@@ -167,7 +166,5 @@ export const DemoProvider = ({ children }) => {
         lastGeofenceEntry, lastGeofenceExit, currentGeofenceSiteId
     };
 
-    return <DemoContext.Provider value={value}>{children}</DemoContext.Provider>;
+    return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
-
-export const useAppContext = () => useContext(DemoContext);
