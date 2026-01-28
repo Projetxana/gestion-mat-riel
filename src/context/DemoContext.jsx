@@ -10,9 +10,9 @@ export const DemoProvider = ({ children }) => {
     ]);
 
     const [sites, setSites] = useState([
-        { id: 101, name: 'Tour Eiffel - Rénovation', address: 'Champ de Mars, Paris', status: 'active', planned_hours: 500, start_date: '2025-01-01', end_date: '2025-06-30', tasks: [] },
-        { id: 102, name: 'Stade de France - Sièges', address: 'Saint-Denis', status: 'active', planned_hours: 1200, start_date: '2025-02-15', end_date: '2025-08-15', tasks: [] },
-        { id: 103, name: 'Atelier Central', address: 'Ivry-sur-Seine', status: 'active', planned_hours: 0, start_date: '2024-01-01', end_date: null, tasks: [] },
+        { id: 101, name: 'Tour Eiffel - Rénovation', address: 'Champ de Mars, Paris', status: 'active', planned_hours: 500, start_date: '2026-01-01', end_date: '2026-06-30', tasks: [] },
+        { id: 102, name: 'Stade de France - Sièges', address: 'Saint-Denis', status: 'active', planned_hours: 1200, start_date: '2026-02-15', end_date: '2026-08-15', tasks: [] },
+        { id: 103, name: 'Atelier Central', address: 'Ivry-sur-Seine', status: 'active', planned_hours: 0, start_date: '2026-01-01', end_date: null, tasks: [] },
     ]);
 
     const [users, setUsers] = useState([
@@ -39,8 +39,8 @@ export const DemoProvider = ({ children }) => {
 
     const [timeSessions, setTimeSessions] = useState([
         // Past sessions
-        { id: 's1', user_id: 'u2', site_id: 101, task_id: 't1', punch_start_at: '2025-01-20T08:00:00', punch_end_at: '2025-01-20T12:00:00', duration_hours: 4, approved: true },
-        { id: 's2', user_id: 'u2', site_id: 101, task_id: 't2', punch_start_at: '2025-01-20T13:00:00', punch_end_at: '2025-01-20T17:00:00', duration_hours: 4, approved: true },
+        { id: 's1', user_id: 'u2', site_id: 101, task_id: 't1', punch_start_at: '2026-01-20T08:00:00', punch_end_at: '2026-01-20T12:00:00', duration_hours: 4, approved: true },
+        { id: 's2', user_id: 'u2', site_id: 101, task_id: 't2', punch_start_at: '2026-01-20T13:00:00', punch_end_at: '2026-01-20T17:00:00', duration_hours: 4, approved: true },
         // Active session for Demo User?
     ]);
 
