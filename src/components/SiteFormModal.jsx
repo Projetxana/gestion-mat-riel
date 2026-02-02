@@ -15,11 +15,14 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
         status: 'active'
     });
 
-    // Step 2: Tasks
-    // Tasks structure: { id: string | number, name: string, planned_hours: number, is_new?: boolean, is_deleted?: boolean }
-    const [tasks, setTasks] = useState([]);
-    const [newTaskName, setNewTaskName] = useState('');
-    const [newTaskHours, setNewTaskHours] = useState('');
+    // Step 2: Sections (ex-Tasks)
+    // Structure: { id, name, planned_hours, completed_hours }
+    const [sections, setSections] = useState([]);
+
+    // Quick Add State
+    const [newSelectionName, setNewSelectionName] = useState('');
+    const [newPlanHours, setNewPlanHours] = useState('');
+    const [newDoneHours, setNewDoneHours] = useState('');
 
     // Load initial data if editing
     useEffect(() => {
@@ -32,45 +35,41 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                 status: siteToEdit.status || 'active'
             });
 
-            // Load items. If they come from DB, they have numeric IDs. 
-            // We use siteToEdit.tasks which should be populated by AppContext from 'tasks' state
-            if (siteToEdit.tasks) {
-                setTasks(siteToEdit.tasks.map(t => ({
+            // Use project_tasks populated in AppContext mapping
+            if (siteToEdit.project_tasks) {
+                setSections(siteToEdit.project_tasks.map(t => ({
                     id: t.id,
                     name: t.name,
-                    planned_hours: Number(t.planned_hours) || 0
+                    planned_hours: Number(t.planned_hours) || 0,
+                    completed_hours: Number(t.completed_hours) || 0
                 })));
             }
         } else {
-            // Default tasks for new site
-            setTasks([
-                { id: 't1', name: 'Installation', planned_hours: 0 },
-                { id: 't2', name: 'Inspection', planned_hours: 0 },
-                { id: 't3', name: 'Maintenance', planned_hours: 0 },
-                { id: 't4', name: 'Transport', planned_hours: 0 },
-                { id: 't5', name: 'Autre', planned_hours: 0 }
+            // Default sections for new site
+            setSections([
+                { id: 't1', name: 'Lot 1: Préparation', planned_hours: 0, completed_hours: 0 },
+                { id: 't2', name: 'Lot 2: Exécution', planned_hours: 0, completed_hours: 0 },
+                { id: 't3', name: 'Lot 3: Finitions', planned_hours: 0, completed_hours: 0 }
             ]);
         }
     }, [isEditing, siteToEdit]);
 
-    // Computed Total
-    const totalHours = tasks.reduce((acc, t) => acc + (Number(t.planned_hours) || 0), 0);
+    // Computed Totals
+    const totalPlanned = sections.reduce((acc, t) => acc + (Number(t.planned_hours) || 0), 0);
+    const totalCompleted = sections.reduce((acc, t) => acc + (Number(t.completed_hours) || 0), 0);
 
     const handleSubmit = (e) => {
         e.preventDefault();
 
-        // Validation: At least 1 task
-        if (tasks.filter(t => !t.is_deleted).length === 0) {
-            alert("Règle Absolue: Un chantier doit avoir au moins une tâche active.");
-            return;
-        }
+        // Rule: Start date required validation could be here but optional per schema
 
         const payload = {
             ...projectInfo,
-            planned_hours: totalHours,
-            tasks: tasks.map(t => ({
+            planned_hours: totalPlanned, // Auto-update total on site
+            project_tasks: sections.map(t => ({
                 ...t,
-                planned_hours: Number(t.planned_hours) || 0
+                planned_hours: Number(t.planned_hours) || 0,
+                completed_hours: Number(t.completed_hours) || 0
             }))
         };
 
@@ -82,31 +81,26 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
         onClose();
     };
 
-    const handleAddTask = () => {
-        if (!newTaskName.trim()) return;
-        const newTask = {
+    const handleAddSection = () => {
+        if (!newSelectionName.trim()) return;
+        const newSection = {
             id: `temp-${Date.now()}`,
-            name: newTaskName.trim(),
-            planned_hours: Number(newTaskHours) || 0,
-            is_new: true
+            name: newSelectionName.trim(),
+            planned_hours: Number(newPlanHours) || 0,
+            completed_hours: Number(newDoneHours) || 0
         };
-        setTasks([...tasks, newTask]);
-        setNewTaskName('');
-        setNewTaskHours('');
+        setSections([...sections, newSection]);
+        setNewSelectionName('');
+        setNewPlanHours('');
+        setNewDoneHours('');
     };
 
-    const removeTask = (id) => {
-        // If it's a new temporary task, just remove from state
-        if (String(id).startsWith('t') || String(id).startsWith('temp') || String(id).startsWith('import')) {
-            setTasks(tasks.filter(t => t.id !== id));
-        } else {
-            // OLD LOGIC: Mark as deleted? 
-            // ACTUALLY: user wants "Simple Edit". We can just omit it from the list sent to updateSite?
-            // "UpdateSite" needs to know what to delete. 
-            // If we simply remove it from 'tasks' array, updateSite will see it's missing compared to DB and delete it (Diffing).
-            // So removing from array is fine.
-            setTasks(tasks.filter(t => t.id !== id));
-        }
+    const removeSection = (id) => {
+        setSections(sections.filter(t => t.id !== id));
+    };
+
+    const updateSection = (id, field, value) => {
+        setSections(sections.map(s => s.id === id ? { ...s, [field]: value } : s));
     };
 
     const handleExcelImport = async (e) => {
@@ -125,30 +119,32 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
 
                 const normalizeKey = (k) => k.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-                const newTasks = jsonData.map((row, idx) => {
-                    let name = 'Tâche Importée';
-                    let hours = 0;
+                const newItems = jsonData.map((row, idx) => {
+                    let name = 'Section Importée';
+                    let planned = 0;
+                    let completed = 0;
 
                     Object.keys(row).forEach(k => {
                         const nk = normalizeKey(k);
-                        if (nk.includes('tache') || nk.includes('task')) name = row[k];
-                        else if (nk.includes('heure') || nk.includes('hour') || nk.includes('prevue')) hours = Number(row[k]) || 0;
+                        if (nk.includes('tache') || nk.includes('section')) name = row[k];
+                        else if (nk.includes('prevue') || nk.includes('planned')) planned = Number(row[k]) || 0;
+                        else if (nk.includes('realise') || nk.includes('completed')) completed = Number(row[k]) || 0;
                     });
 
                     return {
                         id: `import-${Date.now()}-${idx}`,
                         name: String(name),
-                        planned_hours: hours,
-                        is_new: true
+                        planned_hours: planned,
+                        completed_hours: completed
                     };
                 });
 
-                if (newTasks.length > 0) {
-                    if (window.confirm(`Ajouter ${newTasks.length} tâches depuis Excel ?`)) {
-                        setTasks(prev => [...prev, ...newTasks]);
+                if (newItems.length > 0) {
+                    if (window.confirm(`Ajouter ${newItems.length} sections depuis Excel ?`)) {
+                        setSections(prev => [...prev, ...newItems]);
                     }
                 } else {
-                    alert("Aucune tâche trouvée dans le fichier Excel.");
+                    alert("Aucune donnée valide trouvée.");
                 }
             } catch (err) {
                 console.error("Excel parse error:", err);
@@ -156,19 +152,19 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
             }
         };
         reader.readAsArrayBuffer(file);
-        e.target.value = ''; // Reset input
+        e.target.value = '';
     };
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-            <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl shadow-2xl animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-4xl shadow-2xl animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
                 <div className="flex items-center justify-between p-6 border-b border-slate-800 shrink-0">
                     <div>
                         <h2 className="text-xl font-bold text-white flex items-center gap-2">
                             {isEditing ? 'Modifier Chantier' : 'Nouveau Chantier'}
                         </h2>
                         <p className="text-xs text-slate-400">
-                            {isEditing ? `Édition de ${siteToEdit.name}` : 'Configuration du projet et des tâches'}
+                            {isEditing ? `Édition de ${siteToEdit.name}` : 'Configuration du projet'}
                         </p>
                     </div>
                     <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
@@ -176,10 +172,10 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                     </button>
                 </div>
 
-                <div className="overflow-y-auto p-6 custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="overflow-y-auto p-6 custom-scrollbar grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* LEFT COLUMN: PROJECT INFO */}
-                    <div className="space-y-4">
-                        <h3 className="text-sm font-bold text-blue-400 uppercase border-b border-blue-500/20 pb-2">1. Informations Projet</h3>
+                    <div className="space-y-4 lg:col-span-1">
+                        <h3 className="text-sm font-bold text-blue-400 uppercase border-b border-blue-500/20 pb-2">1. Informations</h3>
 
                         <div>
                             <label className="block text-xs font-medium text-slate-400 mb-1">Nom du Chantier *</label>
@@ -196,7 +192,7 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                         <div>
                             <label className="block text-xs font-medium text-slate-400 mb-1">Adresse</label>
                             <textarea
-                                rows="2"
+                                rows="3"
                                 value={projectInfo.address}
                                 onChange={(e) => setProjectInfo({ ...projectInfo, address: e.target.value })}
                                 className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white focus:border-blue-500 outline-none text-sm resize-none"
@@ -225,17 +221,28 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                             </div>
                         </div>
 
-                        <div className="bg-slate-800 p-3 rounded border border-slate-700 mt-4">
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Total Heures Calculé</label>
-                            <div className="text-2xl font-mono font-bold text-white">{totalHours} h</div>
-                            <p className="text-[10px] text-slate-500 italic">Somme des tâches ci-contre</p>
+                        <div className="bg-slate-800 p-4 rounded border border-slate-700 mt-4 space-y-2">
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase">Total Heures Prévues</label>
+                                <div className="text-xl font-mono font-bold text-white">{totalPlanned} h</div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase">Total Heures Réalisées</label>
+                                <div className="text-xl font-mono font-bold text-blue-400">{totalCompleted} h</div>
+                            </div>
+                            <div className="w-full bg-slate-900 rounded-full h-1.5 mt-2">
+                                <div
+                                    className="bg-blue-500 h-1.5 rounded-full transition-all"
+                                    style={{ width: `${totalPlanned > 0 ? Math.min((totalCompleted / totalPlanned) * 100, 100) : 0}%` }}
+                                ></div>
+                            </div>
                         </div>
                     </div>
 
-                    {/* RIGHT COLUMN: TASKS */}
-                    <div className="space-y-4 flex flex-col h-full">
+                    {/* RIGHT COLUMN: SECTIONS */}
+                    <div className="space-y-4 flex flex-col h-full lg:col-span-2">
                         <div className="flex justify-between items-center border-b border-blue-500/20 pb-2">
-                            <h3 className="text-sm font-bold text-blue-400 uppercase">2. Tâches ({tasks.length})</h3>
+                            <h3 className="text-sm font-bold text-blue-400 uppercase">2. Sections du Chantier ({sections.length})</h3>
                             <label className="cursor-pointer text-[10px] bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded flex items-center gap-1 transition-colors">
                                 <Upload size={12} />
                                 <span>Import Excel</span>
@@ -243,63 +250,97 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                             </label>
                         </div>
 
+                        {/* HEADERS */}
+                        <div className="grid grid-cols-12 gap-2 text-[10px] uppercase font-bold text-slate-500 px-2">
+                            <div className="col-span-6">Nom Section</div>
+                            <div className="col-span-2 text-right">Prévu</div>
+                            <div className="col-span-2 text-right">Réalisé</div>
+                            <div className="col-span-2"></div>
+                        </div>
+
                         <div className="flex-1 bg-slate-800/50 rounded-lg border border-slate-700 overflow-hidden flex flex-col min-h-[300px]">
-                            <div className="overflow-y-auto flex-1 p-2 space-y-2 custom-scrollbar">
-                                {tasks.map((task, idx) => (
-                                    <div key={task.id} className="flex gap-2 items-center bg-slate-800 p-2 rounded border border-slate-700/50 group">
-                                        <div className="w-6 text-[10px] text-slate-500 font-mono text-center">{idx + 1}</div>
-                                        <div className="flex-1">
-                                            <div className="text-sm text-slate-200 font-medium">{task.name}</div>
-                                        </div>
-                                        <div className="w-16">
+                            <div className="overflow-y-auto flex-1 p-2 space-y-1 custom-scrollbar">
+                                {sections.map((section, idx) => (
+                                    <div key={section.id} className="grid grid-cols-12 gap-2 items-center bg-slate-800 p-2 rounded border border-slate-700/50 group hover:border-blue-500/30 transition-colors">
+                                        <div className="col-span-6">
                                             <input
-                                                type="number"
-                                                className="w-full bg-slate-900 border border-slate-700 rounded px-1 text-right text-xs text-blue-300 font-mono focus:border-blue-500 outline-none"
-                                                value={task.planned_hours}
-                                                onChange={(e) => {
-                                                    const val = Number(e.target.value) || 0;
-                                                    setTasks(tasks.map(t => t.id === task.id ? { ...t, planned_hours: val } : t));
-                                                }}
+                                                type="text"
+                                                value={section.name}
+                                                onChange={(e) => updateSection(section.id, 'name', e.target.value)}
+                                                className="w-full bg-transparent text-sm text-slate-200 outline-none border-b border-transparent focus:border-blue-500/50 transition-colors"
                                             />
                                         </div>
-                                        <button onClick={() => removeTask(task.id)} className="text-slate-600 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Trash2 size={14} />
-                                        </button>
+                                        <div className="col-span-2">
+                                            <input
+                                                type="number"
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-1 text-right text-xs text-slate-300 font-mono focus:border-blue-500 outline-none"
+                                                value={section.planned_hours}
+                                                onChange={(e) => updateSection(section.id, 'planned_hours', Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
+                                            <input
+                                                type="number"
+                                                className="w-full bg-slate-900 border border-slate-700 rounded px-1 text-right text-xs text-blue-400 font-mono focus:border-blue-500 outline-none"
+                                                value={section.completed_hours}
+                                                onChange={(e) => updateSection(section.id, 'completed_hours', Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <div className="col-span-2 flex justify-end">
+                                            <button onClick={() => removeSection(section.id)} className="text-slate-600 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
-                                {tasks.length === 0 && (
+                                {sections.length === 0 && (
                                     <div className="h-full flex flex-col items-center justify-center text-slate-500 p-8 text-center opacity-50">
-                                        <p className="text-sm mb-2">Aucune tâche</p>
-                                        <p className="text-xs">Ajoutez manuellement ou importez un Excel</p>
+                                        <p className="text-sm mb-2">Aucune section</p>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Add Task Footer */}
-                            <div className="p-2 bg-slate-800 border-t border-slate-700 flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder="Nom nouvelle tâche..."
-                                    className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500"
-                                    value={newTaskName}
-                                    onChange={(e) => setNewTaskName(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
-                                />
-                                <input
-                                    type="number"
-                                    placeholder="Heures"
-                                    className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500"
-                                    value={newTaskHours}
-                                    onChange={(e) => setNewTaskHours(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={handleAddTask}
-                                    className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold"
-                                >
-                                    <Plus size={14} />
-                                </button>
+                            {/* Add Section Footer */}
+                            <div className="p-2 bg-slate-800 border-t border-slate-700 grid grid-cols-12 gap-2 items-center">
+                                <div className="col-span-6">
+                                    <input
+                                        type="text"
+                                        placeholder="Nouvelle section..."
+                                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-blue-500"
+                                        value={newSelectionName}
+                                        onChange={(e) => setNewSelectionName(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <input
+                                        type="number"
+                                        placeholder="Prévu"
+                                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-blue-500"
+                                        value={newPlanHours}
+                                        onChange={(e) => setNewPlanHours(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <input
+                                        type="number"
+                                        placeholder="Fait"
+                                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-blue-500"
+                                        value={newDoneHours}
+                                        onChange={(e) => setNewDoneHours(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
+                                    />
+                                </div>
+                                <div className="col-span-2 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={handleAddSection}
+                                        className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-xs font-bold w-full flex justify-center"
+                                    >
+                                        <Plus size={14} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -314,8 +355,8 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                         <button
                             type="button"
                             onClick={handleSubmit}
-                            disabled={!projectInfo.name || tasks.length === 0}
-                            className={`px-6 py-2 font-bold rounded-lg shadow-lg transition-all text-sm flex items-center gap-2 ${!projectInfo.name || tasks.length === 0
+                            disabled={!projectInfo.name || sections.length === 0}
+                            className={`px-6 py-2 font-bold rounded-lg shadow-lg transition-all text-sm flex items-center gap-2 ${!projectInfo.name || sections.length === 0
                                 ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
                                 : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
                                 }`}

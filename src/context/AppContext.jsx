@@ -11,6 +11,7 @@ export const AppProvider = ({ children }) => {
     const [users, setUsers] = useState([]);
     const [logs, setLogs] = useState([]);
     const [tasks, setTasks] = useState([]); // Time Tracking
+    const [projectTasks, setProjectTasks] = useState([]); // Project Sections
     const [timeSessions, setTimeSessions] = useState([]); // Time Tracking
     const [hiltiTools, setHiltiTools] = useState([]); // Hilti State
     const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
@@ -79,6 +80,13 @@ export const AppProvider = ({ children }) => {
                 if (payload.eventType === 'INSERT') setTasks(prev => [...prev, payload.new]);
                 if (payload.eventType === 'UPDATE') setTasks(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
                 if (payload.eventType === 'DELETE') setTasks(prev => prev.filter(item => item.id !== payload.old.id));
+            }).subscribe(),
+
+            supabase.channel('public:project_tasks').on('postgres_changes', { event: '*', schema: 'public', table: 'project_tasks' }, payload => {
+                const mapItem = (item) => ({ ...item, planned_hours: Number(item.planned_hours) || 0, completed_hours: Number(item.completed_hours) || 0 });
+                if (payload.eventType === 'INSERT') setProjectTasks(prev => [...prev, mapItem(payload.new)]);
+                if (payload.eventType === 'UPDATE') setProjectTasks(prev => prev.map(item => item.id === payload.new.id ? mapItem(payload.new) : item));
+                if (payload.eventType === 'DELETE') setProjectTasks(prev => prev.filter(item => item.id !== payload.old.id));
             }).subscribe(),
 
             supabase.channel('public:time_sessions').on('postgres_changes', { event: '*', schema: 'public', table: 'time_sessions' }, payload => {
@@ -293,12 +301,12 @@ export const AppProvider = ({ children }) => {
                 // Logic: If specific tasks exist, use them. Else use Global (site_id is null).
                 const specificTasks = allTasks.filter(task => String(task.site_id) === String(site.id));
                 const globalTasks = allTasks.filter(task => !task.site_id);
+                const relatedProjectTasks = pt ? pt.filter(t => String(t.project_id) === String(site.id)) : [];
 
-                // If migration ran, specificTasks will be populated.
-                // If not, we fall back to globalTasks to avoid empty screens.
                 return {
                     ...site,
-                    tasks: specificTasks.length > 0 ? specificTasks : globalTasks
+                    tasks: specificTasks.length > 0 ? specificTasks : globalTasks,
+                    project_tasks: relatedProjectTasks // Allow access to sections
                 };
             }));
         }
@@ -543,20 +551,23 @@ export const AppProvider = ({ children }) => {
     const addSite = async (site) => {
         // Optimistic
         const tempId = `temp-${Date.now()}`;
-        // Use provided tasks for optimistic UI
-        const optimTasks = site.tasks ? site.tasks.map((t, i) => ({
-            id: `optim-task-${t.id || i}`,
+
+        // Use provided project_tasks or legacy tasks for optimistic UI ?
+        // If site has project_tasks, use them.
+        const optimSections = site.project_tasks ? site.project_tasks.map((t, i) => ({
+            id: `optim-pt-${i}`,
             name: t.name,
             planned_hours: Number(t.planned_hours) || 0,
-            site_id: tempId,
-            is_active: true
+            completed_hours: Number(t.completed_hours) || 0,
+            project_id: tempId
         })) : [];
-        const optimSite = { ...site, id: tempId, tasks: optimTasks };
+
+        const optimSite = { ...site, id: tempId, project_tasks: optimSections };
         setSites(prev => [...prev, optimSite]);
 
         // 1. Insert Site
-        // Remove tasks and clean payload
-        const { tasks: siteTasks, ...sitePayload } = site;
+        // Remove tasks/project_tasks and clean payload
+        const { tasks: _ignore, project_tasks: siteSections, ...sitePayload } = site;
         const cleanPayload = { ...sitePayload };
         if (cleanPayload.start_date === '') cleanPayload.start_date = null;
         if (cleanPayload.end_date === '') cleanPayload.end_date = null;
@@ -566,29 +577,52 @@ export const AppProvider = ({ children }) => {
         if (!error && data) {
             const newSiteId = data.id;
 
-            // 2. Insert Tasks
-            let tasksPayload = [];
-            if (siteTasks && siteTasks.length > 0) {
-                tasksPayload = siteTasks.map(t => ({ name: t.name, site_id: newSiteId, is_active: true }));
+            // 2. Insert Project Tasks (Sections)
+            let sectionsPayload = [];
+            if (siteSections && siteSections.length > 0) {
+                sectionsPayload = siteSections.map(t => ({
+                    name: t.name,
+                    planned_hours: Number(t.planned_hours) || 0,
+                    completed_hours: Number(t.completed_hours) || 0,
+                    project_id: newSiteId
+                }));
             } else {
-                const defaultTaskNames = ['Installation', 'Inspection', 'Maintenance', 'Transport', 'Autre'];
-                tasksPayload = defaultTaskNames.map(name => ({ name, site_id: newSiteId, is_active: true }));
+                // Defaults if none provided?
+                const defaultSections = ['Lot 1: Préparation', 'Lot 2: Exécution', 'Lot 3: Finitions'];
+                sectionsPayload = defaultSections.map(name => ({
+                    name,
+                    planned_hours: 0,
+                    completed_hours: 0,
+                    project_id: newSiteId
+                }));
             }
 
-            const { data: createdTasks, error: taskError } = await supabase.from('tasks').insert(tasksPayload).select();
+            const { data: createdSections, error: sectionError } = await supabase.from('project_tasks').insert(sectionsPayload).select();
 
-            if (taskError) {
-                console.error("Error creating site tasks:", taskError);
-                // Proceed anyway, site is created. User can add tasks manually if we implement that UI.
+            if (sectionError) {
+                console.error("Error creating project sections:", sectionError);
             }
 
-            // Update State with Real ID and Tasks
-            setSites(prev => prev.map(s => s.id === tempId ? { ...data, tasks: createdTasks || [] } : s));
+            // Update State with Real ID and Sections
+            setSites(prev => prev.map(s => s.id === tempId ? { ...data, project_tasks: createdSections || [] } : s));
 
-            // Also update 'tasks' state locally
-            if (createdTasks) {
-                setTasks(prev => [...prev, ...createdTasks]);
+            // Update main projectTasks state
+            if (createdSections) {
+                setProjectTasks(prev => [...prev, ...createdSections.map(s => ({ ...s, planned_hours: Number(s.planned_hours), completed_hours: Number(s.completed_hours) }))]);
             }
+
+            // Also create default legacy tasks? The user said "Ne plus afficher tasks".
+            // If the app relies on them for punching, we might need at least one global task?
+            // User: "Ne plus afficher tasks". Maybe punching uses project_id only now?
+            // Or punching will use `project_tasks`?
+            // "Logique: SUM(project_tasks.completed_hours) -> Suivi projet"
+            // It suggests `project_tasks` are the new tasks.
+            // But `time_sessions` link to `task_id`.
+            // If we stop creating `tasks`, old punching might break if it relied on `tasks`.
+            // User didn't say to migrate `time_sessions`.
+            // Assuming for now `project_tasks` is for "Suivi Global" and distinct from punch-clock tasks?
+            // "Modif import Excel... Créer ou mettre à jour PROJECT_TASKS".
+            // So project_tasks IS the main thing now.
 
             addLog(`Created site: ${site.name}`);
         } else {
@@ -598,19 +632,22 @@ export const AppProvider = ({ children }) => {
     };
 
     const updateSite = async (id, updates) => {
-        // updates potentially contains 'tasks' array which is the desired state of tasks
-        const hasTasksUpdate = Array.isArray(updates.tasks);
+        const hasSectionsUpdate = Array.isArray(updates.project_tasks);
 
         // Optimistic UI Update
         const oldSites = [...sites];
-        const oldTasks = [...tasks];
+        const oldProjectTasks = [...projectTasks];
 
-        // 1. Update Site State
+        // 1. Update Site State (local)
+        // If updating sections, we just put them in the site object for now
         setSites(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
 
         // 2. Prepare DB Updates for Site
         const siteUpdates = { ...updates };
-        if (hasTasksUpdate) delete siteUpdates.tasks; // Separate task handling
+        if (hasSectionsUpdate) delete siteUpdates.project_tasks;
+
+        // Also remove legacy 'tasks' if present
+        if (siteUpdates.tasks) delete siteUpdates.tasks;
 
         // Clean empty dates
         if (siteUpdates.start_date === '') siteUpdates.start_date = null;
@@ -624,66 +661,63 @@ export const AppProvider = ({ children }) => {
             if (siteErr) error = siteErr;
         }
 
-        // 4. Handle Tasks Sync if provided
-        if (!error && hasTasksUpdate) {
-            const newTasksState = updates.tasks;
-            const existingTasks = tasks.filter(t => String(t.site_id) === String(id));
+        // 4. Handle Sections Sync if provided
+        if (!error && hasSectionsUpdate) {
+            const newSectionsState = updates.project_tasks;
+            const existingSections = projectTasks.filter(pt => String(pt.project_id) === String(id));
 
             // Diffing
-            const tasksToInsert = newTasksState.filter(t => String(t.id).startsWith('t') || String(t.id).startsWith('temp') || String(t.id).startsWith('import'));
-            const tasksToUpdate = newTasksState.filter(t => !String(t.id).startsWith('t') && !String(t.id).startsWith('temp') && !String(t.id).startsWith('import'));
+            const sectionsToInsert = newSectionsState.filter(t => String(t.id).startsWith('temp') || String(t.id).startsWith('import'));
+            const sectionsToUpdate = newSectionsState.filter(t => !String(t.id).startsWith('temp') && !String(t.id).startsWith('import'));
 
-            // Tasks to delete are those in existingTasks that are NOT in newTasksState
-            const newIds = new Set(newTasksState.map(t => String(t.id)));
-            const tasksToDelete = existingTasks.filter(t => !newIds.has(String(t.id)));
+            const newIds = new Set(newSectionsState.map(t => String(t.id)));
+            const sectionsToDelete = existingSections.filter(t => !newIds.has(String(t.id)));
 
             // A. DELETE
-            if (tasksToDelete.length > 0) {
-                const idsToDelete = tasksToDelete.map(t => t.id);
-                const { error: delErr } = await supabase.from('tasks').delete().in('id', idsToDelete);
-                if (delErr) console.error("Error deleting tasks:", delErr);
+            if (sectionsToDelete.length > 0) {
+                const idsToDelete = sectionsToDelete.map(t => t.id);
+                const { error: delErr } = await supabase.from('project_tasks').delete().in('id', idsToDelete);
+                if (delErr) console.error("Error deleting project sections:", delErr);
                 else {
-                    setTasks(prev => prev.filter(t => !idsToDelete.includes(t.id)));
+                    setProjectTasks(prev => prev.filter(t => !idsToDelete.includes(t.id)));
                 }
             }
 
             // B. UPDATE
-            for (const t of tasksToUpdate) {
-                const { error: upErr } = await supabase.from('tasks').update({ name: t.name, planned_hours: t.planned_hours }).eq('id', t.id);
-                if (upErr) console.error("Error updating task:", upErr, t);
+            for (const t of sectionsToUpdate) {
+                const payload = {
+                    name: t.name,
+                    planned_hours: Number(t.planned_hours) || 0,
+                    completed_hours: Number(t.completed_hours) || 0
+                };
+                const { error: upErr } = await supabase.from('project_tasks').update(payload).eq('id', t.id);
+                if (upErr) console.error("Error updating project section:", upErr);
                 else {
-                    setTasks(prev => prev.map(old => old.id === t.id ? { ...old, name: t.name, planned_hours: t.planned_hours } : old));
+                    setProjectTasks(prev => prev.map(old => old.id === t.id ? { ...old, ...payload } : old));
                 }
             }
 
             // C. INSERT
-            if (tasksToInsert.length > 0) {
-                const payload = tasksToInsert.map(t => ({
+            if (sectionsToInsert.length > 0) {
+                const payload = sectionsToInsert.map(t => ({
                     name: t.name,
-                    planned_hours: t.planned_hours,
-                    site_id: id,
-                    is_active: true
+                    planned_hours: Number(t.planned_hours) || 0,
+                    completed_hours: Number(t.completed_hours) || 0, // Manual Override
+                    project_id: id
                 }));
-                const { data: inserted, error: insErr } = await supabase.from('tasks').insert(payload).select();
-                if (insErr) console.error("Error inserting tasks:", insErr);
+                const { data: inserted, error: insErr } = await supabase.from('project_tasks').insert(payload).select();
+                if (insErr) console.error("Error inserting project sections:", insErr);
                 else if (inserted) {
-                    setTasks(prev => [...prev, ...inserted]);
-                    // Also update site.tasks in state to include these new real IDs?
-                    // The site.tasks update happens via 'tasks' subscription usually, or we force it here:
+                    const mapped = inserted.map(s => ({ ...s, planned_hours: Number(s.planned_hours), completed_hours: Number(s.completed_hours) }));
+                    setProjectTasks(prev => [...prev, ...mapped]);
                 }
             }
-
-            // Refresh Site's tasks property in state (for convenient access)
-            // We rely on 'tasks' state being source of truth, but 'sites' state often has a 'tasks' property for UI convenience.
-            // Let's re-sync site.tasks
-            // ideally we trigger a fetch or wait for subscription.
-            // For now, let's trust the subscription will catch up or optimistic update above is enough.
         }
 
         if (error) {
             console.error("Error updating site:", error);
             setSites(oldSites); // Rollback
-            setTasks(oldTasks);
+            setProjectTasks(oldProjectTasks);
         } else {
             addLog(`Updated site: ${updates.name || id}`);
         }
@@ -915,29 +949,29 @@ export const AppProvider = ({ children }) => {
                     const sheet = workbook.Sheets[sheetName];
                     const jsonData = XLSX.utils.sheet_to_json(sheet);
 
-                    // Normalize keys: Tache | Heures_prevues | Heures_realisees
+                    // Normalize keys
                     const normalizeKey = (k) => k.toLowerCase().replace(/[^a-z0-9]/g, '');
 
                     let siteTotalPlanned = 0;
-                    let newSessions = [];
-                    let newTasks = [];
-                    let updatedTasks = [];
+                    let processedTasks = [];
 
-                    // Get existing site info for dates
-                    const site = sites.find(s => String(s.id) === String(siteId));
-                    const startDate = site?.start_date ? new Date(site.start_date) : new Date();
+                    const updates = [];
+                    const inserts = [];
+
+                    // Get existing Sections (project_tasks) for this site
+                    const existingSections = projectTasks.filter(pt => String(pt.project_id) === String(siteId));
 
                     // Process each row
                     for (const row of jsonData) {
-                        let name = 'Tâche importée';
+                        let name = 'Section importée';
                         let planned = 0;
-                        let realized = 0;
+                        let completed = 0;
 
                         Object.keys(row).forEach(k => {
                             const nk = normalizeKey(k);
-                            if (nk.includes('tache') || nk.includes('task')) name = row[k];
+                            if (nk.includes('tache') || nk.includes('task') || nk.includes('section')) name = row[k];
                             else if (nk.includes('prevue') || nk.includes('planned')) planned = Number(row[k]) || 0;
-                            else if (nk.includes('realise') || nk.includes('done') || nk.includes('actual')) realized = Number(row[k]) || 0;
+                            else if (nk.includes('realise') || nk.includes('done') || nk.includes('complete')) completed = Number(row[k]) || 0;
                         });
 
                         name = String(name).trim();
@@ -945,81 +979,61 @@ export const AppProvider = ({ children }) => {
 
                         siteTotalPlanned += planned;
 
-                        // 1. Find or Create Task
-                        let task = tasks.find(t => String(t.site_id) === String(siteId) && t.name.toLowerCase() === name.toLowerCase());
-                        let taskId = task?.id;
+                        // Identify if update or insert
+                        const existing = existingSections.find(s => s.name.toLowerCase() === name.toLowerCase());
 
-                        if (task) {
-                            // Update existing task
-                            if (task.planned_hours !== planned) {
-                                const { error } = await supabase.from('tasks').update({ planned_hours: planned }).eq('id', taskId);
-                                if (!error) updatedTasks.push({ ...task, planned_hours: planned });
-                            }
+                        if (existing) {
+                            // Prepare update
+                            updates.push({
+                                id: existing.id,
+                                name, // Keep name consistent
+                                planned_hours: planned,
+                                completed_hours: completed
+                            });
                         } else {
-                            // Create new task
-                            const { data: createdTask, error } = await supabase.from('tasks').insert([{
+                            // Prepare insert
+                            inserts.push({
+                                project_id: siteId,
                                 name,
                                 planned_hours: planned,
-                                site_id: siteId,
-                                is_active: true
-                            }]).select().single();
-
-                            if (createdTask) {
-                                task = createdTask;
-                                taskId = createdTask.id;
-                                newTasks.push(createdTask);
-                            }
+                                completed_hours: completed
+                            });
                         }
+                    }
 
-                        // 2. Create Time Session if realized > 0
-                        if (taskId && realized > 0) {
-                            // Check if a system session already exists for this task to avoid duplicates on re-import?
-                            // For MVP, simplistic check: assume import represents total realized.
-                            // But if user imports twice, we might double count.
-                            // Ideally we should "sync" realized hours.
-                            // Strategy: Delete existing 'manual_import' sessions for this task and recreate?
-                            // Or just add difference?
-                            // User request: "Create historical entry... to make project appear advanced".
-                            // Let's create a single session representing the bulk duration.
+                    // EXECUTE BATCHES
+                    // 1. Inserts
+                    if (inserts.length > 0) {
+                        const { data: inserted, error } = await supabase.from('project_tasks').insert(inserts).select();
+                        if (error) console.error("Error inserting project_tasks:", error);
+                        else if (inserted) {
+                            setProjectTasks(prev => [...prev, ...inserted.map(i => ({ ...i, planned_hours: Number(i.planned_hours), completed_hours: Number(i.completed_hours) }))]);
+                            processedTasks.push(...inserted);
+                        }
+                    }
 
-                            const endDate = new Date(startDate.getTime() + (realized * 3600000));
+                    // 2. Updates
+                    for (const up of updates) {
+                        const { error } = await supabase.from('project_tasks').update({
+                            planned_hours: up.planned_hours,
+                            completed_hours: up.completed_hours
+                        }).eq('id', up.id);
 
-                            const sessionPayload = {
-                                user_id: 'system-import', // Or a valid admin ID? 'system-import' might fail FK if users table enforced.
-                                // If FK enforced, we might need a real user or the current user.
-                                // Let's use currentUser.id but verify.
-                                // Better: Use currentUser.id and add a note "Import Excel".
-                                user_id: currentUser?.id || users[0]?.id, // Fallback
-                                project_id: siteId, // Schema uses project_id or site_id? AppContext uses site_id in standard, but user request said 'project_id'. 
-                                // Checking startTimeSession: uses site_id.
-                                site_id: siteId,
-                                task_id: taskId,
-                                punch_start_at: startDate,
-                                punch_end_at: endDate,
-                                duration_minutes: Math.round(realized * 60), // If column exists
-                                manual_entry: true,
-                                approved: true,
-                                details: `Import Excel: ${realized}h`
-                            };
-
-                            const { data: session, error } = await supabase.from('time_sessions').insert([sessionPayload]).select().single();
-                            if (session) newSessions.push(session);
+                        if (!error) {
+                            setProjectTasks(prev => prev.map(p => p.id === up.id ? { ...p, ...up } : p));
+                            processedTasks.push(up);
                         }
                     }
 
                     // 3. Update Site Total Planned Hours
-                    // We sum ALL tasks again to be safe
-                    const { data: allTasks } = await supabase.from('tasks').select('planned_hours').eq('site_id', siteId);
-                    const totalFromDB = allTasks?.reduce((acc, t) => acc + (t.planned_hours || 0), 0) || siteTotalPlanned;
+                    // We sum ALL project_tasks again to be safe
+                    // Use updated state / memory
+                    const allSiteSections = [...existingSections.filter(e => !updates.find(u => u.id === e.id)), ...processedTasks]; // Merged
+                    const totalFromSections = allSiteSections.reduce((acc, t) => acc + (t.planned_hours || 0), 0);
 
-                    await updateSite(siteId, { planned_hours: totalFromDB });
+                    await updateSite(siteId, { planned_hours: totalFromSections });
 
-                    // Update State
-                    if (newTasks.length > 0) setTasks(prev => [...prev, ...newTasks]);
-                    if (updatedTasks.length > 0) setTasks(prev => prev.map(t => updatedTasks.find(u => u.id === t.id) || t));
-                    if (newSessions.length > 0) setTimeSessions(prev => [...prev, ...newSessions]);
-
-                    resolve({ success: true, tasksCreated: newTasks.length, sessionsCreated: newSessions.length });
+                    resolve({ success: true, count: processedTasks.length });
 
                 } catch (err) {
                     console.error("Import Progress Error:", err);
@@ -1028,6 +1042,53 @@ export const AppProvider = ({ children }) => {
             };
             reader.readAsArrayBuffer(file);
         });
+    };
+
+    const updateProjectTask = async (id, updates) => {
+        // Optimistic
+        const oldState = [...projectTasks];
+        setProjectTasks(prev => prev.map(pt => pt.id === id ? { ...pt, ...updates } : pt));
+
+        let dbUpdates = { ...updates };
+        if (dbUpdates.planned) dbUpdates.planned_hours = dbUpdates.planned;
+        if (dbUpdates.completed) dbUpdates.completed_hours = dbUpdates.completed;
+        delete dbUpdates.planned;
+        delete dbUpdates.completed;
+
+        const { error } = await supabase.from('project_tasks').update(dbUpdates).eq('id', id);
+
+        if (error) {
+            console.error("Error updating project task:", error);
+            setProjectTasks(oldState);
+        } else {
+            if (updates.planned_hours !== undefined) {
+                const siteId = projectTasks.find(pt => pt.id === id)?.project_id;
+                if (siteId) {
+                    const allSiteTasks = projectTasks.filter(pt => pt.project_id === siteId).map(pt => pt.id === id ? { ...pt, ...updates } : pt);
+                    const newTotal = allSiteTasks.reduce((acc, t) => acc + (Number(t.planned_hours) || 0), 0);
+                    updateSite(siteId, { planned_hours: newTotal });
+                }
+            }
+        }
+    };
+
+    const deleteProjectTask = async (id) => {
+        const oldState = [...projectTasks];
+        const taskToDelete = projectTasks.find(pt => pt.id === id);
+        setProjectTasks(prev => prev.filter(pt => pt.id !== id));
+
+        const { error } = await supabase.from('project_tasks').delete().eq('id', id);
+
+        if (error) {
+            setProjectTasks(oldState);
+        } else if (taskToDelete) {
+            const siteId = taskToDelete.project_id;
+            if (siteId) {
+                const allSiteTasks = projectTasks.filter(pt => pt.project_id === siteId && pt.id !== id);
+                const newTotal = allSiteTasks.reduce((acc, t) => acc + (Number(t.planned_hours) || 0), 0);
+                updateSite(siteId, { planned_hours: newTotal });
+            }
+        }
     };
 
     // --- TIME TRACKING ACTIONS ---
@@ -1179,8 +1240,11 @@ export const AppProvider = ({ children }) => {
         lastGeofenceEntry,
         lastGeofenceExit,
         currentGeofenceSiteId,
-        importTasksFromExcel,
-        importProjectProgress
+        importTasksFromExcel, // Legacy
+        importProjectProgress,
+        projectTasks,
+        updateProjectTask, // We focus on this one as requested
+        deleteProjectTask // In case needed
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

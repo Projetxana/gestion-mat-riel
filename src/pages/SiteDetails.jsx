@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { ArrowLeft, MapPin, Hammer, ExternalLink, Clock, BarChart3 } from 'lucide-react';
+import { ArrowLeft, MapPin, Hammer, ExternalLink, Clock, BarChart3, Trash2 } from 'lucide-react';
 import MaterialDetailsModal from '../components/MaterialDetailsModal';
 import SiteFormModal from '../components/SiteFormModal';
 
 const SiteDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { sites, materials, timeSessions, tasks, importTasksFromExcel, importProjectProgress, updateSite, updateTask, addTask } = useAppContext();
+    const {
+        sites, materials,
+        projectTasks, updateProjectTask, deleteProjectTask,
+        importProjectProgress,
+        updateSite
+    } = useAppContext();
     const [selectedTool, setSelectedTool] = useState(null);
     const [isEditingSite, setIsEditingSite] = useState(false);
     const [editPlannedHours, setEditPlannedHours] = useState(0);
@@ -18,10 +23,10 @@ const SiteDetails = () => {
         const file = e.target.files[0];
         if (!file) return;
 
-        if (confirm("Attention : Cet import va créer des sessions de temps 'historiques' et mettre à jour les heures prévues. Continuer ?")) {
+        if (confirm("Cet import va mettre à jour l'avancement (Heures Prévues / Réalisées) des sections. Continuer ?")) {
             const result = await importProjectProgress(site.id, file);
             if (result.success) {
-                alert(`Import réussi !\n${result.tasksCreated} tâches créées\n${result.sessionsCreated} entrées d'historique générées`);
+                alert(`Import réussi ! Données mises à jour.`);
             } else {
                 alert(`Erreur : ${result.error}`);
             }
@@ -31,6 +36,7 @@ const SiteDetails = () => {
 
     const site = sites.find(s => s.id === Number(id));
     const siteTools = materials.filter(m => m.locationType === 'site' && m.locationId === Number(id));
+    const siteSections = projectTasks ? projectTasks.filter(pt => String(pt.project_id) === String(id)) : [];
 
     if (!site) {
         return (
@@ -40,6 +46,10 @@ const SiteDetails = () => {
             </div>
         );
     }
+
+    // Computed Globals
+    const totalPlanned = site.planned_hours || siteSections.reduce((acc, s) => acc + (s.planned_hours || 0), 0);
+    const totalRealized = siteSections.reduce((acc, s) => acc + (s.completed_hours || 0), 0);
 
     return (
         <div>
@@ -93,7 +103,7 @@ const SiteDetails = () => {
             </div>
 
 
-            {/* SUIVI DES HEURES (ADMIN / FOREMAN) */}
+            {/* SUIVI DES HEURES (GLOBAL) */}
             <div className="glass-panel p-8 mb-8 relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-10">
                     <BarChart3 size={100} />
@@ -102,7 +112,7 @@ const SiteDetails = () => {
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold flex items-center gap-2">
                         <Clock className="text-blue-500" />
-                        Suivi des Heures
+                        Suivi Global Avancement
                     </h2>
                     <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition-colors flex items-center gap-2">
                         <span className="hidden sm:inline">Import Avancement</span>
@@ -117,38 +127,14 @@ const SiteDetails = () => {
                             <div className="flex justify-between items-end mb-2">
                                 <span className="text-slate-400 text-sm font-bold uppercase">Progression</span>
                                 <span className="text-2xl font-bold text-blue-400">
-                                    {(() => {
-                                        const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
-                                        const totalMs = siteSessions.reduce((acc, s) => {
-                                            const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
-                                            const end = (s.corrected_end_at || s.punch_end_at)
-                                                ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
-                                                : new Date().getTime();
-                                            return acc + (end - start);
-                                        }, 0);
-                                        const totalHours = Math.round(totalMs / (1000 * 60 * 60));
-                                        const planned = site.planned_hours || 0;
-                                        return planned > 0 ? Math.min(100, Math.round((totalHours / planned) * 100)) : 0;
-                                    })()}%
+                                    {totalPlanned > 0 ? Math.min(100, Math.round((totalRealized / totalPlanned) * 100)) : 0}%
                                 </span>
                             </div>
                             <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
                                 <div
                                     className="h-full bg-gradient-to-r from-blue-600 to-cyan-400"
                                     style={{
-                                        width: `${(() => {
-                                            const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
-                                            const totalMs = siteSessions.reduce((acc, s) => {
-                                                const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
-                                                const end = (s.corrected_end_at || s.punch_end_at)
-                                                    ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
-                                                    : new Date().getTime();
-                                                return acc + (end - start);
-                                            }, 0);
-                                            const totalHours = Math.round(totalMs / (1000 * 60 * 60));
-                                            const planned = site.planned_hours || 0;
-                                            return planned > 0 ? Math.min(100, Math.round((totalHours / planned) * 100)) : 0;
-                                        })()}%`
+                                        width: `${totalPlanned > 0 ? Math.min(100, Math.round((totalRealized / totalPlanned) * 100)) : 0}%`
                                     }}
                                 ></div>
                             </div>
@@ -158,45 +144,23 @@ const SiteDetails = () => {
                             <div className="bg-slate-800/50 p-2 rounded-xl border border-slate-700 text-center">
                                 <p className="text-[10px] text-slate-500 uppercase font-bold">Réalisées</p>
                                 <p className="text-xl font-bold text-white">
-                                    {(() => {
-                                        const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
-                                        const totalMs = siteSessions.reduce((acc, s) => {
-                                            const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
-                                            const end = (s.corrected_end_at || s.punch_end_at)
-                                                ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
-                                                : new Date().getTime();
-                                            return acc + (end - start);
-                                        }, 0);
-                                        return Math.round(totalMs / (1000 * 60 * 60));
-                                    })()} h
+                                    {Math.round(totalRealized)} h
                                 </p>
                             </div>
                             <div className="bg-slate-800/50 p-2 rounded-xl border border-slate-700 text-center">
                                 <p className="text-[10px] text-slate-500 uppercase font-bold">Prévues</p>
-                                <p className="text-xl font-bold text-slate-400">{site.planned_hours || 0} h</p>
+                                <p className="text-xl font-bold text-slate-400">{Math.round(totalPlanned)} h</p>
                             </div>
                             <div className="bg-slate-800/50 p-2 rounded-xl border border-slate-700 text-center">
                                 <p className="text-[10px] text-slate-500 uppercase font-bold">Restantes</p>
                                 <p className="text-xl font-bold text-green-400">
-                                    {(() => {
-                                        const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
-                                        const totalMs = siteSessions.reduce((acc, s) => {
-                                            const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
-                                            const end = (s.corrected_end_at || s.punch_end_at)
-                                                ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
-                                                : new Date().getTime();
-                                            return acc + (end - start);
-                                        }, 0);
-                                        const realized = Math.round(totalMs / (1000 * 60 * 60));
-                                        const planned = site.planned_hours || 0;
-                                        return Math.max(0, planned - realized);
-                                    })()} h
+                                    {Math.max(0, Math.round(totalPlanned - totalRealized))} h
                                 </p>
                             </div>
                         </div>
 
                         {/* RHYTHM INDICATOR */}
-                        {(site.start_date || site.created_at) && site.end_date && site.planned_hours > 0 && (
+                        {(site.start_date || site.created_at) && site.end_date && totalPlanned > 0 && (
                             <div className="mt-4 bg-slate-800/80 p-3 rounded-lg border border-slate-700">
                                 {(() => {
                                     // 1. Calculate Time Totals
@@ -208,24 +172,16 @@ const SiteDetails = () => {
                                     if (end <= start) return null;
 
                                     const totalDays = (end - start) / (1000 * 60 * 60 * 24);
-                                    const elapsedDays = Math.max(0.1, (now - start) / (1000 * 60 * 60 * 24)); // Avoid div by zero, min 0.1 day
+                                    const elapsedDays = Math.max(0.1, (now - start) / (1000 * 60 * 60 * 24)); // Avoid div by zero
 
                                     if (elapsedDays <= 0) return null; // Not started yet
 
                                     // 2. Planned Burn Rate (Hours per Day)
-                                    const plannedHoursPerDay = site.planned_hours / totalDays;
+                                    const plannedHoursPerDay = totalPlanned / totalDays;
 
                                     // 3. Realized Burn Rate (Hours per Day)
-                                    const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
-                                    const totalMs = siteSessions.reduce((acc, s) => {
-                                        const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
-                                        const end = (s.corrected_end_at || s.punch_end_at)
-                                            ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
-                                            : new Date().getTime();
-                                        return acc + (end - start);
-                                    }, 0);
-                                    const totalRealizedHours = totalMs / (1000 * 60 * 60);
-                                    const realizedHoursPerDay = totalRealizedHours / elapsedDays;
+                                    // Based on DECLARED progress (project_tasks), not punches
+                                    const realizedHoursPerDay = totalRealized / elapsedDays;
 
                                     // 4. Comparison Ratio
                                     // If Realized > Planned * 1.15 -> Drift
@@ -278,27 +234,27 @@ const SiteDetails = () => {
                 </div>
             </div>
 
-            {/* SUIVI PLANIFIÉ (Admin / Foreman Only) */}
+            {/* SUIVI PLANIFIÉ (Theoretical) */}
             <div className="glass-panel p-8 mb-8">
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-sm font-bold text-slate-400 uppercase">Suivi Planifié</h3>
+                    <h3 className="text-sm font-bold text-slate-400 uppercase">Suivi Théorique</h3>
                     <button
                         onClick={() => {
                             if (isEditingSite) {
                                 updateSite(site.id, { planned_hours: Number(editPlannedHours) });
                                 setIsEditingSite(false);
                             } else {
-                                setEditPlannedHours(site.planned_hours || 0);
+                                setEditPlannedHours(totalPlanned || 0);
                                 setIsEditingSite(true);
                             }
                         }}
                         className="text-xs bg-slate-800 hover:bg-slate-700 text-blue-400 px-3 py-1 rounded border border-slate-700 transition-colors"
                     >
-                        {isEditingSite ? 'Enregistrer' : 'Modifier Heures'}
+                        {isEditingSite ? 'Enregistrer Global' : 'Modifier Total Prévu'}
                     </button>
                 </div>
                 {(() => {
-                    if (!site.planned_hours || !site.end_date || (!site.start_date && !site.created_at)) {
+                    if (!totalPlanned || !site.end_date || (!site.start_date && !site.created_at)) {
                         return <p className="text-slate-500 text-sm italic">Données insuffisantes (Heures prévues, Date de fin ou Date de début manquantes).</p>;
                     }
 
@@ -307,7 +263,6 @@ const SiteDetails = () => {
                     const endDate = new Date(site.end_date);
                     const today = new Date();
 
-                    // Normalize to set time to midnight to calculate pure days difference
                     startDate.setHours(0, 0, 0, 0);
                     endDate.setHours(0, 0, 0, 0);
                     today.setHours(0, 0, 0, 0);
@@ -319,28 +274,16 @@ const SiteDetails = () => {
 
                     let theoreticalHours = 0;
                     if (today >= endDate) {
-                        theoreticalHours = site.planned_hours;
+                        theoreticalHours = totalPlanned;
                     } else {
-                        const hoursPerDay = site.planned_hours / totalDays;
+                        const hoursPerDay = totalPlanned / totalDays;
                         theoreticalHours = Math.round(hoursPerDay * elapsedDays);
                     }
 
-                    // 2. Realized Hours
-                    const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
-                    const totalMs = siteSessions.reduce((acc, s) => {
-                        const startH = new Date(s.corrected_start_at || s.punch_start_at).getTime();
-                        const endH = (s.corrected_end_at || s.punch_end_at)
-                            ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
-                            : new Date().getTime();
-                        return acc + (endH - startH);
-                    }, 0);
-                    const realizedHours = Math.round(totalMs / (1000 * 60 * 60));
-
                     // 3. Gap Calculation
-                    const gap = realizedHours - theoreticalHours; // Positive = Over-consumption
+                    const gap = totalRealized - theoreticalHours; // Positive = Over-consumption
                     const gapPercent = theoreticalHours > 0 ? (gap / theoreticalHours) : 0;
 
-                    // Color Coding
                     let gapColor = 'text-green-400';
                     let gapBg = 'bg-green-500/10 border-green-500/20';
                     let gapIcon = '✅';
@@ -354,7 +297,7 @@ const SiteDetails = () => {
                         gapBg = 'bg-amber-500/10 border-amber-500/20';
                         gapIcon = '🟠';
                     } else if (gapPercent < -0.10) {
-                        gapColor = 'text-blue-400'; // Under budget (good)
+                        gapColor = 'text-blue-400';
                         gapBg = 'bg-blue-500/10 border-blue-500/20';
                         gapIcon = '❄️';
                     }
@@ -371,7 +314,7 @@ const SiteDetails = () => {
                                         onChange={(e) => setEditPlannedHours(e.target.value)}
                                     />
                                 ) : (
-                                    <p className="text-xl font-mono font-bold text-white">{site.planned_hours} h</p>
+                                    <p className="text-xl font-mono font-bold text-white">{totalPlanned} h</p>
                                 )}
                             </div>
                             <div className="space-y-1 text-center sm:text-left">
@@ -380,12 +323,12 @@ const SiteDetails = () => {
                             </div>
                             <div className="space-y-1 text-center sm:text-left">
                                 <p className="text-xs text-slate-400 uppercase font-bold">Réalisées</p>
-                                <p className="text-xl font-mono font-bold text-white">{realizedHours} h</p>
+                                <p className="text-xl font-mono font-bold text-white">{Math.round(totalRealized)} h</p>
                             </div>
                             <div className="bg-slate-900/50 p-3 rounded-lg text-center min-w-[120px]">
                                 <p className="text-xs text-slate-500 uppercase font-bold mb-1">Écart</p>
                                 <div className={`text-2xl font-bold ${gapColor} flex items-center justify-center gap-2`}>
-                                    <span>{gap > 0 ? '+' : ''}{gap} h</span>
+                                    <span>{gap > 0 ? '+' : ''}{Math.round(gap)} h</span>
                                     <span className="text-sm">{gapIcon}</span>
                                 </div>
                             </div>
@@ -394,124 +337,72 @@ const SiteDetails = () => {
                 })()}
             </div>
 
-            {/* Task Breakdown */}
+            {/* Sections / Lots Breakdown */}
             <div className="glass-panel p-8 mb-8">
                 <div className="flex flex-wrap gap-2 justify-between items-end mb-4">
-                    <h3 className="text-sm font-bold text-slate-400 uppercase">Répartition par tâche</h3>
-                    <div className="flex gap-2">
-                        <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-lg border border-slate-700 transition-colors flex items-center gap-2">
-                            <span>Imp. Excel</span>
-                            <input
-                                type="file"
-                                accept=".xlsx, .xls"
-                                className="hidden"
-                                onChange={async (e) => {
-                                    const file = e.target.files[0];
-                                    if (file) {
-                                        if (window.confirm(`Importer les tâches depuis ${file.name} ?`)) {
-                                            const result = await importTasksFromExcel(Number(id), file);
-                                            if (result.success) alert(`Succès ! ${result.count} tâches importées.`);
-                                            else alert(`Erreur: ${result.error}`);
-                                        }
-                                    }
-                                    e.target.value = '';
-                                }}
-                            />
-                        </label>
-                    </div>
-                </div>
-
-                {/* Add Task Form */}
-                <div className="mb-4 bg-slate-900/30 p-3 rounded-lg border border-slate-800 flex gap-2 items-center">
-                    <input type="text" placeholder="Nouvelle tâche..." id="new-task-name" className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white" />
-                    <input type="number" placeholder="Heures" id="new-task-hours" className="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white" />
-                    <button
-                        onClick={() => {
-                            const nameEl = document.getElementById('new-task-name');
-                            const hoursEl = document.getElementById('new-task-hours');
-                            if (nameEl.value) {
-                                addTask({
-                                    name: nameEl.value,
-                                    planned_hours: Number(hoursEl.value) || 0,
-                                    site_id: Number(id), // Ensuring number type for match
-                                    is_active: true
-                                });
-                                nameEl.value = '';
-                                hoursEl.value = '';
-                            }
-                        }}
-                        className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded font-bold"
-                    >
-                        Ajouter
-                    </button>
+                    <h3 className="text-sm font-bold text-slate-400 uppercase">Détail par Section (Lots)</h3>
                 </div>
 
                 <div className="space-y-3">
                     {/* TABLE HEADER */}
-                    <div className="grid grid-cols-4 gap-4 px-3 py-2 text-[10px] uppercase font-bold text-slate-500">
-                        <div className="col-span-1">Tâche</div>
+                    <div className="grid grid-cols-5 gap-4 px-3 py-2 text-[10px] uppercase font-bold text-slate-500">
+                        <div className="col-span-2">Section</div>
                         <div className="text-right">Prévu</div>
                         <div className="text-right">Réalisé</div>
                         <div className="text-right">Écart</div>
                     </div>
 
                     {(() => {
-                        const siteSessions = timeSessions?.filter(s => String(s.site_id) === String(id)) || [];
-                        const siteSpecificTasks = tasks.filter(t => String(t.site_id) === String(id));
+                        if (siteSections.length === 0) return <p className="text-slate-500 text-sm italic px-3">Aucune section définie.</p>;
 
-                        // Merge tasks from DB and tasks found in sessions (if legacy/global)
-                        const allTaskIds = new Set([
-                            ...siteSpecificTasks.map(t => t.id),
-                            ...siteSessions.map(s => s.task_id)
-                        ]);
+                        // Sort by gap descending (issues first)
+                        const sortedSections = [...siteSections].sort((a, b) => {
+                            const gapA = (a.completed_hours || 0) - (a.planned_hours || 0);
+                            const gapB = (b.completed_hours || 0) - (b.planned_hours || 0);
+                            return gapB - gapA;
+                        });
 
-                        const stats = Array.from(allTaskIds).map(tId => {
-                            const taskDef = tasks.find(t => String(t.id) === String(tId));
-                            const name = taskDef?.name || 'Inconnu';
-                            const planned = taskDef?.planned_hours || 0;
-
-                            const relevantSessions = siteSessions.filter(s => String(s.task_id) === String(tId));
-                            const totalMs = relevantSessions.reduce((acc, s) => {
-                                const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
-                                const end = (s.corrected_end_at || s.punch_end_at)
-                                    ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
-                                    : new Date().getTime();
-                                return acc + (end - start);
-                            }, 0);
-
-                            const realized = Math.round((totalMs / (1000 * 60 * 60)) * 100) / 100; // 2 decimals
+                        return sortedSections.map((section) => {
+                            const realized = section.completed_hours || 0;
+                            const planned = section.planned_hours || 0;
                             const gap = realized - planned;
 
-                            return { name, planned, realized, gap };
-                        }).sort((a, b) => b.realized - a.realized);
-
-                        if (stats.length === 0) return <p className="text-slate-500 text-sm italic px-3">Aucune tâche configurée.</p>;
-
-                        return stats.map((stat, idx) => (
-                            <div key={idx} className="bg-slate-800/50 hover:bg-slate-800 p-3 rounded-lg border border-slate-700 grid grid-cols-4 gap-4 items-center text-sm transition-colors">
-                                <div className="font-medium text-slate-200 truncate" title={stat.name}>{stat.name}</div>
-                                <div className="text-right">
-                                    <input
-                                        type="number"
-                                        className="bg-transparent border-b border-slate-600 w-16 text-right font-mono text-slate-400 focus:text-white focus:border-blue-500 outline-none"
-                                        defaultValue={stat.planned}
-                                        onBlur={(e) => {
-                                            // Find task ID to update
-                                            const t = tasks.find(t => t.name === stat.name && String(t.site_id) === String(id));
-                                            if (t && Number(e.target.value) !== t.planned_hours) {
-                                                updateTask(t.id, { planned_hours: Number(e.target.value) });
-                                            }
-                                        }}
-                                    />
+                            return (
+                                <div key={section.id} className="bg-slate-800/50 hover:bg-slate-800 p-3 rounded-lg border border-slate-700 grid grid-cols-5 gap-4 items-center text-sm transition-colors group">
+                                    <div className="col-span-2 font-medium text-slate-200 truncate" title={section.name}>{section.name}</div>
+                                    <div className="text-right">
+                                        <input
+                                            type="number"
+                                            className="bg-transparent border-b border-slate-600 w-16 text-right font-mono text-slate-400 focus:text-white focus:border-blue-500 outline-none"
+                                            defaultValue={planned}
+                                            onBlur={(e) => {
+                                                if (Number(e.target.value) !== planned) {
+                                                    updateProjectTask(section.id, { planned_hours: Number(e.target.value) });
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="text-right">
+                                        <input
+                                            type="number"
+                                            className="bg-transparent border-b border-slate-600 w-16 text-right font-mono text-white focus:text-blue-400 focus:border-blue-500 outline-none"
+                                            defaultValue={realized}
+                                            onBlur={(e) => {
+                                                if (Number(e.target.value) !== realized) {
+                                                    updateProjectTask(section.id, { completed_hours: Number(e.target.value) });
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                    <div className={`text-right font-mono font-bold ${planned === 0 ? 'text-slate-600' :
+                                        gap > 0 ? 'text-red-400' : 'text-green-400'
+                                        }`}>
+                                        {planned > 0 ? (gap > 0 ? '+' : '') + Math.round(gap * 10) / 10 : '-'}
+                                    </div>
+                                    {/* Optional Delete for non-imported? Or advanced mode? For now, keep simple */}
                                 </div>
-                                <div className="text-right font-mono text-white font-bold">{stat.realized}h</div>
-                                <div className={`text-right font-mono font-bold ${stat.planned === 0 ? 'text-slate-600' :
-                                    stat.gap > 0 ? 'text-red-400' : 'text-green-400'
-                                    }`}>
-                                    {stat.planned > 0 ? (stat.gap > 0 ? '+' : '') + Math.round(stat.gap * 10) / 10 : '-'}
-                                </div>
-                            </div>
-                        ));
+                            );
+                        });
                     })()}
                 </div>
             </div>
