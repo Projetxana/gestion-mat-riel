@@ -8,11 +8,26 @@ import SiteFormModal from '../components/SiteFormModal';
 const SiteDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { sites, materials, timeSessions, tasks, importTasksFromExcel, updateSite, updateTask, addTask } = useAppContext();
+    const { sites, materials, timeSessions, tasks, importTasksFromExcel, importProjectProgress, updateSite, updateTask, addTask } = useAppContext();
     const [selectedTool, setSelectedTool] = useState(null);
     const [isEditingSite, setIsEditingSite] = useState(false);
     const [editPlannedHours, setEditPlannedHours] = useState(0);
     const [showSiteForm, setShowSiteForm] = useState(false);
+
+    const handleImportProgress = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (confirm("Attention : Cet import va créer des sessions de temps 'historiques' et mettre à jour les heures prévues. Continuer ?")) {
+            const result = await importProjectProgress(site.id, file);
+            if (result.success) {
+                alert(`Import réussi !\n${result.tasksCreated} tâches créées\n${result.sessionsCreated} entrées d'historique générées`);
+            } else {
+                alert(`Erreur : ${result.error}`);
+            }
+        }
+        e.target.value = null; // Reset
+    };
 
     const site = sites.find(s => s.id === Number(id));
     const siteTools = materials.filter(m => m.locationType === 'site' && m.locationId === Number(id));
@@ -84,10 +99,16 @@ const SiteDetails = () => {
                     <BarChart3 size={100} />
                 </div>
 
-                <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                    <Clock className="text-blue-500" />
-                    Suivi des Heures
-                </h2>
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                        <Clock className="text-blue-500" />
+                        Suivi des Heures
+                    </h2>
+                    <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-700 transition-colors flex items-center gap-2">
+                        <span className="hidden sm:inline">Import Avancement</span>
+                        <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportProgress} />
+                    </label>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     {/* Main Stats */}
