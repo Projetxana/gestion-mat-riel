@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { ArrowLeft, MapPin, Hammer, ExternalLink, Clock, BarChart3 } from 'lucide-react';
 import MaterialDetailsModal from '../components/MaterialDetailsModal';
+import SiteFormModal from '../components/SiteFormModal';
 
 const SiteDetails = () => {
     const { id } = useParams();
@@ -11,6 +12,7 @@ const SiteDetails = () => {
     const [selectedTool, setSelectedTool] = useState(null);
     const [isEditingSite, setIsEditingSite] = useState(false);
     const [editPlannedHours, setEditPlannedHours] = useState(0);
+    const [showSiteForm, setShowSiteForm] = useState(false);
 
     const site = sites.find(s => s.id === Number(id));
     const siteTools = materials.filter(m => m.locationType === 'site' && m.locationId === Number(id));
@@ -55,6 +57,12 @@ const SiteDetails = () => {
                             )}
                         </div>
                     </div>
+                    <button
+                        onClick={() => setShowSiteForm(true)}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg text-sm font-medium border border-slate-700 transition-colors"
+                    >
+                        Modifier
+                    </button>
                 </div>
 
                 <div className="flex gap-8 mt-8 border-t border-slate-800 pt-6">
@@ -520,6 +528,12 @@ const SiteDetails = () => {
                 <MaterialDetailsModal
                     tool={selectedTool}
                     onClose={() => setSelectedTool(null)}
+                />
+            )}
+            {showSiteForm && (
+                <SiteFormModal
+                    siteToEdit={site}
+                    onClose={() => setShowSiteForm(false)}
                 />
             )}
         </div>

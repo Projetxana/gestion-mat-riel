@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Save, Trash2, Plus, Upload } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
-const AddSiteModal = ({ onClose }) => {
-    const { addSite } = useAppContext();
+const SiteFormModal = ({ onClose, siteToEdit = null }) => {
+    const { addSite, updateSite } = useAppContext();
+    const isEditing = !!siteToEdit;
 
     // Step 1: Project Info
     const [projectInfo, setProjectInfo] = useState({
@@ -11,21 +12,46 @@ const AddSiteModal = ({ onClose }) => {
         address: '',
         start_date: '',
         end_date: '',
-        planned_hours: 0, // Will be calculated from tasks
         status: 'active'
     });
 
     // Step 2: Tasks
-    const [tasks, setTasks] = useState([
-        { id: 't1', name: 'Installation', planned_hours: 0 },
-        { id: 't2', name: 'Inspection', planned_hours: 0 },
-        { id: 't3', name: 'Maintenance', planned_hours: 0 },
-        { id: 't4', name: 'Transport', planned_hours: 0 },
-        { id: 't5', name: 'Autre', planned_hours: 0 }
-    ]);
-
+    // Tasks structure: { id: string | number, name: string, planned_hours: number, is_new?: boolean, is_deleted?: boolean }
+    const [tasks, setTasks] = useState([]);
     const [newTaskName, setNewTaskName] = useState('');
     const [newTaskHours, setNewTaskHours] = useState('');
+
+    // Load initial data if editing
+    useEffect(() => {
+        if (isEditing && siteToEdit) {
+            setProjectInfo({
+                name: siteToEdit.name || '',
+                address: siteToEdit.address || '',
+                start_date: siteToEdit.start_date ? siteToEdit.start_date.split('T')[0] : '',
+                end_date: siteToEdit.end_date ? siteToEdit.end_date.split('T')[0] : '',
+                status: siteToEdit.status || 'active'
+            });
+
+            // Load items. If they come from DB, they have numeric IDs. 
+            // We use siteToEdit.tasks which should be populated by AppContext from 'tasks' state
+            if (siteToEdit.tasks) {
+                setTasks(siteToEdit.tasks.map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    planned_hours: Number(t.planned_hours) || 0
+                })));
+            }
+        } else {
+            // Default tasks for new site
+            setTasks([
+                { id: 't1', name: 'Installation', planned_hours: 0 },
+                { id: 't2', name: 'Inspection', planned_hours: 0 },
+                { id: 't3', name: 'Maintenance', planned_hours: 0 },
+                { id: 't4', name: 'Transport', planned_hours: 0 },
+                { id: 't5', name: 'Autre', planned_hours: 0 }
+            ]);
+        }
+    }, [isEditing, siteToEdit]);
 
     // Computed Total
     const totalHours = tasks.reduce((acc, t) => acc + (Number(t.planned_hours) || 0), 0);
@@ -34,28 +60,35 @@ const AddSiteModal = ({ onClose }) => {
         e.preventDefault();
 
         // Validation: At least 1 task
-        if (tasks.length === 0) {
-            alert("Règle Absolue: Un chantier doit avoir au moins une tâche.");
+        if (tasks.filter(t => !t.is_deleted).length === 0) {
+            alert("Règle Absolue: Un chantier doit avoir au moins une tâche active.");
             return;
         }
 
-        addSite({
+        const payload = {
             ...projectInfo,
-            planned_hours: totalHours, // Force sum as source of truth
+            planned_hours: totalHours,
             tasks: tasks.map(t => ({
-                name: t.name,
+                ...t,
                 planned_hours: Number(t.planned_hours) || 0
             }))
-        });
+        };
+
+        if (isEditing) {
+            updateSite(siteToEdit.id, payload);
+        } else {
+            addSite(payload);
+        }
         onClose();
     };
 
     const handleAddTask = () => {
         if (!newTaskName.trim()) return;
         const newTask = {
-            id: `t-${Date.now()}`,
+            id: `temp-${Date.now()}`,
             name: newTaskName.trim(),
-            planned_hours: Number(newTaskHours) || 0
+            planned_hours: Number(newTaskHours) || 0,
+            is_new: true
         };
         setTasks([...tasks, newTask]);
         setNewTaskName('');
@@ -63,7 +96,17 @@ const AddSiteModal = ({ onClose }) => {
     };
 
     const removeTask = (id) => {
-        setTasks(tasks.filter(t => t.id !== id));
+        // If it's a new temporary task, just remove from state
+        if (String(id).startsWith('t') || String(id).startsWith('temp') || String(id).startsWith('import')) {
+            setTasks(tasks.filter(t => t.id !== id));
+        } else {
+            // OLD LOGIC: Mark as deleted? 
+            // ACTUALLY: user wants "Simple Edit". We can just omit it from the list sent to updateSite?
+            // "UpdateSite" needs to know what to delete. 
+            // If we simply remove it from 'tasks' array, updateSite will see it's missing compared to DB and delete it (Diffing).
+            // So removing from array is fine.
+            setTasks(tasks.filter(t => t.id !== id));
+        }
     };
 
     const handleExcelImport = async (e) => {
@@ -95,7 +138,8 @@ const AddSiteModal = ({ onClose }) => {
                     return {
                         id: `import-${Date.now()}-${idx}`,
                         name: String(name),
-                        planned_hours: hours
+                        planned_hours: hours,
+                        is_new: true
                     };
                 });
 
@@ -120,8 +164,12 @@ const AddSiteModal = ({ onClose }) => {
             <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl shadow-2xl animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
                 <div className="flex items-center justify-between p-6 border-b border-slate-800 shrink-0">
                     <div>
-                        <h2 className="text-xl font-bold text-white">Nouveau Chantier</h2>
-                        <p className="text-xs text-slate-400">Configuration du projet et des tâches</p>
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                            {isEditing ? 'Modifier Chantier' : 'Nouveau Chantier'}
+                        </h2>
+                        <p className="text-xs text-slate-400">
+                            {isEditing ? `Édition de ${siteToEdit.name}` : 'Configuration du projet et des tâches'}
+                        </p>
                     </div>
                     <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
                         <X size={24} />
@@ -189,6 +237,7 @@ const AddSiteModal = ({ onClose }) => {
                         <div className="flex justify-between items-center border-b border-blue-500/20 pb-2">
                             <h3 className="text-sm font-bold text-blue-400 uppercase">2. Tâches ({tasks.length})</h3>
                             <label className="cursor-pointer text-[10px] bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded flex items-center gap-1 transition-colors">
+                                <Upload size={12} />
                                 <span>Import Excel</span>
                                 <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleExcelImport} />
                             </label>
@@ -214,7 +263,7 @@ const AddSiteModal = ({ onClose }) => {
                                             />
                                         </div>
                                         <button onClick={() => removeTask(task.id)} className="text-slate-600 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <X size={14} />
+                                            <Trash2 size={14} />
                                         </button>
                                     </div>
                                 ))}
@@ -230,7 +279,7 @@ const AddSiteModal = ({ onClose }) => {
                             <div className="p-2 bg-slate-800 border-t border-slate-700 flex gap-2">
                                 <input
                                     type="text"
-                                    placeholder="Nom tâche..."
+                                    placeholder="Nom nouvelle tâche..."
                                     className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-blue-500"
                                     value={newTaskName}
                                     onChange={(e) => setNewTaskName(e.target.value)}
@@ -249,7 +298,7 @@ const AddSiteModal = ({ onClose }) => {
                                     onClick={handleAddTask}
                                     className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold"
                                 >
-                                    +
+                                    <Plus size={14} />
                                 </button>
                             </div>
                         </div>
@@ -267,11 +316,12 @@ const AddSiteModal = ({ onClose }) => {
                             onClick={handleSubmit}
                             disabled={!projectInfo.name || tasks.length === 0}
                             className={`px-6 py-2 font-bold rounded-lg shadow-lg transition-all text-sm flex items-center gap-2 ${!projectInfo.name || tasks.length === 0
-                                    ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
+                                ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
                                 }`}
                         >
-                            {(!projectInfo.name) ? 'Nom requis' : (tasks.length === 0 ? 'Ajouter une tâche' : 'Créer Chantier')}
+                            <Save size={18} />
+                            {isEditing ? 'Enregistrer Modifications' : 'Créer Chantier'}
                         </button>
                     </div>
                 </div>
@@ -280,4 +330,4 @@ const AddSiteModal = ({ onClose }) => {
     );
 };
 
-export default AddSiteModal;
+export default SiteFormModal;

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList, Image as ImageIcon, Users } from 'lucide-react';
+import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList, Image as ImageIcon, Users, Plus } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import DeliveryNoteModal from '../components/DeliveryNoteModal';
 import DailyReportModal from '../components/DailyReportModal';
 import InvoiceModal from '../components/InvoiceModal';
 import SiteOccupancyModal from '../components/SiteOccupancyModal';
 import ProjectMonitoringModal from '../components/ProjectMonitoringModal';
+import SiteFormModal from '../components/SiteFormModal';
 
 const Dashboard = () => {
     const { materials, sites, addLog, timeSessions, currentUser } = useAppContext();
@@ -17,6 +18,7 @@ const Dashboard = () => {
     const [showInvoiceModal, setShowInvoiceModal] = useState(false);
     const [selectedSiteForOccupancy, setSelectedSiteForOccupancy] = useState(null);
     const [showProjectMonitoring, setShowProjectMonitoring] = useState(false);
+    const [showSiteForm, setShowSiteForm] = useState(false);
 
     // Live View Logic
     const activeSessions = timeSessions.filter(s => s.punch_end_at === null);
@@ -72,12 +74,22 @@ const Dashboard = () => {
 
     return (
         <div className="flex flex-col h-full max-w-lg mx-auto pb-4">
-            {/* Header */}
-            <div className="text-center mb-6 mt-2">
-                <h1 className="text-2xl font-bold text-white mb-1">
-                    Tableau de Bord
-                </h1>
-                <p className="text-sm text-slate-400">Bienvenue</p>
+            {/* Header with Add Site Button for Admins */}
+            <div className="flex items-center justify-between mb-6 mt-2">
+                <div>
+                    <h1 className="text-2xl font-bold text-white mb-1">
+                        Tableau de Bord
+                    </h1>
+                    <p className="text-sm text-slate-400">Bienvenue</p>
+                </div>
+                {(currentUser?.role === 'admin' || currentUser?.role === 'foreman') && (
+                    <button
+                        onClick={() => setShowSiteForm(true)}
+                        className="p-2 bg-blue-600 hover:bg-blue-500 rounded-full text-white shadow-lg shadow-blue-500/30 transition-all active:scale-95"
+                    >
+                        <Plus size={24} />
+                    </button>
+                )}
             </div>
 
             {/* Quick Actions */}
@@ -280,6 +292,7 @@ const Dashboard = () => {
                 />
             )}
             {showProjectMonitoring && <ProjectMonitoringModal onClose={() => setShowProjectMonitoring(false)} />}
+            {showSiteForm && <SiteFormModal onClose={() => setShowSiteForm(false)} />}
         </div>
     );
 };

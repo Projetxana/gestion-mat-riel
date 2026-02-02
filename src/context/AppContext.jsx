@@ -598,14 +598,97 @@ export const AppProvider = ({ children }) => {
     };
 
     const updateSite = async (id, updates) => {
-        // Optimistic
+        // updates potentially contains 'tasks' array which is the desired state of tasks
+        const hasTasksUpdate = Array.isArray(updates.tasks);
+
+        // Optimistic UI Update
         const oldSites = [...sites];
+        const oldTasks = [...tasks];
+
+        // 1. Update Site State
         setSites(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
 
-        const { error } = await supabase.from('sites').update(updates).eq('id', id);
-        if (error) setSites(oldSites);
-        else addLog(`Updated site: ${updates.name || id}`);
+        // 2. Prepare DB Updates for Site
+        const siteUpdates = { ...updates };
+        if (hasTasksUpdate) delete siteUpdates.tasks; // Separate task handling
+
+        // Clean empty dates
+        if (siteUpdates.start_date === '') siteUpdates.start_date = null;
+        if (siteUpdates.end_date === '') siteUpdates.end_date = null;
+
+        let error = null;
+
+        // 3. Perform Site Update
+        if (Object.keys(siteUpdates).length > 0) {
+            const { error: siteErr } = await supabase.from('sites').update(siteUpdates).eq('id', id);
+            if (siteErr) error = siteErr;
+        }
+
+        // 4. Handle Tasks Sync if provided
+        if (!error && hasTasksUpdate) {
+            const newTasksState = updates.tasks;
+            const existingTasks = tasks.filter(t => String(t.site_id) === String(id));
+
+            // Diffing
+            const tasksToInsert = newTasksState.filter(t => String(t.id).startsWith('t') || String(t.id).startsWith('temp') || String(t.id).startsWith('import'));
+            const tasksToUpdate = newTasksState.filter(t => !String(t.id).startsWith('t') && !String(t.id).startsWith('temp') && !String(t.id).startsWith('import'));
+
+            // Tasks to delete are those in existingTasks that are NOT in newTasksState
+            const newIds = new Set(newTasksState.map(t => String(t.id)));
+            const tasksToDelete = existingTasks.filter(t => !newIds.has(String(t.id)));
+
+            // A. DELETE
+            if (tasksToDelete.length > 0) {
+                const idsToDelete = tasksToDelete.map(t => t.id);
+                const { error: delErr } = await supabase.from('tasks').delete().in('id', idsToDelete);
+                if (delErr) console.error("Error deleting tasks:", delErr);
+                else {
+                    setTasks(prev => prev.filter(t => !idsToDelete.includes(t.id)));
+                }
+            }
+
+            // B. UPDATE
+            for (const t of tasksToUpdate) {
+                const { error: upErr } = await supabase.from('tasks').update({ name: t.name, planned_hours: t.planned_hours }).eq('id', t.id);
+                if (upErr) console.error("Error updating task:", upErr, t);
+                else {
+                    setTasks(prev => prev.map(old => old.id === t.id ? { ...old, name: t.name, planned_hours: t.planned_hours } : old));
+                }
+            }
+
+            // C. INSERT
+            if (tasksToInsert.length > 0) {
+                const payload = tasksToInsert.map(t => ({
+                    name: t.name,
+                    planned_hours: t.planned_hours,
+                    site_id: id,
+                    is_active: true
+                }));
+                const { data: inserted, error: insErr } = await supabase.from('tasks').insert(payload).select();
+                if (insErr) console.error("Error inserting tasks:", insErr);
+                else if (inserted) {
+                    setTasks(prev => [...prev, ...inserted]);
+                    // Also update site.tasks in state to include these new real IDs?
+                    // The site.tasks update happens via 'tasks' subscription usually, or we force it here:
+                }
+            }
+
+            // Refresh Site's tasks property in state (for convenient access)
+            // We rely on 'tasks' state being source of truth, but 'sites' state often has a 'tasks' property for UI convenience.
+            // Let's re-sync site.tasks
+            // ideally we trigger a fetch or wait for subscription.
+            // For now, let's trust the subscription will catch up or optimistic update above is enough.
+        }
+
+        if (error) {
+            console.error("Error updating site:", error);
+            setSites(oldSites); // Rollback
+            setTasks(oldTasks);
+        } else {
+            addLog(`Updated site: ${updates.name || id}`);
+        }
     };
+
 
     const deleteSite = async (id) => {
         const oldSites = [...sites];
