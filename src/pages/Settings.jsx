@@ -4,6 +4,8 @@ import { useAppContext } from '../context/AppContext';
 import { Save, UserPlus, Shield, Users } from 'lucide-react';
 import UserModal from '../components/UserModal';
 
+import pkg from '../../package.json';
+
 const Settings = () => {
     const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, dbError } = useAppContext();
     const [localCompanyValues, setLocalCompanyValues] = useState({ name: '', address: '' });
@@ -40,7 +42,7 @@ const Settings = () => {
                 <div>
                     <h1 className="page-title text-slate-800">Paramètres</h1>
                     <p className="text-slate-500">Gérez les détails de l'entreprise et les utilisateurs</p>
-                    <p className="text-slate-500">v0.7.2</p>
+                    <p className="text-slate-500">v{pkg.version}</p>
                 </div>
             </div>
 
@@ -237,7 +239,7 @@ const Settings = () => {
             )}
 
             <div className="text-center text-slate-300 text-sm mt-10">
-                v0.7.2
+                v{pkg.version}
                 <button
                     onClick={async () => {
                         if (!window.confirm("Cela va effacer le cache et recharger l'application. Continuer ?")) return;

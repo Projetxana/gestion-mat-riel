@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import pkg from '../../package.json';
 
 const LoginPage = () => {
     const { login } = useAppContext();
@@ -70,7 +71,7 @@ const LoginPage = () => {
                 </form>
 
                 <div className="mt-8 text-center text-xs text-slate-500">
-                    <p>Antigravity - v0.7.1 (Heures UI Refined)</p>
+                    <p>Antigravity - v{pkg.version}</p>
                 </div>
             </div>
         </div>

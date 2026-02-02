@@ -3,6 +3,7 @@ import { useAppContext } from '../context/AppContext';
 import { Clock, Play, Square, RefreshCw, MapPin, AlertCircle, ChevronRight, ArrowLeft, Calendar, BarChart3 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import SmartCorrectionPopup from '../components/SmartCorrectionPopup';
+import WeeklySummary from '../components/WeeklySummary';
 
 const TimeTracking = () => {
     const {
@@ -368,6 +369,12 @@ const TimeTracking = () => {
                     <p>
                         Bienvenue ! N'oubliez pas de lancer le chrono dès votre arrivée sur le chantier.
                     </p>
+                </div>
+
+                {/* WEEKLY SUMMARY SECTION */}
+                <div className="pt-4 border-t border-slate-200 mt-4">
+                    <h3 className="text-sm font-bold text-slate-500 mb-4 px-1">MES HEURES SEMAINE</h3>
+                    <WeeklySummary sessions={timeSessions} sites={sites} />
                 </div>
             </div>
         );

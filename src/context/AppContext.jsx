@@ -547,6 +547,7 @@ export const AppProvider = ({ children }) => {
         const optimTasks = site.tasks ? site.tasks.map((t, i) => ({
             id: `optim-task-${t.id || i}`,
             name: t.name,
+            planned_hours: Number(t.planned_hours) || 0,
             site_id: tempId,
             is_active: true
         })) : [];
