@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { Plus, MapPin, HardHat, ChevronRight, LayoutGrid, List, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import AddSiteModal from '../components/AddSiteModal';
+import SiteFormModal from '../components/SiteFormModal';
 import SiteDetailsModal from '../components/SiteDetailsModal';
 
 const SitesList = () => {
@@ -186,7 +186,7 @@ const SitesList = () => {
                 </div>
             )}
 
-            {showAddModal && <AddSiteModal onClose={() => setShowAddModal(false)} />}
+            {showAddModal && <SiteFormModal onClose={() => setShowAddModal(false)} />}
             {selectedSite && <SiteDetailsModal site={selectedSite} onClose={() => setSelectedSite(null)} />}
         </div>
     );
