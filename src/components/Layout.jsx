@@ -75,11 +75,6 @@ const Layout = () => {
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row">
-            {/* DEBUG BANNER */}
-            <div className="fixed top-0 left-0 z-[100] bg-purple-600 text-white p-2 text-xs font-bold">
-                DEBUG: Layout Mounted | User: {currentUser?.name || 'Inconnu'}
-            </div>
-
             {/* Mobile Header - Simplified without Menu button */}
             <div className="md:hidden bg-white border-b border-slate-200 p-3 flex items-center justify-center sticky top-0 z-30 shadow-sm">
                 <div className="flex items-center gap-2">

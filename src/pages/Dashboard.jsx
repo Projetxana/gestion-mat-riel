@@ -74,9 +74,6 @@ const Dashboard = () => {
 
     return (
         <div className="flex flex-col h-full max-w-lg mx-auto pb-4">
-            <div className="bg-green-600 text-white p-1 text-xs font-bold mb-2">
-                DEBUG: Dashboard Mounted | Sites: {sites.length} | Tasks: {timeSessions.length}
-            </div>
             {/* Header with Add Site Button for Admins */}
             <div className="flex items-center justify-between mb-6 mt-2">
                 <div>
