@@ -965,10 +965,7 @@ export const AppProvider = ({ children }) => {
                     const workbook = XLSX.read(data, { type: 'array' });
                     const sheetName = workbook.SheetNames[0];
                     const sheet = workbook.Sheets[sheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(sheet);
-
-                    // Normalize keys
-                    const normalizeKey = (k) => k.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
                     let siteTotalPlanned = 0;
                     let processedTasks = [];
@@ -981,19 +978,33 @@ export const AppProvider = ({ children }) => {
                     const existingSections = safeProjectTasks.filter(section => String(section.project_id) === String(siteId));
 
                     // Process each row
-                    for (const row of jsonData) {
-                        let name = 'Section importée';
-                        let planned = 0;
-                        let completed = 0;
+                    for (let i = 0; i < jsonData.length; i++) {
+                        const row = jsonData[i];
+                        if (!Array.isArray(row) || row.length === 0) continue;
 
-                        Object.keys(row).forEach(k => {
-                            const nk = normalizeKey(k);
-                            if (nk.includes('tache') || nk.includes('task') || nk.includes('section')) name = row[k];
-                            else if (nk.includes('prevue') || nk.includes('planned')) planned = Number(row[k]) || 0;
-                            else if (nk.includes('realise') || nk.includes('done') || nk.includes('complete')) completed = Number(row[k]) || 0;
-                        });
+                        const nameRaw = row[0];
+                        // Skip header if detected (soft check) or empty names
+                        if (!nameRaw) continue;
 
-                        name = String(name).trim();
+                        const name = String(nameRaw).trim();
+                        // Skip predictable headers to avoid importing them as tasks
+                        const lowerName = name.toLowerCase();
+                        if (lowerName === 'nom' || lowerName.includes('tache') || lowerName.includes('task') || lowerName.includes('section')) {
+                            // Double check if subsequent columns look like headers too
+                            const col2 = String(row[1] || '').toLowerCase();
+                            if (col2.includes('heure') || col2.includes('hour') || col2.includes('prévu') || col2.includes('planned')) {
+                                continue;
+                            }
+                        }
+
+                        // Strict parsing: A=Name(0), B=Planned(1), C=Realized(2)
+                        let planned = Number(row[1]);
+                        let completed = Number(row[2]);
+
+                        // "Si planned ou realized ne sont pas des nombres : les mettre à 0."
+                        if (isNaN(planned)) planned = 0;
+                        if (isNaN(completed)) completed = 0;
+
                         if (!name) continue;
 
                         siteTotalPlanned += planned;
