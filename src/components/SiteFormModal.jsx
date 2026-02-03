@@ -136,8 +136,12 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                     }
 
                     // Strict parsing: A=Name, B=Planned, C=Completed
-                    let planned = Number(row[1]);
-                    let completed = Number(row[2]);
+                    // FIX: Handle commas and ensure number
+                    let plannedStr = String(row[1] || '0').replace(',', '.');
+                    let completedStr = String(row[2] || '0').replace(',', '.');
+
+                    let planned = Number(plannedStr);
+                    let completed = Number(completedStr);
 
                     if (isNaN(planned)) planned = 0;
                     if (isNaN(completed)) completed = 0;
@@ -283,18 +287,24 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                                         </div>
                                         <div className="col-span-2">
                                             <input
-                                                type="number"
+                                                type="text" inputMode="decimal"
                                                 className="w-full bg-slate-900 border border-slate-700 rounded px-1 text-right text-xs text-slate-300 font-mono focus:border-blue-500 outline-none"
-                                                value={section.planned_hours}
-                                                onChange={(e) => updateSection(section.id, 'planned_hours', Number(e.target.value))}
+                                                value={Number(section.planned_hours || 0)}
+                                                onChange={(e) => {
+                                                    const v = e.target.value.replace(',', '.');
+                                                    if (!isNaN(v)) updateSection(section.id, 'planned_hours', Number(v));
+                                                }}
                                             />
                                         </div>
                                         <div className="col-span-2">
                                             <input
-                                                type="number"
+                                                type="text" inputMode="decimal"
                                                 className="w-full bg-slate-900 border border-slate-700 rounded px-1 text-right text-xs text-blue-400 font-mono focus:border-blue-500 outline-none"
-                                                value={section.completed_hours}
-                                                onChange={(e) => updateSection(section.id, 'completed_hours', Number(e.target.value))}
+                                                value={Number(section.completed_hours || 0)}
+                                                onChange={(e) => {
+                                                    const v = e.target.value.replace(',', '.');
+                                                    if (!isNaN(v)) updateSection(section.id, 'completed_hours', Number(v));
+                                                }}
                                             />
                                         </div>
                                         <div className="col-span-2 flex justify-end">
@@ -325,21 +335,21 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                                 </div>
                                 <div className="col-span-2">
                                     <input
-                                        type="number"
+                                        type="text" inputMode="decimal"
                                         placeholder="Prévu"
                                         className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-blue-500"
                                         value={newPlanHours}
-                                        onChange={(e) => setNewPlanHours(e.target.value)}
+                                        onChange={(e) => setNewPlanHours(e.target.value.replace(',', '.'))}
                                         onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
                                     />
                                 </div>
                                 <div className="col-span-2">
                                     <input
-                                        type="number"
+                                        type="text" inputMode="decimal"
                                         placeholder="Fait"
                                         className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-blue-500"
                                         value={newDoneHours}
-                                        onChange={(e) => setNewDoneHours(e.target.value)}
+                                        onChange={(e) => setNewDoneHours(e.target.value.replace(',', '.'))}
                                         onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
                                     />
                                 </div>

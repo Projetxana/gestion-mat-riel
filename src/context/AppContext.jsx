@@ -998,8 +998,12 @@ export const AppProvider = ({ children }) => {
                         }
 
                         // Strict parsing: A=Name(0), B=Planned(1), C=Realized(2)
-                        let planned = Number(row[1]);
-                        let completed = Number(row[2]);
+                        // FIX: Handle commas and ensure number
+                        let plannedStr = String(row[1] || '0').replace(',', '.');
+                        let completedStr = String(row[2] || '0').replace(',', '.');
+
+                        let planned = Number(plannedStr);
+                        let completed = Number(completedStr);
 
                         // "Si planned ou realized ne sont pas des nombres : les mettre à 0."
                         if (isNaN(planned)) planned = 0;
