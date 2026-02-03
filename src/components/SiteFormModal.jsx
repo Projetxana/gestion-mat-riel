@@ -115,29 +115,40 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                 const workbook = XLSX.read(data, { type: 'array' });
                 const sheetName = workbook.SheetNames[0];
                 const sheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(sheet);
+                const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-                const normalizeKey = (k) => k.toLowerCase().replace(/[^a-z0-9]/g, '');
+                const newItems = [];
+                for (let i = 0; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    if (!Array.isArray(row) || row.length === 0) continue;
 
-                const newItems = jsonData.map((row, idx) => {
-                    let name = 'Section Importée';
-                    let planned = 0;
-                    let completed = 0;
+                    const nameRaw = row[0];
+                    if (!nameRaw) continue;
 
-                    Object.keys(row).forEach(k => {
-                        const nk = normalizeKey(k);
-                        if (nk.includes('tache') || nk.includes('section')) name = row[k];
-                        else if (nk.includes('prevue') || nk.includes('planned')) planned = Number(row[k]) || 0;
-                        else if (nk.includes('realise') || nk.includes('completed')) completed = Number(row[k]) || 0;
-                    });
+                    const name = String(nameRaw).trim();
+                    const lowerName = name.toLowerCase();
+                    // Skip headers
+                    if (lowerName === 'nom' || lowerName.includes('tache') || lowerName.includes('task') || lowerName.includes('section')) {
+                        const col2 = String(row[1] || '').toLowerCase();
+                        if (col2.includes('heure') || col2.includes('hour') || col2.includes('prévu') || col2.includes('planned')) {
+                            continue;
+                        }
+                    }
 
-                    return {
-                        id: `import-${Date.now()}-${idx}`,
-                        name: String(name),
+                    // Strict parsing: A=Name, B=Planned, C=Completed
+                    let planned = Number(row[1]);
+                    let completed = Number(row[2]);
+
+                    if (isNaN(planned)) planned = 0;
+                    if (isNaN(completed)) completed = 0;
+
+                    newItems.push({
+                        id: `import-${Date.now()}-${i}`,
+                        name: name,
                         planned_hours: planned,
                         completed_hours: completed
-                    };
-                });
+                    });
+                }
 
                 if (newItems.length > 0) {
                     if (window.confirm(`Ajouter ${newItems.length} sections depuis Excel ?`)) {
