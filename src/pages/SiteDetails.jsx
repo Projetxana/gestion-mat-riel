@@ -36,7 +36,9 @@ const SiteDetails = () => {
 
     const site = sites.find(s => s.id === Number(id));
     const siteTools = materials.filter(m => m.locationType === 'site' && m.locationId === Number(id));
-    const siteSections = projectTasks ? projectTasks.filter(pt => String(pt.project_id) === String(id)) : [];
+    // Safe access and renamed variable
+    const safeProjectTasks = projectTasks ?? [];
+    const siteSections = safeProjectTasks.filter(section => String(section.project_id) === String(id));
 
     if (!site) {
         return (

@@ -184,141 +184,158 @@ export const AppProvider = ({ children }) => {
     };
 
     const fetchData = async () => {
-        // Mock Hilti Data - waiting for CSV import
-        setHiltiTools([
-            { id: 1, name: 'TE 6-A36', serial_number: '12345', qr_code: 'H-001', assigned_to: '1', status: 'ok' },
-            { id: 2, name: 'PM 40-MG', serial_number: '67890', qr_code: 'H-002', assigned_to: '1', status: 'ok' },
-            { id: 3, name: 'DD 150-U', serial_number: '54321', qr_code: 'H-003', assigned_to: '2', status: 'repair' },
-        ]);
+        try {
+            // Mock Hilti Data - waiting for CSV import
+            setHiltiTools([
+                { id: 1, name: 'TE 6-A36', serial_number: '12345', qr_code: 'H-001', assigned_to: '1', status: 'ok' },
+                { id: 2, name: 'PM 40-MG', serial_number: '67890', qr_code: 'H-002', assigned_to: '1', status: 'ok' },
+                { id: 3, name: 'DD 150-U', serial_number: '54321', qr_code: 'H-003', assigned_to: '2', status: 'repair' },
+            ]);
 
-        const { data: m, error: matError } = await supabase.from('materials').select('*');
-        if (matError) {
-            console.error("Error fetching materials:", matError);
-            setDbError(`Materials Error: ${matError.message}`);
-        }
-        if (m) setMaterials(m.map(item => ({
-            ...item,
-            serialNumber: item.serial_number,
-            qrCode: item.qr_code,
-            locationType: item.location_type,
-            locationId: item.location_id
-        })));
-
-        const { data: s, error: siteError } = await supabase.from('sites').select('*');
-        if (siteError) {
-            console.error("Error fetching sites:", siteError);
-            setDbError(`Sites Error: ${siteError.message}`);
-        }
-        if (s) setSites(s);
-
-        const { data: u, error: userError } = await supabase.from('users').select('*');
-        if (userError) {
-            console.error("Error fetching users:", userError);
-            setDbError(userError.message);
-        }
-
-        let loadedUsers = u || [];
-
-
-
-
-
-        // --- SEED HILTI USERS IF MISSING ---
-        // This ensures the users from the CSV exist in our app
-        const newUsers = [];
-        for (const userName of initialHiltiUsers) {
-            // Check if user exists (Normalized check to allow name corrections in DB)
-            const exists = loadedUsers.some(user => normalizeName(user.name) === normalizeName(userName));
-
-            if (!exists) {
-                // Create a placeholder user
-                const newUser = {
-                    id: `generated-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    name: userName,
-                    email: `${userName.toLowerCase().replace(/ /g, '.')}@antigravity.fake`,
-                    role: 'user',
-                    must_change_password: true,
-                    password: 'password123' // default for generated
-                };
-                newUsers.push(newUser);
+            const { data: m, error: matError } = await supabase.from('materials').select('*');
+            if (matError) {
+                console.error("Error fetching materials:", matError);
+                setDbError(`Materials Error: ${matError.message}`);
             }
-        }
+            if (m) setMaterials(m.map(item => ({
+                ...item,
+                serialNumber: item.serial_number,
+                qrCode: item.qr_code,
+                locationType: item.location_type,
+                locationId: item.location_id
+            })));
 
-        if (newUsers.length > 0) {
-            // We add them to state. Ideally we should save them to DB too, but for now state is enough for the session
-            // To persist, we would do: await supabase.from('users').insert(newUsers);
-            // Let's just create them in memory for now to keep it snappy and avoid massive writes on reload
-            loadedUsers = [...loadedUsers, ...newUsers];
-        }
-        setUsers(loadedUsers);
-
-        // --- LOAD HILTI TOOLS ---
-        // Map assigned_to_name -> assigned_to (ID) using the same normalized check
-        const mappedHiltiTools = initialHiltiTools.map(tool => {
-            const assignee = loadedUsers.find(user => normalizeName(user.name) === normalizeName(tool.assigned_to_name));
-            return {
-                ...tool,
-                assigned_to: assignee ? assignee.id : 'unassigned'
-            };
-        });
-        setHiltiTools(mappedHiltiTools);
-
-        const { data: l } = await supabase.from('logs').select('*').order('timestamp', { ascending: false });
-        if (l) setLogs(l.map(item => ({ ...item, userId: item.user_id })));
-
-        // --- LOAD TASKS & SESSIONS ---
-        const { data: t } = await supabase.from('tasks').select('*').order('id');
-        let allTasks = [];
-
-        if (t && t.length > 0) {
-            setTasks(t);
-            allTasks = t;
-        } else {
-            // Auto-seed tasks if missing (Client-side fallback/init)
-            const initialTasks = [
-                { name: 'Installation' }, { name: 'Inspection' },
-                { name: 'Maintenance' }, { name: 'Transport' }, { name: 'Autre' }
-            ];
-            // Try to insert them if table exists but empty
-            const { data: newTasks, error: seedError } = await supabase.from('tasks').insert(initialTasks).select();
-            if (newTasks) {
-                setTasks(newTasks);
-                allTasks = newTasks;
-            } else {
-                // Fallback if table doesn't exist yet (Mock mode preventing crash)
-                const mockTasks = initialTasks.map((task, i) => ({ id: i + 1, ...task }));
-                setTasks(mockTasks);
-                allTasks = mockTasks;
+            let loadedSites = [];
+            const { data: s, error: siteError } = await supabase.from('sites').select('*');
+            if (siteError) {
+                console.error("Error fetching sites:", siteError);
+                setDbError(`Sites Error: ${siteError.message}`);
             }
-        }
+            if (s) loadedSites = s;
 
-        // Map Tasks to Sites (so site.tasks is populated)
-        if (s && allTasks.length > 0) {
-            setSites(prev => prev.map(site => {
-                // strict: tasks with this site_id. 
-                // If none, do we fall back? User said "Uniquement". 
-                // But for migration transition, if site has NO specific tasks, maybe show global?
-                // Logic: If specific tasks exist, use them. Else use Global (site_id is null).
-                const specificTasks = allTasks.filter(task => String(task.site_id) === String(site.id));
-                const globalTasks = allTasks.filter(task => !task.site_id);
-                const relatedProjectTasks = pt ? pt.filter(t => String(t.project_id) === String(site.id)) : [];
+            const { data: u, error: userError } = await supabase.from('users').select('*');
+            if (userError) {
+                console.error("Error fetching users:", userError);
+                setDbError(userError.message);
+            }
 
+            let loadedUsers = u || [];
+
+            // --- SEED HILTI USERS IF MISSING ---
+            // This ensures the users from the CSV exist in our app
+            const newUsers = [];
+            for (const userName of initialHiltiUsers) {
+                // Check if user exists (Normalized check to allow name corrections in DB)
+                const exists = loadedUsers.some(user => normalizeName(user.name) === normalizeName(userName));
+
+                if (!exists) {
+                    // Create a placeholder user
+                    const newUser = {
+                        id: `generated-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        name: userName,
+                        email: `${userName.toLowerCase().replace(/ /g, '.')}@antigravity.fake`,
+                        role: 'user',
+                        must_change_password: true,
+                        password: 'password123' // default for generated
+                    };
+                    newUsers.push(newUser);
+                }
+            }
+
+            if (newUsers.length > 0) {
+                loadedUsers = [...loadedUsers, ...newUsers];
+            }
+            setUsers(loadedUsers);
+
+            // --- LOAD HILTI TOOLS ---
+            const mappedHiltiTools = initialHiltiTools.map(tool => {
+                const assignee = loadedUsers.find(user => normalizeName(user.name) === normalizeName(tool.assigned_to_name));
                 return {
-                    ...site,
-                    tasks: specificTasks.length > 0 ? specificTasks : globalTasks,
-                    project_tasks: relatedProjectTasks // Allow access to sections
+                    ...tool,
+                    assigned_to: assignee ? assignee.id : 'unassigned'
                 };
-            }));
-        }
+            });
+            setHiltiTools(mappedHiltiTools);
 
-        const { data: sessions, error: sessError } = await supabase.from('time_sessions').select('*').order('punch_start_at', { ascending: false });
-        if (sessions) setTimeSessions(sessions);
-        if (sessError && sessError.code !== 'PGRST116') { // Ignore if table missing
-            console.log("Time Sessions table missing or empty");
-        }
+            const { data: l } = await supabase.from('logs').select('*').order('timestamp', { ascending: false });
+            if (l) setLogs(l.map(item => ({ ...item, userId: item.user_id })));
 
-        const { data: c } = await supabase.from('company_info').select('*').single();
-        if (c) setCompanyInfo(c);
+            // --- LOAD PROJECT TASKS (SECTIONS) ---
+            const { data: pt, error: ptError } = await supabase.from('project_tasks').select('*');
+            if (ptError) console.error("Error fetching project_tasks:", ptError);
+
+            let loadedProjectsTasks = [];
+            if (pt) {
+                loadedProjectsTasks = pt.map(item => ({ ...item, planned_hours: Number(item.planned_hours) || 0, completed_hours: Number(item.completed_hours) || 0 }));
+                setProjectTasks(loadedProjectsTasks);
+            }
+
+            // --- LOAD TASKS & SESSIONS ---
+            const { data: t } = await supabase.from('tasks').select('*').order('id');
+            let allTasks = [];
+
+            if (t && t.length > 0) {
+                setTasks(t);
+                allTasks = t;
+            } else {
+                // Auto-seed tasks if missing (Client-side fallback/init)
+                const initialTasks = [
+                    { name: 'Installation' }, { name: 'Inspection' },
+                    { name: 'Maintenance' }, { name: 'Transport' }, { name: 'Autre' }
+                ];
+                // Try to insert them if table exists but empty
+                const { data: newTasks, error: seedError } = await supabase.from('tasks').insert(initialTasks).select();
+                if (newTasks) {
+                    setTasks(newTasks);
+                    allTasks = newTasks;
+                } else {
+                    // Fallback if table doesn't exist yet (Mock mode preventing crash)
+                    const mockTasks = initialTasks.map((task, i) => ({ id: i + 1, ...task }));
+                    setTasks(mockTasks);
+                    allTasks = mockTasks;
+                }
+            }
+
+            // Map Tasks to Sites (so site.tasks is populated)
+            // Use loadedSites local variable for safety
+            if (loadedSites.length > 0) {
+                const mappedSites = loadedSites.map(site => {
+                    try {
+                        const siteIdStr = String(site.id);
+                        // Logic: If specific tasks exist, use them. Else use Global (site_id is null).
+                        const specificTasks = Array.isArray(allTasks) ? allTasks.filter(task => String(task.site_id) === siteIdStr) : [];
+                        const globalTasks = Array.isArray(allTasks) ? allTasks.filter(task => !task.site_id) : [];
+
+                        const relatedProjectTasks = loadedProjectsTasks.filter(t => String(t.project_id) === siteIdStr);
+
+                        return {
+                            ...site,
+                            tasks: specificTasks.length > 0 ? specificTasks : globalTasks,
+                            project_tasks: relatedProjectTasks // Allow access to sections
+                        };
+                    } catch (err) {
+                        console.error("Error mapping site tasks:", err, site);
+                        return site;
+                    }
+                });
+                setSites(mappedSites);
+            } else {
+                setSites([]);
+            }
+
+            const { data: sessions, error: sessError } = await supabase.from('time_sessions').select('*').order('punch_start_at', { ascending: false });
+            if (sessions) setTimeSessions(sessions);
+            if (sessError && sessError.code !== 'PGRST116') { // Ignore if table missing
+                console.log("Time Sessions table missing or empty");
+            }
+
+            const { data: c } = await supabase.from('company_info').select('*').single();
+            if (c) setCompanyInfo(c);
+
+        } catch (globalErr) {
+            console.error("CRITICAL ERROR IN FETCHDATA:", globalErr);
+            setDbError(`Critical Data Error: ${globalErr.message}`);
+        }
     };
 
 
@@ -664,7 +681,8 @@ export const AppProvider = ({ children }) => {
         // 4. Handle Sections Sync if provided
         if (!error && hasSectionsUpdate) {
             const newSectionsState = updates.project_tasks;
-            const existingSections = projectTasks.filter(pt => String(pt.project_id) === String(id));
+            const safeProjectTasks = projectTasks ?? [];
+            const existingSections = safeProjectTasks.filter(section => String(section.project_id) === String(id));
 
             // Diffing
             const sectionsToInsert = newSectionsState.filter(t => String(t.id).startsWith('temp') || String(t.id).startsWith('import'));
@@ -959,7 +977,8 @@ export const AppProvider = ({ children }) => {
                     const inserts = [];
 
                     // Get existing Sections (project_tasks) for this site
-                    const existingSections = projectTasks.filter(pt => String(pt.project_id) === String(siteId));
+                    const safeProjectTasks = projectTasks ?? [];
+                    const existingSections = safeProjectTasks.filter(section => String(section.project_id) === String(siteId));
 
                     // Process each row
                     for (const row of jsonData) {
@@ -1046,8 +1065,8 @@ export const AppProvider = ({ children }) => {
 
     const updateProjectTask = async (id, updates) => {
         // Optimistic
-        const oldState = [...projectTasks];
-        setProjectTasks(prev => prev.map(pt => pt.id === id ? { ...pt, ...updates } : pt));
+        const oldState = [...(projectTasks ?? [])];
+        setProjectTasks(prev => (prev ?? []).map(section => section.id === id ? { ...section, ...updates } : section));
 
         let dbUpdates = { ...updates };
         if (dbUpdates.planned) dbUpdates.planned_hours = dbUpdates.planned;
@@ -1062,9 +1081,10 @@ export const AppProvider = ({ children }) => {
             setProjectTasks(oldState);
         } else {
             if (updates.planned_hours !== undefined) {
-                const siteId = projectTasks.find(pt => pt.id === id)?.project_id;
+                const safeProjectTasks = projectTasks ?? [];
+                const siteId = safeProjectTasks.find(section => section.id === id)?.project_id;
                 if (siteId) {
-                    const allSiteTasks = projectTasks.filter(pt => pt.project_id === siteId).map(pt => pt.id === id ? { ...pt, ...updates } : pt);
+                    const allSiteTasks = safeProjectTasks.filter(section => section.project_id === siteId).map(section => section.id === id ? { ...section, ...updates } : section);
                     const newTotal = allSiteTasks.reduce((acc, t) => acc + (Number(t.planned_hours) || 0), 0);
                     updateSite(siteId, { planned_hours: newTotal });
                 }
@@ -1073,9 +1093,10 @@ export const AppProvider = ({ children }) => {
     };
 
     const deleteProjectTask = async (id) => {
-        const oldState = [...projectTasks];
-        const taskToDelete = projectTasks.find(pt => pt.id === id);
-        setProjectTasks(prev => prev.filter(pt => pt.id !== id));
+        const safeProjectTasks = projectTasks ?? [];
+        const oldState = [...safeProjectTasks];
+        const taskToDelete = safeProjectTasks.find(section => section.id === id);
+        setProjectTasks(prev => (prev ?? []).filter(section => section.id !== id));
 
         const { error } = await supabase.from('project_tasks').delete().eq('id', id);
 
@@ -1084,7 +1105,8 @@ export const AppProvider = ({ children }) => {
         } else if (taskToDelete) {
             const siteId = taskToDelete.project_id;
             if (siteId) {
-                const allSiteTasks = projectTasks.filter(pt => pt.project_id === siteId && pt.id !== id);
+                const safeProjectTasks = projectTasks ?? [];
+                const allSiteTasks = safeProjectTasks.filter(section => section.project_id === siteId && section.id !== id);
                 const newTotal = allSiteTasks.reduce((acc, t) => acc + (Number(t.planned_hours) || 0), 0);
                 updateSite(siteId, { planned_hours: newTotal });
             }

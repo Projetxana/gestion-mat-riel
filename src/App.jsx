@@ -45,16 +45,20 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-8 text-white">
-          <h1 className="text-2xl font-bold text-red-500 mb-4">Une erreur est survenue</h1>
-          <pre className="bg-slate-900 p-4 rounded text-sm overflow-auto">
-            {this.state.error && this.state.error.toString()}
-          </pre>
+        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-8 text-white">
+          <h1 className="text-4xl font-bold text-red-500 mb-6">Une erreur est survenue</h1>
+          <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl max-w-2xl w-full overflow-auto max-h-[50vh] mb-6">
+            <p className="font-mono text-red-400 mb-2">Message d'erreur :</p>
+            <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
+              {this.state.error && this.state.error.toString()}
+              {this.state.error?.stack && `\n\n${this.state.error.stack}`}
+            </pre>
+          </div>
           <button
             onClick={() => window.location.href = '/'}
-            className="mt-4 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
+            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-bold transition-colors"
           >
-            Retour à l'accueil
+            Recharger l'application
           </button>
         </div>
       );
@@ -96,14 +100,14 @@ const AppRoutes = () => {
 
 function App() {
   return (
-    <AppProvider>
-      <ReloadPrompt />
-      <BrowserRouter>
-        <ErrorBoundary>
+    <ErrorBoundary>
+      <AppProvider>
+        <ReloadPrompt />
+        <BrowserRouter>
           <AppRoutes />
-        </ErrorBoundary>
-      </BrowserRouter>
-    </AppProvider>
+        </BrowserRouter>
+      </AppProvider>
+    </ErrorBoundary>
   );
 }
 

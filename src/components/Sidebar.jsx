@@ -11,7 +11,6 @@ const Sidebar = ({ isOpen, onClose }) => {
         { icon: Hammer, label: 'Matériel', path: '/material' },
         { icon: HardHat, label: 'Chantiers', path: '/sites' },
         { icon: ClipboardList, label: 'Journal', path: '/journal' },
-        { icon: ClipboardList, label: 'Journal', path: '/journal' },
         { icon: Clock, label: 'Heures', path: '/hours' },
         { icon: Settings, label: 'Paramètres', path: '/settings' },
     ];
