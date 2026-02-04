@@ -112,4 +112,4 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 16:30 - GLOBAL FIX: Strict Imports & Hour Sums
+// Force Vercel Deploy: 2026-02-04 16:45 - ARCHITECTURE FIX: section_id FK + Real-time Sync

@@ -1119,7 +1119,7 @@ export const AppProvider = ({ children }) => {
     };
 
     // --- TIME TRACKING ACTIONS ---
-    const startTimeSession = async (siteId, taskId, gpsData = null) => {
+    const startTimeSession = async (siteId, sectionId, gpsData = null) => {
         if (!currentUser) return;
 
         // 1. Verify no active session
@@ -1137,7 +1137,7 @@ export const AppProvider = ({ children }) => {
         const payload = {
             user_id: currentUser.id,
             site_id: siteId,
-            task_id: taskId,
+            section_id: sectionId, // ✅ CHANGED: Use section_id FK to project_tasks
             punch_start_at: timestamp,
             gps_first_entry_at: gpsData?.entryAt || null,
             manual_entry: false
@@ -1154,8 +1154,8 @@ export const AppProvider = ({ children }) => {
 
             // Log
             const site = sites.find(s => String(s.id) === String(siteId));
-            const task = tasks.find(t => String(t.id) === String(taskId));
-            addLog(`GOPUNCH: ${currentUser.name} started ${task?.name} at ${site?.name}`);
+            const section = projectTasks.find(pt => String(pt.id) === String(sectionId)); // ✅ CHANGED: Use projectTasks
+            addLog(`PUNCH: ${currentUser.name} → ${section?.name || 'Section'} @ ${site?.name}`);
             return { success: true };
         } else {
             setTimeSessions(prev => prev.filter(s => s.id !== tempId));
@@ -1193,19 +1193,19 @@ export const AppProvider = ({ children }) => {
     };
 
     // Smart helper: Switch = End current + Start new
-    const switchTask = async (currentSessionId, siteId, newTaskId, gpsData = null) => {
+    const switchTask = async (currentSessionId, siteId, newSectionId, gpsData = null) => {
         const endResult = await endTimeSession(currentSessionId, gpsData);
         if (endResult.success) {
-            return await startTimeSession(siteId, newTaskId, gpsData);
+            return await startTimeSession(siteId, newSectionId, gpsData);
         }
         return endResult;
     };
 
-    const logManualTime = async (siteId, taskId, startAt, endAt) => {
+    const logManualTime = async (siteId, sectionId, startAt, endAt) => {
         const payload = {
             user_id: currentUser?.id,
             site_id: siteId,
-            task_id: taskId,
+            section_id: sectionId, // ✅ CHANGED: Use section_id
             punch_start_at: startAt,
             punch_end_at: endAt,
             manual_entry: true,

@@ -3,7 +3,7 @@ import { X, Save, Trash2, Plus, Upload } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
 const SiteFormModal = ({ onClose, siteToEdit = null }) => {
-    const { addSite, updateSite } = useAppContext();
+    const { addSite, updateSite, projectTasks } = useAppContext(); // ✅ ADDED projectTasks
     const isEditing = !!siteToEdit;
 
     // Step 1: Project Info
@@ -53,6 +53,24 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
             ]);
         }
     }, [isEditing, siteToEdit]);
+
+    // ✅ FIX #3: Real-time sync with global projectTasks
+    // If another user imports sections while this modal is open, reflect changes
+    useEffect(() => {
+        if (isEditing && siteToEdit && projectTasks) {
+            const liveSections = projectTasks.filter(pt =>
+                String(pt.project_id) === String(siteToEdit.id)
+            );
+            if (liveSections.length > 0) {
+                setSections(liveSections.map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    planned_hours: Number(t.planned_hours) || 0,
+                    completed_hours: Number(t.completed_hours) || 0
+                })));
+            }
+        }
+    }, [projectTasks, isEditing, siteToEdit?.id]);
 
     // Computed Totals
     const totalPlanned = sections.reduce((acc, t) => acc + (Number(t.planned_hours) || 0), 0);

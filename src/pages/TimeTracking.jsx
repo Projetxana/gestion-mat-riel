@@ -187,12 +187,12 @@ const TimeTracking = () => {
         setViewMode('WIZARD_TASK');
     };
 
-    const handleStartSession = async (taskId) => {
+    const handleStartSession = async (sectionId) => {
         setIsSubmitting(true);
         // Use real GPS entry if available
         const gpsEntry = lastGeofenceEntry && String(lastGeofenceEntry.siteId) === String(selectedSiteId) ? lastGeofenceEntry : null;
 
-        const result = await startTimeSession(selectedSiteId, taskId, gpsEntry);
+        const result = await startTimeSession(selectedSiteId, sectionId, gpsEntry);
         setIsSubmitting(false);
         if (result.error) {
             alert(result.error);
