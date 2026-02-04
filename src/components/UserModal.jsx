@@ -20,7 +20,6 @@ const UserModal = ({ onClose, userToEdit = null }) => {
                 name: userToEdit.name,
                 email: userToEdit.email,
                 password: userToEdit.password,
-                password: userToEdit.password,
                 role: userToEdit.role,
                 level: userToEdit.level || ''
             });
