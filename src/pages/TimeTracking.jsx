@@ -19,6 +19,7 @@ const TimeTracking = () => {
         addTask
     } = useAppContext();
     const navigate = useNavigate();
+    const location = useLocation();
 
     // VIEW STATE: 'INITIAL' | 'WIZARD_SITE' | 'WIZARD_TASK' | 'ACTIVE'
     const [viewMode, setViewMode] = useState('INITIAL');
@@ -27,10 +28,16 @@ const TimeTracking = () => {
 
     // WIZARD STATE
     const [selectedSiteId, setSelectedSiteId] = useState('');
+    const [selectedTaskId, setSelectedTaskId] = useState(''); // MOVED TO TOP LEVEL
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // COMPANION DATA STATE
     const [companionStats, setCompanionStats] = useState(null);
+
+    // CORRECTION STATE
+    const [showCorrection, setShowCorrection] = useState(false);
+    const [correctionType, setCorrectionType] = useState('end'); // 'end' or 'start'
+    const [showChangeTaskModal, setShowChangeTaskModal] = useState(false);
 
     // --- EFFECTS ---
 
@@ -38,7 +45,7 @@ const TimeTracking = () => {
     useEffect(() => {
         if (location.state?.autoSelectSiteId && viewMode === 'INITIAL') {
             handleSelectSite(location.state.autoSelectSiteId);
-            // Clear state to prevent re-trigger on simple renders (though location state persists, navigate replace or just logic check usually fine)
+            // Clear state to prevent re-trigger on simple renders
             window.history.replaceState({}, document.title)
         }
     }, [location.state, viewMode]);
@@ -145,7 +152,6 @@ const TimeTracking = () => {
                 if (elapsedDays > 0) {
                     const plannedPerDay = site.planned_hours / totalDays;
                     const realizedPerDay = totalHours / elapsedDays;
-                    // Note: totalHours is rounded int, better use totalMs for precision but this is sufficient for MVP
 
                     const ratio = realizedPerDay / plannedPerDay;
 
@@ -175,8 +181,8 @@ const TimeTracking = () => {
 
     const handleSelectSite = (id) => {
         setSelectedSiteId(id);
-        calculateCompanionStats(id); // Show stats for selected site immediately in next step? Or keep previous?
-        // Actually, Wizard-Step 2 is Task selection. Maybe show site stats there?
+        setSelectedTaskId(''); // Reset task selection
+        calculateCompanionStats(id);
         setViewMode('WIZARD_TASK');
     };
 
@@ -191,13 +197,6 @@ const TimeTracking = () => {
             alert(result.error);
         }
     };
-
-    // CORRECTION STATE
-    const [showCorrection, setShowCorrection] = useState(false);
-    const [correctionType, setCorrectionType] = useState('end'); // 'end' or 'start'
-    const [showChangeTaskModal, setShowChangeTaskModal] = useState(false);
-
-    // Removed redundant declaration since we already have it from context destructuring at the top
 
     const handleEndDay = async () => {
         const exit = lastGeofenceExit;
@@ -218,9 +217,6 @@ const TimeTracking = () => {
                 return;
             }
         }
-
-        // Also check START correction (if we missed it earlier or want to fix it now)
-        // MVP: Only END correction for now as per workflow request
 
         if (!window.confirm("Terminer la journée ?")) return;
         confirmEndDay(null);
@@ -284,8 +280,6 @@ const TimeTracking = () => {
                         style={{ width: `${companionStats.progress}%` }}
                     ></div>
                 </div>
-
-
 
                 {/* Rhythm Indicator */}
                 {
@@ -420,8 +414,6 @@ const TimeTracking = () => {
         // Use site specific tasks (strict)
         const siteTasks = site?.project_tasks && site.project_tasks.length > 0 ? site.project_tasks : (site?.tasks || []);
 
-        const [selectedTaskId, setSelectedTaskId] = useState('');
-
         return (
             <div className="max-w-md mx-auto pb-24 flex flex-col h-[calc(100vh-140px)]">
                 <div className="flex items-center gap-2 mb-2">
@@ -441,22 +433,6 @@ const TimeTracking = () => {
                     {siteTasks.length === 0 ? (
                         <div className="text-center space-y-4 py-4">
                             <p className="text-slate-500">Aucune section définie pour ce chantier.</p>
-                            <button
-                                onClick={() => {
-                                    // Quick add task prompt
-                                    const name = window.prompt("Nom de la nouvelle section (ex: Installation) :");
-                                    if (name) {
-                                        // We need an addTask function available in TimeTracking context or passing it down
-                                        // Ideally TimeTracking should have access to addTask from useAppContext
-                                        // We added it to context, let's assume we can use it (needs destructuring)
-                                    }
-                                    // Actually, we need to handle this properly via destructuring at top of component
-                                    // For now, let's just use the logic below if we update the destructuring
-                                }}
-                                className="hidden"
-                            >
-                                Hack to show logic place
-                            </button>
 
                             {/* REAL UI FOR EMPTY STATE */}
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -598,11 +574,6 @@ const TimeTracking = () => {
                         <div className="grid grid-cols-2 gap-4 pt-2">
                             <button
                                 onClick={() => {
-                                    // Hacky but effective: Reuse a prompt, OR ideally a modal.
-                                    // Since user asked for Dropdown menu...
-                                    // Let's implement a quick native prompt with options? No can't do that.
-                                    // Proper way: Set a "changingTask" state and render a modal.
-                                    // Trying to keep file changes minimal, let's inject a modal for this.
                                     setShowChangeTaskModal(true);
                                 }}
                                 disabled={isSubmitting}
