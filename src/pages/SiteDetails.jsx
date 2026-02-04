@@ -12,7 +12,8 @@ const SiteDetails = () => {
         sites, materials,
         projectTasks, updateProjectTask, deleteProjectTask,
         importProjectProgress,
-        updateSite
+        updateSite,
+        timeSessions // NEW: Required for realized calculation
     } = useAppContext();
     const [selectedTool, setSelectedTool] = useState(null);
     const [isEditingSite, setIsEditingSite] = useState(false);
@@ -51,7 +52,21 @@ const SiteDetails = () => {
 
     // Computed Globals
     const totalPlanned = site.planned_hours || siteSections.reduce((acc, s) => acc + (s.planned_hours || 0), 0);
-    const totalRealized = siteSections.reduce((acc, s) => acc + (s.completed_hours || 0), 0);
+
+    // 1. Imported/Manual Realized Hours (snapshot)
+    const totalImportedRealized = siteSections.reduce((acc, s) => acc + (s.completed_hours || 0), 0);
+
+    // 2. Verified Sessions (punches)
+    // Filter sessions for this site and sum duration
+    const siteSessions = timeSessions ? timeSessions.filter(s => String(s.site_id) === String(site.id)) : [];
+    const totalSessionHours = siteSessions.reduce((acc, s) => {
+        const start = new Date(s.corrected_start_at || s.punch_start_at).getTime();
+        const end = (s.corrected_end_at || s.punch_end_at) ? new Date(s.corrected_end_at || s.punch_end_at).getTime() : new Date().getTime();
+        return acc + (end - start);
+    }, 0) / (1000 * 60 * 60);
+
+    // 3. Total Realized = Imported (Base) + Sessions (New)
+    const totalRealized = totalImportedRealized + Math.round(totalSessionHours);
 
     return (
         <div>

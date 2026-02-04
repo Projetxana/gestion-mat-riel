@@ -953,6 +953,26 @@ export const AppProvider = ({ children }) => {
                     const sheet = workbook.Sheets[sheetName];
                     const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
+                    if (jsonData.length === 0) {
+                        resolve({ error: "Fichier vide" });
+                        return;
+                    }
+
+                    // 1. Parse Headers (Row 0) to find columns
+                    const headers = jsonData[0].map(h => String(h || '').toLowerCase().trim());
+
+                    const colNameIdx = headers.findIndex(h => h.includes('tache') || h.includes('tâche') || h.includes('section'));
+                    const colPlannedIdx = headers.findIndex(h => h.includes('prevu') || h.includes('prévu') || h.includes('planned'));
+                    const colRealizedIdx = headers.findIndex(h => h.includes('realise') || h.includes('réalisé') || h.includes('completed'));
+
+                    if (colNameIdx === -1) {
+                        // Fallback: If no headers found, check if first row is data (legacy support?)
+                        // But user asked for STRICT header compliance.
+                        // Let's assume strictness but provide helpful error.
+                        resolve({ error: "Colonnes introuvables. Le fichier doit avoir : 'Tâches', 'Heures prévues', 'Heures réalisées'" });
+                        return;
+                    }
+
                     let siteTotalPlanned = 0;
                     let processedTasks = [];
 
@@ -963,55 +983,39 @@ export const AppProvider = ({ children }) => {
                     const safeProjectTasks = projectTasks ?? [];
                     const existingSections = safeProjectTasks.filter(section => String(section.project_id) === String(siteId));
 
-                    // Process each row
-                    for (let i = 0; i < jsonData.length; i++) {
+                    // Process rows (start at 1)
+                    for (let i = 1; i < jsonData.length; i++) {
                         const row = jsonData[i];
                         if (!Array.isArray(row) || row.length === 0) continue;
 
-                        const nameRaw = row[0];
-                        // Skip header if detected (soft check) or empty names
-                        if (!nameRaw) continue;
+                        const nameRaw = row[colNameIdx];
+                        if (!nameRaw) continue; // Skip empty names
 
                         const name = String(nameRaw).trim();
-                        // Skip predictable headers to avoid importing them as tasks
-                        const lowerName = name.toLowerCase();
-                        if (lowerName === 'nom' || lowerName.includes('tache') || lowerName.includes('task') || lowerName.includes('section')) {
-                            // Double check if subsequent columns look like headers too
-                            const col2 = String(row[1] || '').toLowerCase();
-                            if (col2.includes('heure') || col2.includes('hour') || col2.includes('prévu') || col2.includes('planned')) {
-                                continue;
-                            }
-                        }
+                        if (!name) continue;
 
-                        // Strict parsing: A=Name(0), B=Planned(1), C=Realized(2)
-                        // FIX: Handle commas and ensure number
-                        let plannedStr = String(row[1] || '0').replace(',', '.');
-                        let completedStr = String(row[2] || '0').replace(',', '.');
+                        // Parse Numbers strictly
+                        let plannedStr = String(row[colPlannedIdx] !== undefined ? row[colPlannedIdx] : '0').replace(',', '.');
+                        let completedStr = String(row[colRealizedIdx] !== undefined ? row[colRealizedIdx] : '0').replace(',', '.');
 
-                        let planned = Number(plannedStr);
-                        let completed = Number(completedStr);
+                        let planned = parseFloat(plannedStr);
+                        let completed = parseFloat(completedStr);
 
-                        // "Si planned ou realized ne sont pas des nombres : les mettre à 0."
                         if (isNaN(planned)) planned = 0;
                         if (isNaN(completed)) completed = 0;
 
-                        if (!name) continue;
-
                         siteTotalPlanned += planned;
 
-                        // Identify if update or insert
+                        // UPSERT LOGIC
                         const existing = existingSections.find(s => s.name.toLowerCase() === name.toLowerCase());
 
                         if (existing) {
-                            // Prepare update
                             updates.push({
                                 id: existing.id,
-                                // FIX: NEVER replace names. Only update hours.
                                 planned_hours: planned,
                                 completed_hours: completed
                             });
                         } else {
-                            // Prepare insert
                             inserts.push({
                                 project_id: siteId,
                                 name,

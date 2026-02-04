@@ -82,13 +82,17 @@ const ProjectMonitoringModal = ({ onClose }) => {
                                                         : new Date().getTime();
                                                     return acc + (endH - startH);
                                                 }, 0);
-                                                const realizedHours = Math.round(totalMs / (1000 * 60 * 60));
+                                                const sessionRealizedHours = Math.round(totalMs / (1000 * 60 * 60));
+
+                                                // Calculate from imported tasks (Base)
+                                                const taskRealizedHours = site.project_tasks ? site.project_tasks.reduce((sum, t) => sum + (Number(t.completed_hours) || 0), 0) : 0;
+
+                                                // Total = Imported (Base) + Sessions (New)
+                                                const realizedHours = taskRealizedHours + sessionRealizedHours;
 
                                                 // If theoretical is 0 (no dates), gap is purely Realized - Planned (which is negative if under budget, positive if over... wait)
                                                 // Standard Gap = Realized - Theoretical (Are we ahead of schedule?)
                                                 // User wants "Ecart Heures".
-                                                // If no dates, we can compare Realized vs Total Planned?
-                                                // Let's stick to standard formula but handle 0 theoretical.
 
                                                 // If theoretical = 0 because no dates, "Theoretical" column should prob show "N/A" or 0.
 
