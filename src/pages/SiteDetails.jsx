@@ -310,10 +310,13 @@ const SiteDetails = () => {
                                 <p className="text-xs text-slate-400 uppercase font-bold">Heures Prévues</p>
                                 {isEditingSite ? (
                                     <input
-                                        type="number"
+                                        type="text" inputMode="decimal"
                                         className="bg-slate-900 border border-slate-700 text-white rounded p-1 w-24 font-bold"
-                                        value={editPlannedHours}
-                                        onChange={(e) => setEditPlannedHours(e.target.value)}
+                                        value={Number(editPlannedHours || 0)}
+                                        onChange={(e) => {
+                                            const v = e.target.value.replace(',', '.');
+                                            if (!isNaN(v)) setEditPlannedHours(Number(v));
+                                        }}
                                     />
                                 ) : (
                                     <p className="text-xl font-mono font-bold text-white">{totalPlanned} h</p>
@@ -374,25 +377,24 @@ const SiteDetails = () => {
                                     <div className="col-span-2 font-medium text-slate-200 truncate" title={section.name}>{section.name}</div>
                                     <div className="text-right">
                                         <input
-                                            type="number"
+                                            type="text" inputMode="decimal"
                                             className="bg-transparent border-b border-slate-600 w-16 text-right font-mono text-slate-400 focus:text-white focus:border-blue-500 outline-none"
-                                            defaultValue={planned}
-                                            onBlur={(e) => {
-                                                if (Number(e.target.value) !== planned) {
-                                                    updateProjectTask(section.id, { planned_hours: Number(e.target.value) });
-                                                }
+                                            value={Number(planned || 0)}
+                                            onChange={(e) => {
+                                                const v = e.target.value.replace(',', '.');
+                                                // Only update if it allows valid number parsing or is empty (0)
+                                                if (!isNaN(v)) updateProjectTask(section.id, { planned_hours: Number(v) });
                                             }}
                                         />
                                     </div>
                                     <div className="text-right">
                                         <input
-                                            type="number"
+                                            type="text" inputMode="decimal"
                                             className="bg-transparent border-b border-slate-600 w-16 text-right font-mono text-white focus:text-blue-400 focus:border-blue-500 outline-none"
-                                            defaultValue={realized}
-                                            onBlur={(e) => {
-                                                if (Number(e.target.value) !== realized) {
-                                                    updateProjectTask(section.id, { completed_hours: Number(e.target.value) });
-                                                }
+                                            value={Number(realized || 0)}
+                                            onChange={(e) => {
+                                                const v = e.target.value.replace(',', '.');
+                                                if (!isNaN(v)) updateProjectTask(section.id, { completed_hours: Number(v) });
                                             }}
                                         />
                                     </div>
