@@ -16,7 +16,8 @@ const TimeTracking = () => {
         switchTask,
         lastGeofenceExit,
         lastGeofenceEntry,
-        addTask
+        addTask,
+        projectTasks // NEW: Direct access for real-time updates
     } = useAppContext();
     const navigate = useNavigate();
     const location = useLocation();
@@ -411,8 +412,16 @@ const TimeTracking = () => {
     // 3. WIZARD STEP 2: TASK
     if (viewMode === 'WIZARD_TASK') {
         const site = sites.find(s => String(s.id) === String(selectedSiteId));
-        // Use site specific tasks (strict)
-        const siteTasks = site?.project_tasks && site.project_tasks.length > 0 ? site.project_tasks : (site?.tasks || []);
+
+        // FIX: Use projectTasks from global context if available to ensure we see imported tasks immediately
+        const liveSiteTasks = projectTasks && projectTasks.length > 0
+            ? projectTasks.filter(pt => String(pt.project_id) === String(selectedSiteId))
+            : [];
+
+        // Fallback to site structure (legacy or initial load)
+        const legacyTasks = site?.project_tasks && site.project_tasks.length > 0 ? site.project_tasks : (site?.tasks || []);
+
+        const siteTasks = liveSiteTasks.length > 0 ? liveSiteTasks : legacyTasks;
 
         return (
             <div className="max-w-md mx-auto pb-24 flex flex-col h-[calc(100vh-140px)]">

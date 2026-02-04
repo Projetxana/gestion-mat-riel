@@ -112,4 +112,4 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 15:05 - FIX Realized Hours Import Display
+// Force Vercel Deploy: 2026-02-04 15:35 - FIX Task Persistence & Visibility
