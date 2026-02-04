@@ -38,27 +38,40 @@ const ProjectMonitoringModal = ({ onClose }) => {
                                 <tbody className="divide-y divide-slate-700">
                                     {(() => {
                                         const siteStats = sites
-                                            .filter(s => s.status === 'active' && s.planned_hours > 0 && s.end_date && (s.start_date || s.created_at))
+                                            .filter(s => {
+                                                // Keep if active AND (has explicit planned hours OR has tasks with planned hours)
+                                                const hasHours = s.planned_hours > 0 || (s.project_tasks && s.project_tasks.reduce((sum, t) => sum + (Number(t.planned_hours) || 0), 0) > 0);
+                                                return s.status === 'active' && hasHours;
+                                            })
                                             .map(site => {
-                                                const startDate = new Date(site.start_date || site.created_at);
-                                                const endDate = new Date(site.end_date);
+                                                // Calculate total planned hours (Site level OR sum of tasks)
+                                                const taskHours = site.project_tasks ? site.project_tasks.reduce((sum, t) => sum + (Number(t.planned_hours) || 0), 0) : 0;
+                                                const totalPlannedHours = site.planned_hours > 0 ? site.planned_hours : taskHours;
+
+                                                const startDate = site.start_date || site.created_at ? new Date(site.start_date || site.created_at) : null;
+                                                const endDate = site.end_date ? new Date(site.end_date) : null;
                                                 const today = new Date();
 
-                                                startDate.setHours(0, 0, 0, 0);
-                                                endDate.setHours(0, 0, 0, 0);
-                                                today.setHours(0, 0, 0, 0);
-
-                                                if (endDate <= startDate) return null;
-
-                                                const totalDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
-                                                const elapsedDays = Math.max(0, (today - startDate) / (1000 * 60 * 60 * 24));
-
                                                 let theoreticalHours = 0;
-                                                if (today >= endDate) {
-                                                    theoreticalHours = site.planned_hours;
+                                                // Only calculate curve if we have valid dates
+                                                if (startDate && endDate && endDate > startDate) {
+                                                    startDate.setHours(0, 0, 0, 0);
+                                                    endDate.setHours(0, 0, 0, 0);
+                                                    today.setHours(0, 0, 0, 0);
+
+                                                    const totalDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
+                                                    const elapsedDays = Math.max(0, (today - startDate) / (1000 * 60 * 60 * 24));
+
+                                                    if (today >= endDate) {
+                                                        theoreticalHours = totalPlannedHours;
+                                                    } else {
+                                                        const hoursPerDay = totalPlannedHours / totalDays;
+                                                        theoreticalHours = Math.round(hoursPerDay * elapsedDays);
+                                                    }
                                                 } else {
-                                                    const hoursPerDay = site.planned_hours / totalDays;
-                                                    theoreticalHours = Math.round(hoursPerDay * elapsedDays);
+                                                    // Without dates, theoretical is undefined or maybe just N/A. 
+                                                    // Let's set it to 0 or handled in UI.
+                                                    theoreticalHours = 0;
                                                 }
 
                                                 const siteSessions = timeSessions.filter(s => String(s.site_id) === String(site.id));
@@ -70,9 +83,19 @@ const ProjectMonitoringModal = ({ onClose }) => {
                                                     return acc + (endH - startH);
                                                 }, 0);
                                                 const realizedHours = Math.round(totalMs / (1000 * 60 * 60));
-                                                const gap = realizedHours - theoreticalHours;
 
-                                                return { ...site, theoreticalHours, realizedHours, gap };
+                                                // If theoretical is 0 (no dates), gap is purely Realized - Planned (which is negative if under budget, positive if over... wait)
+                                                // Standard Gap = Realized - Theoretical (Are we ahead of schedule?)
+                                                // User wants "Ecart Heures".
+                                                // If no dates, we can compare Realized vs Total Planned?
+                                                // Let's stick to standard formula but handle 0 theoretical.
+
+                                                // If theoretical = 0 because no dates, "Theoretical" column should prob show "N/A" or 0.
+
+                                                const gap = theoreticalHours > 0 ? (realizedHours - theoreticalHours) : (realizedHours - totalPlannedHours);
+                                                // Fallback: compare against TOTAL if no timeline.
+
+                                                return { ...site, planned_hours: totalPlannedHours, theoreticalHours, realizedHours, gap, hasDates: (startDate && endDate) };
                                             })
                                             .filter(s => s !== null)
                                             .sort((a, b) => b.gap - a.gap); // Sort by highest gap (most problematic first)
@@ -98,9 +121,11 @@ const ProjectMonitoringModal = ({ onClose }) => {
                                                 <tr key={site.id} onClick={() => { onClose(); navigate(`/sites/${site.id}`); }} className="hover:bg-slate-700/50 cursor-pointer transition-colors">
                                                     <td className="p-3 font-medium text-white">{site.name}</td>
                                                     <td className="p-3 text-right text-slate-400 font-mono">{site.planned_hours}</td>
-                                                    <td className="p-3 text-right text-white font-mono">{site.realizedHours}</td>
-                                                    <td className="p-3 text-right text-slate-500 font-mono">{site.theoreticalHours}</td>
-                                                    <td className={`p-3 text-right font-mono ${gapColor}`}>
+                                                    <td className="p-3 text-right text-blue-400 font-bold font-mono">{site.realizedHours}</td>
+                                                    <td className="p-3 text-right text-slate-500 font-mono">
+                                                        {site.hasDates ? site.theoreticalHours : <span className="text-[10px] opacity-50">N/A</span>}
+                                                    </td>
+                                                    <td className={`p-3 text-right font-bold font-mono ${gapColor}`}>
                                                         {site.gap > 0 ? '+' : ''}{site.gap}
                                                     </td>
                                                 </tr>
