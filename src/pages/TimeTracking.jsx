@@ -237,15 +237,16 @@ const TimeTracking = () => {
     };
 
 
-    // Helper to find task name across sites or global
     const getTaskName = (taskId, siteId = null) => {
         // Try to find in specific site first
         if (siteId) {
             const site = sites.find(s => String(s.id) === String(siteId));
+            const pTask = site?.project_tasks?.find(t => String(t.id) === String(taskId));
+            if (pTask) return pTask.name;
             const task = site?.tasks?.find(t => String(t.id) === String(taskId));
             if (task) return task.name;
         }
-        // Fallback to global tasks (legacy or default)
+        // Fallback to global tasks (legacy) - KEEPING ONLY FOR HISTORICAL DATA DISPLAY
         const globalTask = tasks.find(t => String(t.id) === String(taskId));
         if (globalTask) return globalTask.name;
 
@@ -417,11 +418,7 @@ const TimeTracking = () => {
     if (viewMode === 'WIZARD_TASK') {
         const site = sites.find(s => String(s.id) === String(selectedSiteId));
         // Use site specific tasks (strict)
-        const siteTasks = site?.tasks || [];
-
-        // Safety check if no tasks exist for this site (e.g. legacy data before migration)
-        // We could show "No tasks found" or fallback to global if absolutely necessary,
-        // but user requested "unique" list per site, so we respect site.tasks which we populated in AppContext.
+        const siteTasks = site?.project_tasks && site.project_tasks.length > 0 ? site.project_tasks : (site?.tasks || []);
 
         const [selectedTaskId, setSelectedTaskId] = useState('');
 
@@ -660,9 +657,13 @@ const TimeTracking = () => {
                                     defaultValue=""
                                 >
                                     <option value="" disabled>-- Sélectionner --</option>
-                                    {(sites.find(s => s.id === activeSession.site_id)?.tasks || []).map(task => (
-                                        <option key={task.id} value={task.id}>{task.name}</option>
-                                    ))}
+                                    {(() => {
+                                        const site = sites.find(s => s.id === activeSession.site_id);
+                                        const tasks = site?.project_tasks && site.project_tasks.length > 0 ? site.project_tasks : (site?.tasks || []);
+                                        return tasks.map(task => (
+                                            <option key={task.id} value={task.id}>{task.name}</option>
+                                        ));
+                                    })()}
                                 </select>
                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
                                     <ChevronRight className="rotate-90" />

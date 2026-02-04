@@ -92,23 +92,28 @@ const ManualEntry = () => {
                 <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Tâche</label>
                     <div className="grid grid-cols-2 gap-2">
-                        {(() => {
                             const selectedSite = sites.find(s => String(s.id) === String(siteId));
-                            const siteTasks = selectedSite && selectedSite.tasks && selectedSite.tasks.length > 0 ? selectedSite.tasks : tasks;
+                            // FIX: Strict usage of project_tasks (sections) or specific tasks. NO GENERIC FALLBACK.
+                            // We prefer project_tasks (sections) as they are the new standard.
+                            const siteTasks = selectedSite ? (selectedSite.project_tasks && selectedSite.project_tasks.length > 0 ? selectedSite.project_tasks : (selectedSite.tasks || [])) : [];
+
+                        if (siteId && siteTasks.length === 0) {
+                                return <p className="col-span-2 text-xs text-red-400 italic text-center p-2">Aucune section définie pour ce chantier.</p>;
+                            }
 
                             return siteTasks.map(t => (
-                                <button
-                                    key={t.id}
-                                    type="button"
-                                    onClick={() => setTaskId(t.id)}
-                                    className={`p-3 rounded-xl border text-sm font-bold transition-all ${String(taskId) === String(t.id)
-                                        ? 'bg-blue-600 border-blue-600 text-white'
-                                        : 'bg-white border-slate-200 text-slate-600 hover:border-blue-400'
-                                        }`}
-                                >
-                                    {t.name}
-                                </button>
-                            ));
+                        <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => setTaskId(t.id)}
+                            className={`p-3 rounded-xl border text-sm font-bold transition-all ${String(taskId) === String(t.id)
+                                ? 'bg-blue-600 border-blue-600 text-white'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-blue-400'
+                                }`}
+                        >
+                            {t.name}
+                        </button>
+                        ));
                         })()}
                         {!siteId && <p className="col-span-2 text-xs text-slate-400 italic text-center p-2">Veuillez d'abord sélectionner un chantier</p>}
                     </div>

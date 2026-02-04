@@ -278,22 +278,9 @@ export const AppProvider = ({ children }) => {
                 setTasks(t);
                 allTasks = t;
             } else {
-                // Auto-seed tasks if missing (Client-side fallback/init)
-                const initialTasks = [
-                    { name: 'Installation' }, { name: 'Inspection' },
-                    { name: 'Maintenance' }, { name: 'Transport' }, { name: 'Autre' }
-                ];
-                // Try to insert them if table exists but empty
-                const { data: newTasks, error: seedError } = await supabase.from('tasks').insert(initialTasks).select();
-                if (newTasks) {
-                    setTasks(newTasks);
-                    allTasks = newTasks;
-                } else {
-                    // Fallback if table doesn't exist yet (Mock mode preventing crash)
-                    const mockTasks = initialTasks.map((task, i) => ({ id: i + 1, ...task }));
-                    setTasks(mockTasks);
-                    allTasks = mockTasks;
-                }
+                // FIX: No more generic tasks. If empty, it's empty.
+                setTasks([]);
+                allTasks = [];
             }
 
             // Map Tasks to Sites (so site.tasks is populated)
@@ -303,14 +290,13 @@ export const AppProvider = ({ children }) => {
                     try {
                         const siteIdStr = String(site.id);
                         // Logic: If specific tasks exist, use them. Else use Global (site_id is null).
-                        const specificTasks = Array.isArray(allTasks) ? allTasks.filter(task => String(task.site_id) === siteIdStr) : [];
-                        const globalTasks = Array.isArray(allTasks) ? allTasks.filter(task => !task.site_id) : [];
+                        const specificTasks = Array.isArray(allTasks) ? allTasks.filter(task => String(task.site_id) === siteIdStr || String(task.project_id) === siteIdStr) : [];
 
                         const relatedProjectTasks = loadedProjectsTasks.filter(t => String(t.project_id) === siteIdStr);
 
                         return {
                             ...site,
-                            tasks: specificTasks.length > 0 ? specificTasks : globalTasks,
+                            tasks: specificTasks, // FIX: No fallback to globalTasks
                             project_tasks: relatedProjectTasks // Allow access to sections
                         };
                     } catch (err) {
