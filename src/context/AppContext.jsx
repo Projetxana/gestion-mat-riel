@@ -1020,7 +1020,7 @@ export const AppProvider = ({ children }) => {
                             // Prepare update
                             updates.push({
                                 id: existing.id,
-                                name, // Keep name consistent
+                                // FIX: NEVER replace names. Only update hours.
                                 planned_hours: planned,
                                 completed_hours: completed
                             });

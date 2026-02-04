@@ -155,8 +155,38 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                 }
 
                 if (newItems.length > 0) {
-                    if (window.confirm(`Ajouter ${newItems.length} sections depuis Excel ?`)) {
-                        setSections(prev => [...prev, ...newItems]);
+                    // Smart Merge Logic
+                    let updatedCount = 0;
+                    let addedCount = 0;
+                    const updatedSections = [...sections];
+
+                    newItems.forEach(newItem => {
+                        const existingIndex = updatedSections.findIndex(s => s.name.toLowerCase() === newItem.name.toLowerCase());
+                        if (existingIndex >= 0) {
+                            // Update existing (keep ID and Name, update hours)
+                            updatedSections[existingIndex] = {
+                                ...updatedSections[existingIndex],
+                                planned_hours: newItem.planned_hours,
+                                completed_hours: newItem.completed_hours
+                            };
+                            updatedCount++;
+                        } else {
+                            // Add new
+                            updatedSections.push(newItem);
+                            addedCount++;
+                        }
+                    });
+
+                    if (updatedCount > 0 || addedCount > 0) {
+                        const msg = [];
+                        if (updatedCount > 0) msg.push(`${updatedCount} sections mises à jour`);
+                        if (addedCount > 0) msg.push(`${addedCount} nouvelles sections ajoutées`);
+
+                        if (window.confirm(`Import terminé :\n${msg.join('\n')}\n\nAppliquer ces modifications ?`)) {
+                            setSections(updatedSections);
+                        }
+                    } else {
+                        alert("Aucune donnée valide trouvée.");
                     }
                 } else {
                     alert("Aucune donnée valide trouvée.");
