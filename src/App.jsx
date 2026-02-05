@@ -119,5 +119,5 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 19:40 - UI: Fix Switching Loader Flash
+// Force Vercel Deploy: 2026-02-04 19:55 - FIX: Switching Redirect & Active Stats Update
 // Version: 0.8.4

@@ -63,7 +63,13 @@ const TimeTracking = () => {
         if (active) {
             setViewMode('ACTIVE');
             // Update companion stats for current active site
+            // Recalculate immediately when session is found/updated
             calculateCompanionStats(active.site_id);
+
+            // AUTO-RELEASE SWITCHING LOCK
+            if (isSwitching) {
+                setIsSwitching(false);
+            }
         } else if (viewMode === 'ACTIVE' && !isSwitching) { // GUARD: Don't redirect if switching
             // If we were in ACTIVE view but no session found (e.g. ended elsewhere), go back
             setViewMode('INITIAL');
@@ -87,6 +93,11 @@ const TimeTracking = () => {
                 setElapsedTime(
                     `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
                 );
+
+                // Update Stats every minute (approx) to reflect active hours in the list
+                if (seconds === 0) {
+                    calculateCompanionStats(activeSession.site_id);
+                }
             };
 
             updateTimer(); // Immediate
@@ -308,7 +319,8 @@ const TimeTracking = () => {
                     <button
                         onClick={() => {
                             setSwitchedTaskStats(null);
-                            setIsSwitching(false); // Release guard
+                            // Do NOT set isSwitching(false) here. 
+                            // Let the session-check useEffect release it when data arrives.
                         }}
                         className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-lg shadow-blue-600/30 transition-all active:scale-95"
                     >
