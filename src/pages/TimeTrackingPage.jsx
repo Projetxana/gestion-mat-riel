@@ -59,22 +59,21 @@ const TimeTracking = () => {
             String(s.user_id) === String(currentUser?.id) &&
             s.punch_end_at === null
         );
+
+        // STOP infinite loop: do nothing if same session
+        if (active?.id === activeSession?.id) return;
+
         setActiveSession(active);
+
         if (active) {
             setViewMode('ACTIVE');
-            // Update companion stats for current active site
-            // Recalculate immediately when session is found/updated
             calculateCompanionStats(active.site_id);
-
-            // AUTO-RELEASE SWITCHING LOCK
-            if (isSwitching) {
-                setIsSwitching(false);
-            }
-        } else if (viewMode === 'ACTIVE' && !isSwitching) { // GUARD: Don't redirect if switching
-            // If we were in ACTIVE view but no session found (e.g. ended elsewhere), go back
+            setIsSwitching(false); // always release switching lock
+        } else if (!isSwitching) {
             setViewMode('INITIAL');
         }
-    }, [timeSessions, currentUser, isSwitching]);
+
+    }, [timeSessions, currentUser]);
 
     // 2. Timer Logic
     useEffect(() => {
@@ -95,7 +94,7 @@ const TimeTracking = () => {
                 );
 
                 // Update Stats every minute (approx) to reflect active hours in the list
-                if (seconds === 0) {
+                if (seconds === 0 && !isSwitching) {
                     calculateCompanionStats(activeSession.site_id);
                 }
             };

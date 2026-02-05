@@ -121,5 +121,5 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 21:05 - BUGFIX: Infinite Loading Switch (Final)
+// Force Vercel Deploy: 2026-02-05 17:45 - FIX: Optimized useEffect Loop
 // Version: 0.8.4
