@@ -562,7 +562,7 @@ const TimeTracking = () => {
         const totalRealized = importedRealized + currentSessionHours;
         const planned = currentSection ? (Number(currentSection.planned_hours) || 0) : 0;
 
-        const remaining = Math.max(0, planned - totalRealized);
+        const remaining = planned - totalRealized;
         const progressPct = planned > 0 ? Math.min(100, (totalRealized / planned) * 100) : 0;
 
         return (

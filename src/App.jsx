@@ -119,5 +119,5 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 18:45 - FORCE REDEPLOY: Overrun UI Check
+// Force Vercel Deploy: 2026-02-04 18:50 - BUGFIX: Allow negative remaining hours
 // Version: 0.8.4
