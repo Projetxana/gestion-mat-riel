@@ -119,5 +119,5 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 19:30 - FEATURE: Seamless Task Switching UX
+// Force Vercel Deploy: 2026-02-04 19:40 - UI: Fix Switching Loader Flash
 // Version: 0.8.4
