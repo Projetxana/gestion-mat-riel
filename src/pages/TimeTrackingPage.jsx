@@ -39,6 +39,8 @@ const TimeTracking = () => {
     const [showCorrection, setShowCorrection] = useState(false);
     const [correctionType, setCorrectionType] = useState('end'); // 'end' or 'start'
     const [showChangeTaskModal, setShowChangeTaskModal] = useState(false);
+    const [isSwitching, setIsSwitching] = useState(false);
+    const [switchedTaskStats, setSwitchedTaskStats] = useState(null);
 
     // --- EFFECTS ---
 
@@ -62,11 +64,11 @@ const TimeTracking = () => {
             setViewMode('ACTIVE');
             // Update companion stats for current active site
             calculateCompanionStats(active.site_id);
-        } else if (viewMode === 'ACTIVE') {
+        } else if (viewMode === 'ACTIVE' && !isSwitching) { // GUARD: Don't redirect if switching
             // If we were in ACTIVE view but no session found (e.g. ended elsewhere), go back
             setViewMode('INITIAL');
         }
-    }, [timeSessions, currentUser]);
+    }, [timeSessions, currentUser, isSwitching]);
 
     // 2. Timer Logic
     useEffect(() => {
@@ -691,11 +693,31 @@ const TimeTracking = () => {
                             <div className="relative">
                                 <select
                                     className="w-full appearance-none bg-slate-50 border border-slate-300 text-slate-900 rounded-xl p-3 pr-10 focus:ring-blue-500"
-                                    onChange={(e) => {
+                                    onChange={async (e) => {
                                         if (e.target.value) {
                                             if (window.confirm('Confirmer le changement ?')) {
-                                                switchTask(activeSession.id, activeSession.site_id, e.target.value);
+                                                const newSectionId = e.target.value;
+                                                // START SWITCHING
+                                                setIsSwitching(true);
                                                 setShowChangeTaskModal(false);
+
+                                                // Capture OLD session stats
+                                                const startTime = new Date(activeSession.punch_start_at).getTime();
+                                                const now = new Date().getTime();
+                                                const hours = (now - startTime) / (1000 * 60 * 60);
+                                                const oldTaskName = projectTasks?.find(pt => String(pt.id) === String(activeSession.section_id))?.name
+                                                    || getTaskName(activeSession.task_id);
+
+                                                // Execute Switch
+                                                const result = await switchTask(activeSession.id, activeSession.site_id, newSectionId);
+
+                                                // Show Summary
+                                                setSwitchedTaskStats({
+                                                    name: oldTaskName,
+                                                    hours: hours
+                                                });
+
+                                                // We keep isSwitching=true until user closes summary
                                             }
                                         }
                                     }}
@@ -720,6 +742,46 @@ const TimeTracking = () => {
                                 className="w-full py-3 text-slate-500 font-bold"
                             >
                                 Annuler
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* TASK SWITCH SUMMARY MODAL */}
+                {switchedTaskStats && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
+                        <div className="bg-slate-900 w-full max-w-sm rounded-2xl p-8 space-y-6 shadow-2xl border border-slate-700 text-center">
+                            <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/50">
+                                <RefreshCw className="text-white animate-spin-slow" size={32} />
+                            </div>
+
+                            <h3 className="text-2xl font-bold text-white">Activité Terminée</h3>
+
+                            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">Tâche précédente</p>
+                                <p className="text-lg font-bold text-blue-300">{switchedTaskStats.name || 'Inconnue'}</p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                                    <p className="text-xs text-slate-400 uppercase mb-1">Durée</p>
+                                    <p className="text-2xl font-mono font-bold text-white">
+                                        {Math.floor(switchedTaskStats.hours)}h {Math.round((switchedTaskStats.hours % 1) * 60)}m
+                                    </p>
+                                </div>
+                                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex items-center justify-center">
+                                    <span className="text-green-400 font-bold text-sm">✅ Enregistré</span>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    setSwitchedTaskStats(null);
+                                    setIsSwitching(false); // Release guard, new active session logic takes over
+                                }}
+                                className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-lg shadow-blue-600/30 transition-all active:scale-95"
+                            >
+                                Continuer vers la nouvelle tâche
                             </button>
                         </div>
                     </div>
