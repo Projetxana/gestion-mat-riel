@@ -121,5 +121,5 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 20:45 - FORCE REDEPLOY: Fix Loading Hang
+// Force Vercel Deploy: 2026-02-04 20:55 - FINAL FIX: Infinite Loading Switch
 // Version: 0.8.4
