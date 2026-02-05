@@ -112,4 +112,4 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 17:48 - FORCE REFRESH: Progress Bar UI
+// Force Vercel Deploy: 2026-02-04 18:05 - DEBUG DIAGNOSTICS ADDED

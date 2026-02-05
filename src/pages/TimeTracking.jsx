@@ -540,8 +540,8 @@ const TimeTracking = () => {
     // 4. ACTIVE SESSION
     if (viewMode === 'ACTIVE' && activeSession) {
         // Resolve Section/Task Name
-        const currentSection = projectTasks.find(pt => String(pt.id) === String(activeSession.section_id));
-        const taskName = currentSection ? currentSection.name : (getTaskName(activeSession.task_id) || 'Tâche Inconnue');
+        const currentSection = projectTasks?.find(pt => String(pt.id) === String(activeSession.section_id));
+        const taskName = currentSection ? currentSection.name : (getTaskName(activeSession.task_id) || `Section #${activeSession.section_id || '?'} Inconnue`);
 
         // Calculate Live Progress
         const startTime = new Date(activeSession.punch_start_at).getTime();
@@ -557,6 +557,11 @@ const TimeTracking = () => {
 
         return (
             <div className="max-w-md mx-auto pb-24 space-y-6">
+                {/* DEBUG BANNER - REMOVE LATER */}
+                <div className="bg-red-500 text-white p-2 text-xs font-mono text-center rounded">
+                    DEBUG v3: SecID={activeSession.section_id} | PT_Len={projectTasks?.length || 0} | Found={currentSection ? 'YES' : 'NO'}
+                </div>
+
                 <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                     <Clock className="text-blue-600 animate-pulse" />
                     Session Active
