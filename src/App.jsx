@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import Layout from './components/Layout';
 import ReloadPrompt from './components/ReloadPrompt';
+import GlobalTimer from './components/GlobalTimer';
 
 const VersionOverlay = () => (
   <div className="fixed bottom-0 right-0 bg-black/80 text-white text-[10px] p-1 z-[9999] pointer-events-none">
@@ -110,6 +111,7 @@ function App() {
       <AppProvider>
         <ReloadPrompt />
         <BrowserRouter>
+          <GlobalTimer />
           <AppRoutes />
           <VersionOverlay />
         </BrowserRouter>
@@ -119,5 +121,5 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 20:05 - BUGFIX: TaskSwitch Infinite Loading
+// Force Vercel Deploy: 2026-02-04 20:25 - FEATURE: Global Persistent Timer
 // Version: 0.8.4

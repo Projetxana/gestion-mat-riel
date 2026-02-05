@@ -6,6 +6,14 @@ import BottomNav from './BottomNav';
 import SmartCorrectionPopup from './SmartCorrectionPopup';
 import { useAppContext } from '../context/AppContext';
 
+// FIX: Layout shift for Global Timer
+// We can use context or just generic padding.
+// For now, let's keep Layout as is. GlobalTimer is 'fixed' so it overlays content.
+// We might want to push content down?
+// Let's add 'pt-12' to main if we want to avoid overlap, but GlobalTimer is only conditional.
+// Better: GlobalTimer is an overlay. User accepts it covers top 30px.
+// Or we check `activeSession` here too? 
+// Let's leave Layout simple for now. GlobalTimer at top is fine.
 const Layout = () => {
     // Sidebar on mobile is no longer used, but kept for desktop responsiveness if needed in future
     // For now we just don't offer a way to open it on mobile
