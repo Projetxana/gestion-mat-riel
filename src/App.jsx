@@ -3,6 +3,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import Layout from './components/Layout';
 import ReloadPrompt from './components/ReloadPrompt';
+
+const VersionOverlay = () => (
+  <div className="fixed bottom-0 right-0 bg-black/80 text-white text-[10px] p-1 z-[9999] pointer-events-none">
+    v0.8.4 - CACHE BUST
+  </div>
+);
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import MaterialList from './pages/MaterialList';
@@ -13,7 +19,7 @@ import Journal from './pages/Journal';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import HiltiPage from './pages/HiltiPage';
-import TimeTracking from './pages/TimeTracking';
+import TimeTracking from './pages/TimeTrackingPage'; // Renamed to bust cache
 import ManualEntry from './pages/ManualEntry';
 import ValidationPage from './pages/ValidationPage';
 
@@ -105,6 +111,7 @@ function App() {
         <ReloadPrompt />
         <BrowserRouter>
           <AppRoutes />
+          <VersionOverlay />
         </BrowserRouter>
       </AppProvider>
     </ErrorBoundary>
@@ -112,4 +119,5 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 18:05 - DEBUG DIAGNOSTICS ADDED
+// Force Vercel Deploy: 2026-02-04 18:20 - RENAME FILE TO BUST CACHE
+// Version: 0.8.4
