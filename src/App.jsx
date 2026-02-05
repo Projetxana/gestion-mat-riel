@@ -119,5 +119,5 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 18:50 - BUGFIX: Allow negative remaining hours
+// Force Vercel Deploy: 2026-02-04 19:15 - FIX: Wizard Stats include Imported Hours
 // Version: 0.8.4

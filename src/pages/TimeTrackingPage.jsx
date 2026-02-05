@@ -103,20 +103,27 @@ const TimeTracking = () => {
         if (!site) return;
 
         // Calculate total hours for this site (all users)
-        // This includes finished sessions + currently active ones (approximated)
+        // This calculates APP USAGE
         const siteSessions = timeSessions.filter(s => String(s.site_id) === String(siteId));
 
-        let totalMs = 0;
+        let appUsageMs = 0;
         siteSessions.forEach(s => {
             const start = new Date(s.punch_start_at).getTime();
             const end = s.punch_end_at ? new Date(s.punch_end_at).getTime() : new Date().getTime(); // Count active time properly
-            totalMs += (end - start);
+            appUsageMs += (end - start);
         });
 
-        const totalHours = Math.round(totalMs / (1000 * 60 * 60));
+        const appUsageHours = appUsageMs / (1000 * 60 * 60);
+
+        // Sum IMPORTED history from project_tasks
+        const siteSections = projectTasks?.filter(pt => String(pt.project_id) === String(siteId)) || [];
+        const importedRealized = siteSections.reduce((sum, pt) => sum + (Number(pt.completed_hours) || 0), 0);
+
+        const totalHours = Math.round(appUsageHours + importedRealized);
         const planned = site.planned_hours || 0;
+
         const progress = planned > 0 ? Math.min(100, Math.round((totalHours / planned) * 100)) : 0;
-        const remaining = Math.max(0, planned - totalHours);
+        const remaining = planned - totalHours; // Allow negative for overrun
 
         // Breakdown by task for TODAY
         const startOfDay = new Date();
