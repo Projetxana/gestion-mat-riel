@@ -1153,10 +1153,11 @@ export const AppProvider = ({ children }) => {
             setTimeSessions(prev => prev.map(s => s.id === tempId ? data : s));
 
             // Log
+            // Log
             const site = sites.find(s => String(s.id) === String(siteId));
             const section = projectTasks.find(pt => String(pt.id) === String(sectionId)); // ✅ CHANGED: Use projectTasks
             addLog(`PUNCH: ${currentUser.name} → ${section?.name || 'Section'} @ ${site?.name}`);
-            return { success: true };
+            return { success: true, session: data };
         } else {
             setTimeSessions(prev => prev.filter(s => s.id !== tempId));
             console.error("Punch Error", error);
