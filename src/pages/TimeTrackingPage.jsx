@@ -126,18 +126,28 @@ const TimeTracking = () => {
         const taskBreakdown = {};
 
         todaySessions.forEach(s => {
-            const tId = s.task_id;
-            if (!taskBreakdown[tId]) taskBreakdown[tId] = 0;
+            // FIX: Use section_id if available, else task_id
+            const tId = s.section_id || s.task_id;
+            // Guard against null/undefined keys
+            const key = String(tId || 'unknown');
+
+            if (!taskBreakdown[key]) taskBreakdown[key] = 0;
 
             const start = new Date(s.punch_start_at).getTime();
             const end = s.punch_end_at ? new Date(s.punch_end_at).getTime() : new Date().getTime();
-            taskBreakdown[tId] += (end - start);
+            taskBreakdown[key] += (end - start);
         });
 
-        const tasksStats = Object.entries(taskBreakdown).map(([tId, ms]) => ({
-            name: getTaskName(tId),
-            hours: Math.round((ms / (1000 * 60 * 60)) * 10) / 10 // 1 decimal
-        })).sort((a, b) => b.hours - a.hours);
+        const tasksStats = Object.entries(taskBreakdown).map(([tId, ms]) => {
+            // Try to resolve name from GLOBAL projectTasks first (most reliable for sections)
+            const section = projectTasks && projectTasks.find(pt => String(pt.id) === String(tId));
+            const resolvedName = section ? section.name : getTaskName(tId, siteId);
+
+            return {
+                name: resolvedName,
+                hours: Math.round((ms / (1000 * 60 * 60)) * 10) / 10 // 1 decimal
+            };
+        }).sort((a, b) => b.hours - a.hours);
 
         // Project Rhythm Calculation
         let rhythm = null;
@@ -557,10 +567,7 @@ const TimeTracking = () => {
 
         return (
             <div className="max-w-md mx-auto pb-24 space-y-6">
-                {/* DEBUG BANNER - REMOVE LATER */}
-                <div className="bg-red-500 text-white p-2 text-xs font-mono text-center rounded">
-                    DEBUG v3: SecID={activeSession.section_id} | PT_Len={projectTasks?.length || 0} | Found={currentSection ? 'YES' : 'NO'}
-                </div>
+
 
                 <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                     <Clock className="text-blue-600 animate-pulse" />
@@ -610,9 +617,12 @@ const TimeTracking = () => {
                                             <p className="text-2xl font-bold">{Math.round(totalRealized)}h <span className="text-sm font-normal text-slate-400">/ {Math.round(planned)}h</span></p>
                                         </div>
                                         <div className="text-right">
-                                            <p className="text-xs text-slate-400">Restant</p>
+                                            <p className={`text-xs ${remaining < 0 ? 'text-red-400 font-bold uppercase' : 'text-slate-400'}`}>
+                                                {remaining < 0 ? 'DÉPASSÉ' : 'Restant'}
+                                            </p>
                                             <p className={`font-bold ${remaining < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                                                {remaining < 0 ? '+' : ''}{Math.round(remaining)}h
+                                                {/* If negative, it shows -Xh automatically */}
+                                                {Math.round(remaining)}h
                                             </p>
                                         </div>
                                     </div>
@@ -620,7 +630,8 @@ const TimeTracking = () => {
                                     <div className="h-3 bg-slate-700 rounded-full overflow-hidden">
                                         <div
                                             className={`h-full transition-all duration-1000 ${remaining < 0 ? 'bg-red-500' : 'bg-green-500'}`}
-                                            style={{ width: `${progressPct}%` }}
+                                            // Determine width: if overrun, 100% full (red). If not, pct.
+                                            style={{ width: `${remaining < 0 ? 100 : progressPct}%` }}
                                         ></div>
                                     </div>
                                 </div>
