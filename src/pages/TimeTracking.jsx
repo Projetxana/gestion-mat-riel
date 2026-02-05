@@ -539,6 +539,22 @@ const TimeTracking = () => {
 
     // 4. ACTIVE SESSION
     if (viewMode === 'ACTIVE' && activeSession) {
+        // Resolve Section/Task Name
+        const currentSection = projectTasks.find(pt => String(pt.id) === String(activeSession.section_id));
+        const taskName = currentSection ? currentSection.name : (getTaskName(activeSession.task_id) || 'Tâche Inconnue');
+
+        // Calculate Live Progress
+        const startTime = new Date(activeSession.punch_start_at).getTime();
+        const now = new Date().getTime();
+        const currentSessionHours = (now - startTime) / (1000 * 60 * 60);
+
+        const importedRealized = currentSection ? (Number(currentSection.completed_hours) || 0) : 0;
+        const totalRealized = importedRealized + currentSessionHours;
+        const planned = currentSection ? (Number(currentSection.planned_hours) || 0) : 0;
+
+        const remaining = Math.max(0, planned - totalRealized);
+        const progressPct = planned > 0 ? Math.min(100, (totalRealized / planned) * 100) : 0;
+
         return (
             <div className="max-w-md mx-auto pb-24 space-y-6">
                 <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -568,6 +584,7 @@ const TimeTracking = () => {
                                     {sites.find(s => String(s.id) === String(activeSession.site_id))?.name}
                                 </p>
                             </div>
+
                             <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
                                 <p className="text-xs text-blue-400 uppercase font-bold text-left mb-1">Tâche en cours</p>
                                 <p className="text-lg font-bold text-blue-800 text-left flex items-center gap-2">
@@ -575,9 +592,34 @@ const TimeTracking = () => {
                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                                         <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
                                     </span>
-                                    {getTaskName(activeSession.task_id, activeSession.site_id)}
+                                    <span className="truncate">{taskName}</span>
                                 </p>
                             </div>
+
+                            {/* PROGRESS BAR - NEW */}
+                            {currentSection && (
+                                <div className="bg-slate-900 p-4 rounded-xl text-white">
+                                    <div className="flex justify-between items-end mb-2">
+                                        <div>
+                                            <p className="text-xs text-slate-400 font-bold uppercase">Progression</p>
+                                            <p className="text-2xl font-bold">{Math.round(totalRealized)}h <span className="text-sm font-normal text-slate-400">/ {Math.round(planned)}h</span></p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-xs text-slate-400">Restant</p>
+                                            <p className={`font-bold ${remaining < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                                {remaining < 0 ? '+' : ''}{Math.round(remaining)}h
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="h-3 bg-slate-700 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full transition-all duration-1000 ${remaining < 0 ? 'bg-red-500' : 'bg-green-500'}`}
+                                            style={{ width: `${progressPct}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4 pt-2">
