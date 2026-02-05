@@ -119,5 +119,5 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-04 18:35 - UI TWEAKS: Overrun Red Bar + Fix Site Stats
+// Force Vercel Deploy: 2026-02-04 18:45 - FORCE REDEPLOY: Overrun UI Check
 // Version: 0.8.4
