@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList, Image as ImageIcon, Users, Plus } from 'lucide-react';
+import { getProjectStats } from '../utils/projectHelpers';
 import { supabase } from '../supabaseClient';
 import DeliveryNoteModal from '../components/DeliveryNoteModal';
 import DailyReportModal from '../components/DailyReportModal';
@@ -11,7 +12,7 @@ import ProjectMonitoringModal from '../components/ProjectMonitoringModal';
 import SiteFormModal from '../components/SiteFormModal';
 
 const Dashboard = () => {
-    const { materials, sites, addLog, timeSessions, currentUser } = useAppContext();
+    const { materials, sites, addLog, timeSessions, currentUser, projectTasks } = useAppContext();
     const navigate = useNavigate();
     const [showCamera, setShowCamera] = useState(false);
     const [showDailyReport, setShowDailyReport] = useState(false);
@@ -176,19 +177,15 @@ const Dashboard = () => {
                             const elapsedDays = Math.max(0.1, (now - start) / (1000 * 60 * 60 * 24));
                             if (elapsedDays <= 0) return;
 
-                            // Hours Calculation
-                            const siteSessions = timeSessions.filter(s => String(s.site_id) === String(site.id));
-                            const totalMs = siteSessions.reduce((acc, s) => {
-                                const startH = new Date(s.corrected_start_at || s.punch_start_at).getTime();
-                                const endH = (s.corrected_end_at || s.punch_end_at)
-                                    ? new Date(s.corrected_end_at || s.punch_end_at).getTime()
-                                    : new Date().getTime();
-                                return acc + (endH - startH);
-                            }, 0);
-                            const totalHours = totalMs / (1000 * 60 * 60);
+                            // Hours Calculation via Helper
+                            const stats = getProjectStats(site.id, projectTasks, timeSessions);
+                            const totalHours = stats.realized;
+                            const plannedTotal = stats.planned;
+
+                            if (plannedTotal === 0) return; // Prevent division by zero
 
                             // Ratio Checking (1.15)
-                            const plannedPerDay = site.planned_hours / totalDays;
+                            const plannedPerDay = plannedTotal / totalDays;
                             const realizedPerDay = totalHours / elapsedDays;
                             const ratio = realizedPerDay / plannedPerDay;
 

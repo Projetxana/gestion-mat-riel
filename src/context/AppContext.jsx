@@ -10,7 +10,6 @@ export const AppProvider = ({ children }) => {
     const [sites, setSites] = useState([]);
     const [users, setUsers] = useState([]);
     const [logs, setLogs] = useState([]);
-    const [tasks, setTasks] = useState([]); // Time Tracking
     const [projectTasks, setProjectTasks] = useState([]); // Project Sections
     const [timeSessions, setTimeSessions] = useState([]); // Time Tracking
     const [hiltiTools, setHiltiTools] = useState([]); // Hilti State
@@ -76,11 +75,7 @@ export const AppProvider = ({ children }) => {
                 if (payload.eventType === 'UPDATE') setCompanyInfo(payload.new);
             }).subscribe(),
 
-            supabase.channel('public:tasks').on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, payload => {
-                if (payload.eventType === 'INSERT') setTasks(prev => [...prev, payload.new]);
-                if (payload.eventType === 'UPDATE') setTasks(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
-                if (payload.eventType === 'DELETE') setTasks(prev => prev.filter(item => item.id !== payload.old.id));
-            }).subscribe(),
+
 
             supabase.channel('public:project_tasks').on('postgres_changes', { event: '*', schema: 'public', table: 'project_tasks' }, payload => {
                 const mapItem = (item) => ({ ...item, planned_hours: Number(item.planned_hours) || 0, completed_hours: Number(item.completed_hours) || 0 });
@@ -270,18 +265,7 @@ export const AppProvider = ({ children }) => {
                 setProjectTasks(loadedProjectsTasks);
             }
 
-            // --- LOAD TASKS & SESSIONS ---
-            const { data: t } = await supabase.from('tasks').select('*').order('id');
-            let allTasks = [];
 
-            if (t && t.length > 0) {
-                setTasks(t);
-                allTasks = t;
-            } else {
-                // FIX: No more generic tasks. If empty, it's empty.
-                setTasks([]);
-                allTasks = [];
-            }
 
             // Map Tasks to Sites (so site.tasks is populated)
             // Use loadedSites local variable for safety
@@ -290,13 +274,13 @@ export const AppProvider = ({ children }) => {
                     try {
                         const siteIdStr = String(site.id);
                         // Logic: If specific tasks exist, use them. Else use Global (site_id is null).
-                        const specificTasks = Array.isArray(allTasks) ? allTasks.filter(task => String(task.site_id) === siteIdStr || String(task.project_id) === siteIdStr) : [];
+
 
                         const relatedProjectTasks = loadedProjectsTasks.filter(t => String(t.project_id) === siteIdStr);
 
                         return {
                             ...site,
-                            tasks: specificTasks, // FIX: No fallback to globalTasks
+                            ...site,
                             project_tasks: relatedProjectTasks // Allow access to sections
                         };
                     } catch (err) {
@@ -747,12 +731,7 @@ export const AppProvider = ({ children }) => {
         const tempId = `temp-task-${Date.now()}`;
         const optimTask = { ...task, id: tempId };
 
-        // Update both tasks list and the specific site in sites list
-        setTasks(prev => [...prev, optimTask]);
-        setSites(prev => prev.map(s => String(s.id) === String(task.site_id)
-            ? { ...s, tasks: [...(s.tasks || []), optimTask] }
-            : s
-        ));
+        setSites(prev => prev.map(s => s.id === site.id ? { ...s, project_tasks: optimSections } : s));
 
         const { data, error } = await supabase.from('tasks').insert([task]).select().single();
 
@@ -857,89 +836,7 @@ export const AppProvider = ({ children }) => {
     };
 
     // --- IMPORT ACTIONS ---
-    const importTasksFromExcel = async (siteId, file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    // Dynamically import xlsx to avoid huge bundle payload on init if not needed
-                    const XLSX = await import('xlsx');
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const sheetName = workbook.SheetNames[0];
-                    const sheet = workbook.Sheets[sheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(sheet);
 
-                    // Normalize Keys (Tache, Heures_prevues)
-                    // Expected: { Tache: '...', Heures_prevues: 100 }
-                    // Case insensitive match
-                    const normalizeKey = (k) => k.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-                    let totalHours = 0;
-                    const tasksPayload = jsonData.map(row => {
-                        let name = 'Tâche sans nom';
-                        let hours = 0;
-
-                        Object.keys(row).forEach(k => {
-                            const nk = normalizeKey(k);
-                            if (nk.includes('tache') || nk.includes('task')) name = row[k];
-                            else if (nk.includes('heure') || nk.includes('hour') || nk.includes('prevue')) hours = Number(row[k]) || 0;
-                        });
-
-                        totalHours += hours;
-
-                        return {
-                            name: String(name),
-                            planned_hours: hours,
-                            site_id: siteId,
-                            is_active: true
-                        };
-                    }).filter(t => t.name !== 'Tâche sans nom');
-
-                    if (tasksPayload.length === 0) {
-                        return resolve({ error: "Aucune tâche valide trouvée." });
-                    }
-
-                    // 1. Delete existing tasks for this site? Or Append?
-                    // User says "Import Excel to create tasks". Usually implies overwrite or fill. 
-                    // Let's Append but maybe warn if duplicates? 
-                    // Actually, simpler to just insert.
-
-                    const { data: insertedTasks, error } = await supabase.from('tasks').insert(tasksPayload).select();
-
-                    if (error) throw error;
-
-                    // 2. Update Site Total Planned Hours
-                    // We should add this total to existing planned_hours or replace? 
-                    // "Calculer projects.planned_hours = SUM(tasks...)"
-                    // So we should re-calculate total per site.
-
-                    // Fetch ALL tasks for this site to sum correctly (including old ones + new ones)
-                    // const { data: allSiteTasks } = await supabase.from('tasks').select('planned_hours').eq('site_id', siteId);
-                    // Actually let's just use what we have in state + new ones for optimistic? 
-                    // Better to fetch fresh sum from DB or calc manually.
-
-                    // Let's assume we want to REPLACE the site total with the new sum of ALL tasks.
-                    // Let's grab current tasks from state, add new ones, sum it up.
-                    const currentSiteTasks = tasks.filter(t => String(t.site_id) === String(siteId));
-                    const newTotal = currentSiteTasks.reduce((acc, t) => acc + (t.planned_hours || 0), 0) + totalHours;
-
-                    await updateSite(siteId, { planned_hours: newTotal });
-
-                    // Update local state
-                    if (insertedTasks) {
-                        setTasks(prev => [...prev, ...insertedTasks]);
-                        // Refetch site to get updated total if updateSite didn't fully sync (it did optimistically)
-                        resolve({ success: true, count: insertedTasks.length, totalHours: newTotal });
-                    }
-                } catch (err) {
-                    console.error("Excel Import Error:", err);
-                    resolve({ error: err.message });
-                }
-            };
-            reader.readAsArrayBuffer(file);
-        });
-    };
 
     const importProjectProgress = async (siteId, file) => {
         return new Promise((resolve, reject) => {
@@ -966,16 +863,11 @@ export const AppProvider = ({ children }) => {
                     const colRealizedIdx = headers.findIndex(h => h.includes('realise') || h.includes('réalisé') || h.includes('completed'));
 
                     if (colNameIdx === -1) {
-                        // Fallback: If no headers found, check if first row is data (legacy support?)
-                        // But user asked for STRICT header compliance.
-                        // Let's assume strictness but provide helpful error.
                         resolve({ error: "Colonnes introuvables. Le fichier doit avoir : 'Tâches', 'Heures prévues', 'Heures réalisées'" });
                         return;
                     }
 
-                    let siteTotalPlanned = 0;
                     let processedTasks = [];
-
                     const updates = [];
                     const inserts = [];
 
@@ -1003,8 +895,6 @@ export const AppProvider = ({ children }) => {
 
                         if (isNaN(planned)) planned = 0;
                         if (isNaN(completed)) completed = 0;
-
-                        siteTotalPlanned += planned;
 
                         // UPSERT LOGIC
                         const existing = existingSections.find(s => s.name.toLowerCase() === name.toLowerCase());
@@ -1056,6 +946,7 @@ export const AppProvider = ({ children }) => {
                     const allSiteSections = [...existingSections.filter(e => !updates.find(u => u.id === e.id)), ...processedTasks]; // Merged
                     const totalFromSections = allSiteSections.reduce((acc, t) => acc + (t.planned_hours || 0), 0);
 
+                    // Optional: Update site.planned_hours if you still want to cache it
                     await updateSite(siteId, { planned_hours: totalFromSections });
 
                     resolve({ success: true, count: processedTasks.length });
@@ -1254,7 +1145,7 @@ export const AppProvider = ({ children }) => {
         sites,
         users,
         logs,
-        tasks,
+
         timeSessions,
         currentUser,
         companyInfo,
@@ -1273,8 +1164,7 @@ export const AppProvider = ({ children }) => {
         deleteMaterial,
         updateSite,
         deleteSite,
-        addTask,
-        updateTask,
+        addProjectTask,
         hiltiTools,
         updateHiltiTool,
         clearData,
@@ -1285,7 +1175,7 @@ export const AppProvider = ({ children }) => {
         lastGeofenceEntry,
         lastGeofenceExit,
         currentGeofenceSiteId,
-        importTasksFromExcel, // Legacy
+
         importProjectProgress,
         projectTasks,
         updateProjectTask, // We focus on this one as requested

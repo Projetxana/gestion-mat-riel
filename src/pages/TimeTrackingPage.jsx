@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { getProjectStats } from '../utils/projectHelpers';
 import { Clock, Play, Square, RefreshCw, MapPin, AlertCircle, ChevronRight, ArrowLeft, Calendar, BarChart3 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import SmartCorrectionPopup from '../components/SmartCorrectionPopup';
@@ -16,7 +17,7 @@ const TimeTracking = () => {
         switchTask,
         lastGeofenceExit,
         lastGeofenceEntry,
-        addTask,
+        addProjectTask,
         projectTasks // NEW: Direct access for real-time updates
     } = useAppContext();
     const navigate = useNavigate();
@@ -107,6 +108,10 @@ const TimeTracking = () => {
         return () => clearInterval(interval);
     }, [activeSession]);
 
+
+
+
+
     // 3. Companion Stats Logic
     const calculateCompanionStats = (siteId) => {
         if (!siteId) return;
@@ -114,33 +119,19 @@ const TimeTracking = () => {
         const site = sites.find(s => String(s.id) === String(siteId));
         if (!site) return;
 
-        // Calculate total hours for this site (all users)
-        // This calculates APP USAGE
-        const siteSessions = timeSessions.filter(s => String(s.site_id) === String(siteId));
+        // NEW: Utilize Global Helper
+        const stats = getProjectStats(siteId, projectTasks, timeSessions);
 
-        let appUsageMs = 0;
-        siteSessions.forEach(s => {
-            const start = new Date(s.punch_start_at).getTime();
-            const end = s.punch_end_at ? new Date(s.punch_end_at).getTime() : new Date().getTime(); // Count active time properly
-            appUsageMs += (end - start);
-        });
-
-        const appUsageHours = appUsageMs / (1000 * 60 * 60);
-
-        // Sum IMPORTED history from project_tasks
-        const siteSections = projectTasks?.filter(pt => String(pt.project_id) === String(siteId)) || [];
-        const importedRealized = siteSections.reduce((sum, pt) => sum + (Number(pt.completed_hours) || 0), 0);
-
-        const totalHours = Math.round(appUsageHours + importedRealized);
-        const planned = site.planned_hours || 0;
-
-        const progress = planned > 0 ? Math.min(100, Math.round((totalHours / planned) * 100)) : 0;
-        const remaining = planned - totalHours; // Allow negative for overrun
+        const totalHours = stats.realized;
+        const planned = stats.planned;
+        const progress = stats.progress;
+        const remaining = stats.remaining;
 
         // Breakdown by task for TODAY
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
+        const siteSessions = timeSessions.filter(s => String(s.site_id) === String(siteId));
         const todaySessions = siteSessions.filter(s => new Date(s.punch_start_at) >= startOfDay);
         const taskBreakdown = {};
 
@@ -160,7 +151,7 @@ const TimeTracking = () => {
         const tasksStats = Object.entries(taskBreakdown).map(([tId, ms]) => {
             // Try to resolve name from GLOBAL projectTasks first (most reliable for sections)
             const section = projectTasks && projectTasks.find(pt => String(pt.id) === String(tId));
-            const resolvedName = section ? section.name : getTaskName(tId, siteId);
+            const resolvedName = section ? section.name : 'Tâche Inconnue'; // NO MORE FALLBACK
 
             return {
                 name: resolvedName,
@@ -170,7 +161,7 @@ const TimeTracking = () => {
 
         // Project Rhythm Calculation
         let rhythm = null;
-        if (site.planned_hours > 0 && site.end_date && (site.start_date || site.created_at)) {
+        if (planned > 0 && site.end_date && (site.start_date || site.created_at)) {
             const start = new Date(site.start_date || site.created_at).getTime();
             const end = new Date(site.end_date).getTime();
             const now = new Date().getTime();
@@ -180,7 +171,7 @@ const TimeTracking = () => {
                 const elapsedDays = Math.max(0.1, (now - start) / (1000 * 60 * 60 * 24));
 
                 if (elapsedDays > 0) {
-                    const plannedPerDay = site.planned_hours / totalDays;
+                    const plannedPerDay = planned / totalDays;
                     const realizedPerDay = totalHours / elapsedDays;
 
                     const ratio = realizedPerDay / plannedPerDay;
@@ -206,6 +197,146 @@ const TimeTracking = () => {
             rhythm
         });
     };
+
+    // ... inside render WIZARD_TASK ...
+    // 3. WIZARD STEP 2: TASK
+    if (viewMode === 'WIZARD_TASK') {
+        const site = sites.find(s => String(s.id) === String(selectedSiteId));
+
+        // NEW: FILTER ONLY PROJECT_TASKS
+        const siteTasks = projectTasks.filter(
+            pt => String(pt.project_id) === String(selectedSiteId)
+        );
+
+        return (
+            // ... (keep JSX structure but use siteTasks directly)
+            <div className="max-w-md mx-auto pb-24 flex flex-col h-[calc(100vh-140px)]">
+                {/* ... Header ... */}
+                <div className="flex items-center gap-2 mb-2">
+                    <button onClick={() => setViewMode('WIZARD_SITE')} className="p-2 -ml-2 text-slate-400 hover:text-slate-600">
+                        <ArrowLeft />
+                    </button>
+                    <h2 className="text-xl font-bold text-slate-800">Quelle tâche ?</h2>
+                </div>
+                <p className="text-sm text-slate-500 mb-6 ml-10">Sur : <span className="font-bold text-black">{site?.name}</span></p>
+
+                {/* Show Site Stats here for motivation */}
+                <div className="mb-6">
+                    {renderCompanionView()}
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+                    {siteTasks.length === 0 ? (
+                        // ... Empty State ...
+                        <div className="text-center space-y-4 py-4">
+                            <p className="text-slate-500">Aucune section définie pour ce chantier.</p>
+
+                            {/* REAL UI FOR EMPTY STATE */}
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <p className="text-sm text-slate-600 mb-3">Créez une première tâche pour démarrer :</p>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        id="quick-task-name"
+                                        placeholder="Nom (ex: Installation)"
+                                        className="flex-1 bg-white border border-slate-300 rounded px-3 py-2"
+                                    />
+                                    <button
+                                        onClick={async () => {
+                                            const nameEl = document.getElementById('quick-task-name');
+                                            if (nameEl && nameEl.value) {
+                                                const result = await addProjectTask({
+                                                    name: nameEl.value,
+                                                    project_id: Number(selectedSiteId),
+                                                    is_active: true,
+                                                    planned_hours: 0
+                                                });
+                                                if (result.success && result.task) {
+                                                    setSelectedTaskId(result.task.id);
+                                                }
+                                            }
+                                        }}
+                                        className="bg-blue-600 text-white px-4 rounded font-bold"
+                                    >
+                                        OK
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        // ... Select ...
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Sélectionnez une activité</label>
+                            <div className="relative">
+                                <select
+                                    className="w-full appearance-none bg-slate-50 border border-slate-300 text-slate-900 text-lg rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-4 pr-10"
+                                    value={selectedTaskId}
+                                    onChange={(e) => setSelectedTaskId(e.target.value)}
+                                >
+                                    <option value="" disabled>-- Choisir --</option>
+                                    {siteTasks.map(task => (
+                                        <option key={task.id} value={task.id}>
+                                            {task.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                                    <ChevronRight className="rotate-90" />
+                                </div>
+                            </div>
+
+                            {/* Sticky Add Button */}
+                            <div className="mt-4 text-center">
+                                <button
+                                    onClick={async () => {
+                                        const name = window.prompt("Ajouter une tâche :");
+                                        if (name) {
+                                            const result = await addProjectTask({
+                                                name,
+                                                project_id: Number(selectedSiteId),
+                                                is_active: true,
+                                                planned_hours: 0
+                                            });
+                                            if (result.success && result.task) {
+                                                setSelectedTaskId(result.task.id);
+                                            }
+                                        }
+                                    }}
+                                    className="text-xs text-blue-500 hover:text-blue-700 font-medium flex items-center justify-center gap-1"
+                                >
+                                    + Ajouter une autre tâche
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <button
+                        // ... Button ...
+                        disabled={!selectedTaskId || isSubmitting}
+                        onClick={() => handleStartSession(selectedTaskId)}
+                        className={`w-full py-4 rounded-xl font-bold flex flex-col items-center justify-center gap-1 shadow-lg transition-all ${!selectedTaskId
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/30'
+                            }`}
+                    >
+                        <Play size={24} fill="currentColor" className="mb-1" />
+                        <span className="text-lg">COMMENCER</span>
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // ... inside Change Task Modal ...
+    {
+        (() => {
+            const siteTasks = projectTasks.filter(pt => String(pt.project_id) === String(activeSession.site_id));
+            return siteTasks.map(task => (
+                <option key={task.id} value={task.id}>{task.name}</option>
+            ));
+        })()
+    }
+
 
     // --- ACTIONS ---
 
@@ -269,18 +400,11 @@ const TimeTracking = () => {
             const site = sites.find(s => String(s.id) === String(siteId));
             const pTask = site?.project_tasks?.find(t => String(t.id) === String(taskId));
             if (pTask) return pTask.name;
-            const task = site?.tasks?.find(t => String(t.id) === String(taskId));
-            if (task) return task.name;
         }
-        // Fallback to global tasks (legacy) - KEEPING ONLY FOR HISTORICAL DATA DISPLAY
-        const globalTask = tasks.find(t => String(t.id) === String(taskId));
-        if (globalTask) return globalTask.name;
 
-        // Deep search in all sites (slow but safe fallback)
-        for (const s of sites) {
-            const t = s.tasks?.find(k => String(k.id) === String(taskId));
-            if (t) return t.name;
-        }
+        // Try global project tasks
+        const globalSection = projectTasks.find(pt => String(pt.id) === String(taskId));
+        if (globalSection) return globalSection.name;
 
         return 'Tâche Inconnue';
     };
@@ -542,9 +666,9 @@ const TimeTracking = () => {
                                         onClick={async () => {
                                             const nameEl = document.getElementById('quick-task-name');
                                             if (nameEl && nameEl.value) {
-                                                const result = await addTask({
+                                                const result = await addProjectTask({
                                                     name: nameEl.value,
-                                                    site_id: Number(selectedSiteId),
+                                                    project_id: Number(selectedSiteId),
                                                     is_active: true,
                                                     planned_hours: 0
                                                 });
@@ -587,9 +711,9 @@ const TimeTracking = () => {
                                     onClick={async () => {
                                         const name = window.prompt("Ajouter une tâche :");
                                         if (name) {
-                                            const result = await addTask({
+                                            const result = await addProjectTask({
                                                 name,
-                                                site_id: Number(selectedSiteId),
+                                                project_id: Number(selectedSiteId),
                                                 is_active: true,
                                                 planned_hours: 0
                                             });
