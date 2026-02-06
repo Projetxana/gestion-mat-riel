@@ -535,7 +535,7 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    const addSite = async (site) => {
+    async function addSite(site) {
         // Optimistic
         const tempId = `temp-${Date.now()}`;
 
@@ -616,9 +616,9 @@ export const AppProvider = ({ children }) => {
             console.error("Error creating site:", error);
             setSites(prev => prev.filter(s => s.id !== tempId));
         }
-    };
+    }
 
-    const updateSite = async (id, updates) => {
+    async function updateSite(id, updates) {
         const hasSectionsUpdate = Array.isArray(updates.project_tasks);
 
         // Optimistic UI Update
@@ -709,7 +709,7 @@ export const AppProvider = ({ children }) => {
         } else {
             addLog(`Updated site: ${updates.name || id}`);
         }
-    };
+    }
 
 
     const deleteSite = async (id) => {
@@ -726,7 +726,7 @@ export const AppProvider = ({ children }) => {
     };
 
     // --- TASK ACTIONS ---
-    const addProjectTask = async (task) => {
+    async function addProjectTask(task) {
         // Optimistic
         const tempId = `temp-pt-${Date.now()}`;
         const optimTask = { ...task, id: tempId, planned_hours: 0, completed_hours: 0 };
@@ -752,7 +752,7 @@ export const AppProvider = ({ children }) => {
             setProjectTasks(prev => prev.filter(t => t.id !== tempId));
             return { error: error?.message };
         }
-    };
+    }
 
 
 
@@ -935,7 +935,7 @@ export const AppProvider = ({ children }) => {
         });
     };
 
-    const updateProjectTask = async (id, updates) => {
+    async function updateProjectTask(id, updates) {
         // Optimistic
         const oldState = [...(projectTasks ?? [])];
         setProjectTasks(prev => (prev ?? []).map(section => section.id === id ? { ...section, ...updates } : section));
@@ -962,9 +962,9 @@ export const AppProvider = ({ children }) => {
                 }
             }
         }
-    };
+    }
 
-    const deleteProjectTask = async (id) => {
+    async function deleteProjectTask(id) {
         const safeProjectTasks = projectTasks ?? [];
         const oldState = [...safeProjectTasks];
         const taskToDelete = safeProjectTasks.find(section => section.id === id);
@@ -983,10 +983,10 @@ export const AppProvider = ({ children }) => {
                 updateSite(siteId, { planned_hours: newTotal });
             }
         }
-    };
+    }
 
     // --- TIME TRACKING ACTIONS ---
-    const startTimeSession = async (siteId, sectionId, gpsData = null) => {
+    async function startTimeSession(siteId, sectionId, gpsData = null) {
         if (!currentUser) return;
 
         // 1. Verify no active session
@@ -1030,7 +1030,7 @@ export const AppProvider = ({ children }) => {
             console.error("Punch Error", error);
             return { error: error?.message };
         }
-    };
+    }
 
     const endTimeSession = async (sessionId, gpsData = null, correction = null) => {
         const timestamp = new Date();
@@ -1105,7 +1105,7 @@ export const AppProvider = ({ children }) => {
         return { error: error?.message };
     };
 
-    const addLog = async (details) => {
+    async function addLog(details) {
         // Fire and forget log
         await supabase.from('logs').insert([{
             action: 'action',
@@ -1113,7 +1113,7 @@ export const AppProvider = ({ children }) => {
             details,
             timestamp: new Date()
         }]);
-    };
+    }
 
     const value = {
         materials,
