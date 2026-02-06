@@ -146,38 +146,67 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                 const sheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
+                if (!jsonData || jsonData.length === 0) {
+                    alert("Le fichier semble vide.");
+                    return;
+                }
+
+                // 1. Find Header Row (first row with typically 'Tache' or 'Nom')
+                let headerRowIdx = -1;
+                let colNameIdx = -1;
+                let colPlannedIdx = -1;
+                let colRealizedIdx = -1;
+
+                // Scan first 5 rows to find headers
+                for (let i = 0; i < Math.min(jsonData.length, 5); i++) {
+                    const row = jsonData[i].map(c => String(c || '').toLowerCase().trim());
+                    const nameIdx = row.findIndex(c => c.includes('tache') || c.includes('tâche') || c.includes('section') || c.includes('nom') || c.includes('designation'));
+
+                    if (nameIdx !== -1) {
+                        headerRowIdx = i;
+                        colNameIdx = nameIdx;
+                        colPlannedIdx = row.findIndex(c => c.includes('prevu') || c.includes('prévu') || c.includes('planned') || c.includes('devis'));
+                        colRealizedIdx = row.findIndex(c => c.includes('realise') || c.includes('réalisé') || c.includes('completed') || c.includes('fait'));
+                        break;
+                    }
+                }
+
+                if (colNameIdx === -1) {
+                    // Fallback to strict 0, 1, 2 if no headers found? Or error?
+                    // Let's try to be smart: if row 0 has strings that look like data, maybe no header?
+                    // Safe bet: Alert user
+                    alert("Impossible de trouver les colonnes. Le fichier doit avoir des en-têtes : 'Nom' (ou Tâche), 'Prévu', 'Réalisé'.");
+                    return;
+                }
+
                 let addedCount = 0;
                 let updatedCount = 0;
                 let newSectionsList = [...sections];
 
-                // Process rows
-                for (let i = 0; i < jsonData.length; i++) {
+                // Process rows starting AFTER header
+                for (let i = headerRowIdx + 1; i < jsonData.length; i++) {
                     const row = jsonData[i];
                     if (!Array.isArray(row) || row.length === 0) continue;
 
-                    const nameRaw = row[0];
+                    const nameRaw = row[colNameIdx];
                     if (!nameRaw) continue;
 
                     const name = String(nameRaw).trim();
-                    const lowerName = name.toLowerCase();
-
-                    // Skip headers
-                    if (lowerName === 'nom' || lowerName.includes('tache') || lowerName.includes('task') || lowerName.includes('section')) {
-                        const col2 = String(row[1] || '').toLowerCase();
-                        if (col2.includes('heure') || col2.includes('hour') || col2.includes('prévu') || col2.includes('planned')) {
-                            continue;
-                        }
-                    }
+                    if (!name) continue;
 
                     // Parse Numbers
-                    let plannedStr = String(row[1] || '0').replace(',', '.');
-                    let completedStr = String(row[2] || '0').replace(',', '.');
+                    let plannedStr = '0';
+                    let completedStr = '0';
 
-                    let planned = Number(plannedStr);
-                    let completed = Number(completedStr);
+                    if (colPlannedIdx !== -1 && row[colPlannedIdx] !== undefined) {
+                        plannedStr = String(row[colPlannedIdx]).replace(',', '.').replace(/[^0-9.]/g, '');
+                    }
+                    if (colRealizedIdx !== -1 && row[colRealizedIdx] !== undefined) {
+                        completedStr = String(row[colRealizedIdx]).replace(',', '.').replace(/[^0-9.]/g, '');
+                    }
 
-                    if (isNaN(planned)) planned = 0;
-                    if (isNaN(completed)) completed = 0;
+                    let planned = parseFloat(plannedStr) || 0;
+                    let completed = parseFloat(completedStr) || 0;
 
                     // CHECK IF EXISTS
                     const existingSection = newSectionsList.find(s => s.name.toLowerCase() === name.toLowerCase());
@@ -197,30 +226,20 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                             updatedCount++;
                         }
                     } else {
-                        // INSERT LOGIC with REAL ID
-
-                        // DEBUG LOG (Requested)
-                        console.log('INSERT TASK', {
-                            name: name,
-                            planned_hours: planned,
-                            completed_hours: completed,
-                            project_id: projectId
-                        });
-
+                        // INSERT LOGIC
                         const { data, error } = await supabase
                             .from('project_tasks')
                             .insert({
                                 project_id: projectId,
                                 name: name,
-                                planned_hours: planned || 0,
-                                completed_hours: completed || 0,
+                                planned_hours: planned,
+                                completed_hours: completed,
                                 is_active: true
                             })
                             .select()
                             .single();
 
                         if (!error && data) {
-                            // IMPORTANT : utiliser cet ID réel
                             const realTask = {
                                 id: data.id,
                                 name: data.name,
