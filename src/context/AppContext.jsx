@@ -726,60 +726,35 @@ export const AppProvider = ({ children }) => {
     };
 
     // --- TASK ACTIONS ---
-    const addTask = async (task) => {
+    const addProjectTask = async (task) => {
         // Optimistic
-        const tempId = `temp-task-${Date.now()}`;
-        const optimTask = { ...task, id: tempId };
+        const tempId = `temp-pt-${Date.now()}`;
+        const optimTask = { ...task, id: tempId, planned_hours: 0, completed_hours: 0 };
 
-        setSites(prev => prev.map(s => s.id === site.id ? { ...s, project_tasks: optimSections } : s));
+        setProjectTasks(prev => [...prev, optimTask]);
 
-        const { data, error } = await supabase.from('tasks').insert([task]).select().single();
+        // DB Insert
+        const { data, error } = await supabase.from('project_tasks').insert([{
+            project_id: task.project_id,
+            name: task.name,
+            is_active: true,
+            planned_hours: 0,
+            completed_hours: 0
+        }]).select().single();
 
         if (!error && data) {
-            // Replace temp with real
-            setTasks(prev => prev.map(t => t.id === tempId ? data : t));
-            setSites(prev => prev.map(s => String(s.id) === String(task.site_id)
-                ? { ...s, tasks: s.tasks.map(t => t.id === tempId ? data : t) }
-                : s
-            ));
-            addLog(`Added task: ${task.name}`);
-            return { success: true, task: data };
+            const realTask = { ...data, planned_hours: Number(data.planned_hours), completed_hours: Number(data.completed_hours) };
+            setProjectTasks(prev => prev.map(t => t.id === tempId ? realTask : t));
+            addLog(`Added section: ${task.name}`);
+            return { success: true, task: realTask };
         } else {
-            console.error("Error adding task:", error);
-            // Rollback
-            setTasks(prev => prev.filter(t => t.id !== tempId));
-            setSites(prev => prev.map(s => String(s.id) === String(task.site_id)
-                ? { ...s, tasks: s.tasks.filter(t => t.id !== tempId) }
-                : s
-            ));
-            return { error: error.message };
+            console.error("Error adding project_task:", error);
+            setProjectTasks(prev => prev.filter(t => t.id !== tempId));
+            return { error: error?.message };
         }
     };
 
-    const updateTask = async (taskId, updates) => {
-        // Find task to get site_id for validation/logs
-        const task = tasks.find(t => String(t.id) === String(taskId));
-        if (!task) return;
 
-        // Optimistic
-        setTasks(prev => prev.map(t => String(t.id) === String(taskId) ? { ...t, ...updates } : t));
-        if (task.site_id) {
-            setSites(prev => prev.map(s => String(s.id) === String(task.site_id)
-                ? { ...s, tasks: s.tasks.map(t => String(t.id) === String(taskId) ? { ...t, ...updates } : t) }
-                : s
-            ));
-        }
-
-        const { error } = await supabase.from('tasks').update(updates).eq('id', taskId);
-
-        if (error) {
-            console.error("Error updating task:", error);
-            // Rollback (simplified, triggers re-fetch implicitly usually but here we stick with opt state or revert if critical)
-            // For now simple log, revert tedious without deep clone
-        } else {
-            addLog(`Updated task: ${task.name}`);
-        }
-    };
 
     // Hilti Actions
     const updateHiltiTool = async (id, updates) => {
