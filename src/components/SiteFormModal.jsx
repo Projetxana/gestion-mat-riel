@@ -198,13 +198,23 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                         }
                     } else {
                         // INSERT LOGIC with REAL ID
+
+                        // DEBUG LOG (Requested)
+                        console.log('INSERT TASK', {
+                            name: name,
+                            planned_hours: planned,
+                            completed_hours: completed,
+                            project_id: projectId
+                        });
+
                         const { data, error } = await supabase
                             .from('project_tasks')
                             .insert({
                                 project_id: projectId,
                                 name: name,
-                                planned_hours: planned,
-                                completed_hours: completed
+                                planned_hours: planned || 0,
+                                completed_hours: completed || 0,
+                                is_active: true
                             })
                             .select()
                             .single();

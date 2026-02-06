@@ -1020,7 +1020,8 @@ export const AppProvider = ({ children }) => {
                                 project_id: siteId,
                                 name,
                                 planned_hours: planned,
-                                completed_hours: completed
+                                completed_hours: completed,
+                                is_active: true
                             });
                         }
                     }
