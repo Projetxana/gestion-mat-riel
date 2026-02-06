@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Trash2, Plus, Upload } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { supabase } from '../supabaseClient';
 
 const SiteFormModal = ({ onClose, siteToEdit = null }) => {
     const { addSite, updateSite, projectTasks } = useAppContext(); // ✅ ADDED projectTasks
@@ -125,17 +126,31 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
         const file = e.target.files[0];
         if (!file) return;
 
+        // Ensure we are in edit mode
+        if (!isEditing || !siteToEdit?.id) {
+            alert("L'import Excel nécessite que le chantier soit déjà créé (Mode Modification).");
+            e.target.value = '';
+            return;
+        }
+
+        const projectId = siteToEdit.id;
+
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
                 const data = new Uint8Array(evt.target.result);
+                // Dynamic import to keep bundle small
                 const XLSX = await import('xlsx');
                 const workbook = XLSX.read(data, { type: 'array' });
                 const sheetName = workbook.SheetNames[0];
                 const sheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-                const newItems = [];
+                let addedCount = 0;
+                let updatedCount = 0;
+                let newSectionsList = [...sections];
+
+                // Process rows
                 for (let i = 0; i < jsonData.length; i++) {
                     const row = jsonData[i];
                     if (!Array.isArray(row) || row.length === 0) continue;
@@ -145,6 +160,7 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
 
                     const name = String(nameRaw).trim();
                     const lowerName = name.toLowerCase();
+
                     // Skip headers
                     if (lowerName === 'nom' || lowerName.includes('tache') || lowerName.includes('task') || lowerName.includes('section')) {
                         const col2 = String(row[1] || '').toLowerCase();
@@ -153,8 +169,7 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                         }
                     }
 
-                    // Strict parsing: A=Name, B=Planned, C=Completed
-                    // FIX: Handle commas and ensure number
+                    // Parse Numbers
                     let plannedStr = String(row[1] || '0').replace(',', '.');
                     let completedStr = String(row[2] || '0').replace(',', '.');
 
@@ -164,54 +179,60 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                     if (isNaN(planned)) planned = 0;
                     if (isNaN(completed)) completed = 0;
 
-                    newItems.push({
-                        id: `import-${Date.now()}-${i}`,
-                        name: name,
-                        planned_hours: planned,
-                        completed_hours: completed
-                    });
-                }
+                    // CHECK IF EXISTS
+                    const existingSection = newSectionsList.find(s => s.name.toLowerCase() === name.toLowerCase());
 
-                if (newItems.length > 0) {
-                    // Smart Merge Logic
-                    let updatedCount = 0;
-                    let addedCount = 0;
-                    const updatedSections = [...sections];
+                    if (existingSection) {
+                        // UPDATE LOGIC
+                        const { error } = await supabase
+                            .from('project_tasks')
+                            .update({
+                                planned_hours: planned,
+                                completed_hours: completed
+                            })
+                            .eq('id', existingSection.id);
 
-                    newItems.forEach(newItem => {
-                        const existingIndex = updatedSections.findIndex(s => s.name.toLowerCase() === newItem.name.toLowerCase());
-                        if (existingIndex >= 0) {
-                            // Update existing (keep ID and Name, update hours)
-                            updatedSections[existingIndex] = {
-                                ...updatedSections[existingIndex],
-                                planned_hours: newItem.planned_hours,
-                                completed_hours: newItem.completed_hours
-                            };
+                        if (!error) {
+                            newSectionsList = newSectionsList.map(s => s.id === existingSection.id ? { ...s, planned_hours: planned, completed_hours: completed } : s);
                             updatedCount++;
-                        } else {
-                            // Add new
-                            updatedSections.push(newItem);
-                            addedCount++;
-                        }
-                    });
-
-                    if (updatedCount > 0 || addedCount > 0) {
-                        const msg = [];
-                        if (updatedCount > 0) msg.push(`${updatedCount} sections mises à jour`);
-                        if (addedCount > 0) msg.push(`${addedCount} nouvelles sections ajoutées`);
-
-                        if (window.confirm(`Import terminé :\n${msg.join('\n')}\n\nAppliquer ces modifications ?`)) {
-                            setSections(updatedSections);
                         }
                     } else {
-                        alert("Aucune donnée valide trouvée.");
+                        // INSERT LOGIC with REAL ID
+                        const { data, error } = await supabase
+                            .from('project_tasks')
+                            .insert({
+                                project_id: projectId,
+                                name: name,
+                                planned_hours: planned,
+                                completed_hours: completed
+                            })
+                            .select()
+                            .single();
+
+                        if (!error && data) {
+                            // IMPORTANT : utiliser cet ID réel
+                            const realTask = {
+                                id: data.id,
+                                name: data.name,
+                                planned_hours: Number(data.planned_hours),
+                                completed_hours: Number(data.completed_hours)
+                            };
+                            newSectionsList.push(realTask);
+                            addedCount++;
+                        }
                     }
-                } else {
-                    alert("Aucune donnée valide trouvée.");
                 }
+
+                if (updatedCount > 0 || addedCount > 0) {
+                    setSections(newSectionsList);
+                    alert(`Import réussi : ${addedCount} ajoutés, ${updatedCount} mis à jour.`);
+                } else {
+                    alert("Aucune donnée valide trouvée ou aucune modification nécessitée.");
+                }
+
             } catch (err) {
                 console.error("Excel parse error:", err);
-                alert("Erreur lors de la lecture du fichier Excel.");
+                alert("Erreur lors de la lecture du fichier Excel: " + err.message);
             }
         };
         reader.readAsArrayBuffer(file);

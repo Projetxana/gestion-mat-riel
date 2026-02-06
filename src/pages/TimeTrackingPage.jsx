@@ -145,8 +145,8 @@ const TimeTracking = () => {
         const taskBreakdown = {};
 
         todaySessions.forEach(s => {
-            // FIX: Use section_id if available, else task_id
-            const tId = s.section_id || s.task_id;
+            // FIX: Use section_id
+            const tId = s.section_id;
             // Guard against null/undefined keys
             const key = String(tId || 'unknown');
 
@@ -626,7 +626,7 @@ const TimeTracking = () => {
     if (viewMode === 'ACTIVE' && activeSession) {
         // Resolve Section/Task Name
         const currentSection = projectTasks?.find(pt => String(pt.id) === String(activeSession.section_id));
-        const taskName = currentSection ? currentSection.name : (getTaskName(activeSession.task_id) || `Section #${activeSession.section_id || '?'} Inconnue`);
+        const taskName = currentSection ? currentSection.name : `Section #${activeSession.section_id || '?'} Inconnue`;
 
         // Calculate Live Progress
         const startTime = new Date(activeSession.punch_start_at).getTime();
@@ -772,7 +772,7 @@ const TimeTracking = () => {
                                                 const now = new Date().getTime();
                                                 const hours = (now - startTime) / (1000 * 60 * 60);
                                                 const oldTaskName = projectTasks?.find(pt => String(pt.id) === String(activeSession.section_id))?.name
-                                                    || getTaskName(activeSession.task_id);
+                                                    || `Section #${activeSession.section_id}`;
 
                                                 // Execute Switch
                                                 const result = await switchTask(activeSession.id, activeSession.site_id, newSectionId);

@@ -1193,13 +1193,29 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    // Smart helper: Switch = End current + Start new
-    const switchTask = async (currentSessionId, siteId, newSectionId, gpsData = null) => {
-        const endResult = await endTimeSession(currentSessionId, gpsData);
-        if (endResult.success) {
-            return await startTimeSession(siteId, newSectionId, gpsData);
+    const switchTask = async (sessionId, siteId, newSectionId) => {
+        try {
+            // 1. Close current session
+            await endTimeSession(sessionId, null, null);
+
+            // 2. Start new one
+            await startTimeSession(siteId, Number(newSectionId), null);
+
+            // 3. FORCE RELOAD sessions from Supabase
+            const { data, error } = await supabase
+                .from('time_sessions')
+                .select('*')
+                .order('punch_start_at', { ascending: false });
+
+            if (error) throw error;
+
+            setTimeSessions(data);   // <-- THIS WAS MISSING
+
+            return { success: true };
+        } catch (err) {
+            console.error("SwitchTask error:", err);
+            return { error: err.message };
         }
-        return endResult;
     };
 
     const logManualTime = async (siteId, sectionId, startAt, endAt) => {
