@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
+import { supabase } from '../supabaseClient';
+import { importProjectProgress } from '../utils/excelParser';
 import { ArrowLeft, MapPin, Hammer, ExternalLink, Clock, BarChart3, Trash2 } from 'lucide-react';
 import MaterialDetailsModal from '../components/MaterialDetailsModal';
 import SiteFormModal from '../components/SiteFormModal';
@@ -11,7 +13,7 @@ const SiteDetails = () => {
     const {
         sites, materials,
         projectTasks, updateProjectTask, deleteProjectTask,
-        importProjectProgress,
+
         updateSite,
         timeSessions // NEW: Required for realized calculation
     } = useAppContext();
@@ -25,7 +27,7 @@ const SiteDetails = () => {
         if (!file) return;
 
         if (confirm("Cet import va mettre à jour l'avancement (Heures Prévues / Réalisées) des sections. Continuer ?")) {
-            const result = await importProjectProgress(site.id, file);
+            const result = await importProjectProgress(site.id, file, supabase);
             if (result.success) {
                 alert(`Import réussi ! Données mises à jour.`);
             } else {

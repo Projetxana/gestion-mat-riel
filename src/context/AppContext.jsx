@@ -813,127 +813,7 @@ export const AppProvider = ({ children }) => {
     // --- IMPORT ACTIONS ---
 
 
-    const importProjectProgress = async (siteId, file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const XLSX = await import('xlsx');
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const sheetName = workbook.SheetNames[0];
-                    const sheet = workbook.Sheets[sheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-                    if (jsonData.length === 0) {
-                        resolve({ error: "Fichier vide" });
-                        return;
-                    }
-
-                    // 1. Parse Headers (Row 0) to find columns
-                    const headers = jsonData[0].map(h => String(h || '').toLowerCase().trim());
-
-                    const colNameIdx = headers.findIndex(h => h.includes('tache') || h.includes('tâche') || h.includes('section'));
-                    const colPlannedIdx = headers.findIndex(h => h.includes('prevu') || h.includes('prévu') || h.includes('planned'));
-                    const colRealizedIdx = headers.findIndex(h => h.includes('realise') || h.includes('réalisé') || h.includes('completed'));
-
-                    if (colNameIdx === -1) {
-                        resolve({ error: "Colonnes introuvables. Le fichier doit avoir : 'Tâches', 'Heures prévues', 'Heures réalisées'" });
-                        return;
-                    }
-
-                    let processedTasks = [];
-                    const updates = [];
-                    const inserts = [];
-
-                    // Get existing Sections (project_tasks) for this site
-                    const safeProjectTasks = projectTasks ?? [];
-                    const existingSections = safeProjectTasks.filter(section => String(section.project_id) === String(siteId));
-
-                    // Process rows (start at 1)
-                    for (let i = 1; i < jsonData.length; i++) {
-                        const row = jsonData[i];
-                        if (!Array.isArray(row) || row.length === 0) continue;
-
-                        const nameRaw = row[colNameIdx];
-                        if (!nameRaw) continue; // Skip empty names
-
-                        const name = String(nameRaw).trim();
-                        if (!name) continue;
-
-                        // Parse Numbers strictly
-                        let plannedStr = String(row[colPlannedIdx] !== undefined ? row[colPlannedIdx] : '0').replace(',', '.');
-                        let completedStr = String(row[colRealizedIdx] !== undefined ? row[colRealizedIdx] : '0').replace(',', '.');
-
-                        let planned = parseFloat(plannedStr);
-                        let completed = parseFloat(completedStr);
-
-                        if (isNaN(planned)) planned = 0;
-                        if (isNaN(completed)) completed = 0;
-
-                        // UPSERT LOGIC
-                        const existing = existingSections.find(s => s.name.toLowerCase() === name.toLowerCase());
-
-                        if (existing) {
-                            updates.push({
-                                id: existing.id,
-                                planned_hours: planned,
-                                completed_hours: completed
-                            });
-                        } else {
-                            inserts.push({
-                                project_id: siteId,
-                                name,
-                                planned_hours: planned,
-                                completed_hours: completed,
-                                is_active: true
-                            });
-                        }
-                    }
-
-                    // EXECUTE BATCHES
-                    // 1. Inserts
-                    if (inserts.length > 0) {
-                        const { data: inserted, error } = await supabase.from('project_tasks').insert(inserts).select();
-                        if (error) console.error("Error inserting project_tasks:", error);
-                        else if (inserted) {
-                            setProjectTasks(prev => [...prev, ...inserted.map(i => ({ ...i, planned_hours: Number(i.planned_hours), completed_hours: Number(i.completed_hours) }))]);
-                            processedTasks.push(...inserted);
-                        }
-                    }
-
-                    // 2. Updates
-                    for (const up of updates) {
-                        const { error } = await supabase.from('project_tasks').update({
-                            planned_hours: up.planned_hours,
-                            completed_hours: up.completed_hours
-                        }).eq('id', up.id);
-
-                        if (!error) {
-                            setProjectTasks(prev => prev.map(p => p.id === up.id ? { ...p, ...up } : p));
-                            processedTasks.push(up);
-                        }
-                    }
-
-                    // 3. Update Site Total Planned Hours
-                    // We sum ALL project_tasks again to be safe
-                    // Use updated state / memory
-                    const allSiteSections = [...existingSections.filter(e => !updates.find(u => u.id === e.id)), ...processedTasks]; // Merged
-                    const totalFromSections = allSiteSections.reduce((acc, t) => acc + (t.planned_hours || 0), 0);
-
-                    // Optional: Update site.planned_hours if you still want to cache it
-                    await updateSite(siteId, { planned_hours: totalFromSections });
-
-                    resolve({ success: true, count: processedTasks.length });
-
-                } catch (err) {
-                    console.error("Import Progress Error:", err);
-                    resolve({ error: err.message });
-                }
-            };
-            reader.readAsArrayBuffer(file);
-        });
-    };
 
     async function updateProjectTask(id, updates) {
         // Optimistic
@@ -1151,7 +1031,7 @@ export const AppProvider = ({ children }) => {
         lastGeofenceExit,
         currentGeofenceSiteId,
 
-        importProjectProgress,
+
         projectTasks,
         updateProjectTask, // We focus on this one as requested
         deleteProjectTask // In case needed

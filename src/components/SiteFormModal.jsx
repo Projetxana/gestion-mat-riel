@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Trash2, Plus, Upload } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { supabase } from '../supabaseClient';
+import { importProjectProgress } from '../utils/excelParser';
 
 const SiteFormModal = ({ onClose, siteToEdit = null }) => {
     const { addSite, updateSite, projectTasks } = useAppContext(); // ✅ ADDED projectTasks
@@ -133,138 +134,19 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
             return;
         }
 
-        const projectId = siteToEdit.id;
+        try {
+            const result = await importProjectProgress(siteToEdit.id, file, supabase);
 
-        const reader = new FileReader();
-        reader.onload = async (evt) => {
-            try {
-                const data = new Uint8Array(evt.target.result);
-                // Dynamic import to keep bundle small
-                const XLSX = await import('xlsx');
-                const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const sheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-                if (!jsonData || jsonData.length === 0) {
-                    alert("Le fichier semble vide.");
-                    return;
-                }
-
-                // 1. Find Header Row (first row with typically 'Tache' or 'Nom')
-                let headerRowIdx = -1;
-                let colNameIdx = -1;
-                let colPlannedIdx = -1;
-                let colRealizedIdx = -1;
-
-                // Scan first 5 rows to find headers
-                for (let i = 0; i < Math.min(jsonData.length, 5); i++) {
-                    const row = jsonData[i].map(c => String(c || '').toLowerCase().trim());
-                    const nameIdx = row.findIndex(c => c.includes('tache') || c.includes('tâche') || c.includes('section') || c.includes('nom') || c.includes('designation'));
-
-                    if (nameIdx !== -1) {
-                        headerRowIdx = i;
-                        colNameIdx = nameIdx;
-                        colPlannedIdx = row.findIndex(c => c.includes('prevu') || c.includes('prévu') || c.includes('planned') || c.includes('devis'));
-                        colRealizedIdx = row.findIndex(c => c.includes('realise') || c.includes('réalisé') || c.includes('completed') || c.includes('fait'));
-                        break;
-                    }
-                }
-
-                if (colNameIdx === -1) {
-                    // Fallback to strict 0, 1, 2 if no headers found? Or error?
-                    // Let's try to be smart: if row 0 has strings that look like data, maybe no header?
-                    // Safe bet: Alert user
-                    alert("Impossible de trouver les colonnes. Le fichier doit avoir des en-têtes : 'Nom' (ou Tâche), 'Prévu', 'Réalisé'.");
-                    return;
-                }
-
-                let addedCount = 0;
-                let updatedCount = 0;
-                let newSectionsList = [...sections];
-
-                // Process rows starting AFTER header
-                for (let i = headerRowIdx + 1; i < jsonData.length; i++) {
-                    const row = jsonData[i];
-                    if (!Array.isArray(row) || row.length === 0) continue;
-
-                    const nameRaw = row[colNameIdx];
-                    if (!nameRaw) continue;
-
-                    const name = String(nameRaw).trim();
-                    if (!name) continue;
-
-                    // Parse Numbers
-                    let plannedStr = '0';
-                    let completedStr = '0';
-
-                    if (colPlannedIdx !== -1 && row[colPlannedIdx] !== undefined) {
-                        plannedStr = String(row[colPlannedIdx]).replace(',', '.').replace(/[^0-9.]/g, '');
-                    }
-                    if (colRealizedIdx !== -1 && row[colRealizedIdx] !== undefined) {
-                        completedStr = String(row[colRealizedIdx]).replace(',', '.').replace(/[^0-9.]/g, '');
-                    }
-
-                    let planned = parseFloat(plannedStr) || 0;
-                    let completed = parseFloat(completedStr) || 0;
-
-                    // CHECK IF EXISTS
-                    const existingSection = newSectionsList.find(s => s.name.toLowerCase() === name.toLowerCase());
-
-                    if (existingSection) {
-                        // UPDATE LOGIC
-                        const { error } = await supabase
-                            .from('project_tasks')
-                            .update({
-                                planned_hours: planned,
-                                completed_hours: completed
-                            })
-                            .eq('id', existingSection.id);
-
-                        if (!error) {
-                            newSectionsList = newSectionsList.map(s => s.id === existingSection.id ? { ...s, planned_hours: planned, completed_hours: completed } : s);
-                            updatedCount++;
-                        }
-                    } else {
-                        // INSERT LOGIC
-                        const { data, error } = await supabase
-                            .from('project_tasks')
-                            .insert({
-                                project_id: projectId,
-                                name: name,
-                                planned_hours: planned,
-                                completed_hours: completed,
-                                is_active: true
-                            })
-                            .select()
-                            .single();
-
-                        if (!error && data) {
-                            const realTask = {
-                                id: data.id,
-                                name: data.name,
-                                planned_hours: Number(data.planned_hours),
-                                completed_hours: Number(data.completed_hours)
-                            };
-                            newSectionsList.push(realTask);
-                            addedCount++;
-                        }
-                    }
-                }
-
-                if (updatedCount > 0 || addedCount > 0) {
-                    setSections(newSectionsList);
-                    alert(`Import réussi : ${addedCount} ajoutés, ${updatedCount} mis à jour.`);
-                } else {
-                    alert("Aucune donnée valide trouvée ou aucune modification nécessitée.");
-                }
-
-            } catch (err) {
-                console.error("Excel parse error:", err);
-                alert("Erreur lors de la lecture du fichier Excel: " + err.message);
+            if (result.success) {
+                alert(`Import réussi : ${result.count || 0} éléments traités.`);
+                // State updates will be handled by AppContext real-time subscription
+            } else {
+                alert("Erreur lors de l'import : " + result.error);
             }
-        };
-        reader.readAsArrayBuffer(file);
+        } catch (err) {
+            console.error("Excel import error:", err);
+            alert("Erreur inattendue : " + err.message);
+        }
         e.target.value = '';
     };
 
