@@ -761,6 +761,12 @@ const TimeTracking = () => {
                                                 // Execute Switch
                                                 const result = await switchTask(activeSession.id, activeSession.site_id, newSectionId);
 
+                                                if (result.error) {
+                                                    alert("Erreur lors du changement de tâche : " + result.error);
+                                                    setIsSwitching(false); // Unlock UI
+                                                    return;
+                                                }
+
                                                 // Show Summary
                                                 setSwitchedTaskStats({
                                                     name: oldTaskName,
