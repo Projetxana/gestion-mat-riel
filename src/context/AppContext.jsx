@@ -866,18 +866,20 @@ export const AppProvider = ({ children }) => {
     }
 
     // --- TIME TRACKING ACTIONS ---
-    async function startTimeSession(siteId, sectionId, gpsData = null) {
+    async function startTimeSession(siteId, sectionId, gpsData = null, checkActive = true) {
         if (!currentUser) return;
 
         // 1. Verify no active session
-        const activeSession = timeSessions.find(s =>
-            String(s.user_id) === String(currentUser.id) &&
-            s.punch_end_at === null
-        );
+        if (checkActive) {
+            const activeSession = timeSessions.find(s =>
+                String(s.user_id) === String(currentUser.id) &&
+                s.punch_end_at === null
+            );
 
-        if (activeSession) {
-            console.warn("Session already active, cannot start new one without ending.");
-            return { error: "Une session est déjà active. Veuillez la terminer d'abord." };
+            if (activeSession) {
+                console.warn("Session already active, cannot start new one without ending.");
+                return { error: "Une session est déjà active. Veuillez la terminer d'abord." };
+            }
         }
 
         const timestamp = new Date();
@@ -954,7 +956,7 @@ export const AppProvider = ({ children }) => {
 
             // 2. Start new one
             // Don't force Number() if it might be a string/uuid
-            const startResult = await startTimeSession(siteId, newSectionId, null);
+            const startResult = await startTimeSession(siteId, newSectionId, null, false);
 
             if (startResult.error) {
                 console.error("Failed to start new session during switch:", startResult.error);
