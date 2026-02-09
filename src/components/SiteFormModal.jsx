@@ -138,7 +138,15 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
             const result = await importProjectProgress(siteToEdit.id, file, supabase);
 
             if (result.success) {
-                alert(`Import réussi : ${result.count || 0} éléments traités.`);
+                let msg = `Import terminé.\n`;
+                msg += `➕ Ajoutés : ${result.count}\n`;
+                msg += `✏️ Mis à jour : ${result.updated}\n`;
+                if (result.count === 0 && result.updated === 0) {
+                    msg += `\n⚠️ AVERTISSEMENT : Aucun élément traité.\n`;
+                    msg += `Détails techniques : ${result.debug}\n`;
+                    msg += `Vérifiez que les colonnes 'Tâche', 'Prévu', 'Réalisé' existent.`;
+                }
+                alert(msg);
                 // State updates will be handled by AppContext real-time subscription
             } else {
                 alert("Erreur lors de l'import : " + result.error);

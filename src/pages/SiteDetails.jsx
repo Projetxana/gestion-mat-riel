@@ -29,7 +29,15 @@ const SiteDetails = () => {
         if (confirm("Cet import va mettre à jour l'avancement (Heures Prévues / Réalisées) des sections. Continuer ?")) {
             const result = await importProjectProgress(site.id, file, supabase);
             if (result.success) {
-                alert(`Import réussi ! Données mises à jour.`);
+                let msg = `Import terminé.\n`;
+                msg += `➕ Ajoutés : ${result.count}\n`;
+                msg += `✏️ Mis à jour : ${result.updated}\n`;
+                if (result.count === 0 && result.updated === 0) {
+                    msg += `\n⚠️ AVERTISSEMENT : Aucun élément traité.\n`;
+                    msg += `Détails techniques : ${result.debug}\n`;
+                    msg += `Vérifiez que les colonnes 'Tâche', 'Prévu', 'Réalisé' existent.`;
+                }
+                alert(msg);
             } else {
                 alert(`Erreur : ${result.error}`);
             }

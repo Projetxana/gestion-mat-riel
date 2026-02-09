@@ -143,7 +143,13 @@ export const importProjectProgress = async (siteId, file, supabase) => {
                     await supabase.from('sites').update({ planned_hours: totalPlanned }).eq('id', siteId);
                 }
 
-                resolve({ success: true, count: processedCount, updated: updatedCount });
+                resolve({
+                    success: true,
+                    count: processedCount,
+                    updated: updatedCount,
+                    totalRows: jsonData.length - (headerRowIdx + 1),
+                    debug: `Lignes lues: ${jsonData.length}. En-tête (Ligne ${headerRowIdx}): Nom=${colNameIdx}, Prévu=${colPlannedIdx}, Réalisé=${colRealizedIdx}`
+                });
 
             } catch (err) {
                 console.error("Import Parser Error:", err);
