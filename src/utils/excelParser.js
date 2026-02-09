@@ -12,30 +12,51 @@ export const importProjectProgress = async (siteId, file, supabase) => {
                 const sheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
+                console.log("📊 [ExcelParser] Raw Data (First 5 rows):", jsonData.slice(0, 5));
+
                 if (!jsonData || jsonData.length === 0) {
                     resolve({ error: "Fichier vide" });
                     return;
                 }
 
-                // 1. Parse Headers (Row 0) to find columns
-                // Using permissive matching
-                const headers = jsonData[0].map(h => String(h || '').toLowerCase().trim());
+                // 1. Find Header Row
+                let headerRowIdx = -1;
+                let colNameIdx = -1;
+                let colPlannedIdx = -1;
+                let colRealizedIdx = -1;
 
-                const colNameIdx = headers.findIndex(h => h.includes('tache') || h.includes('tâche') || h.includes('section') || h.includes('nom') || h.includes('designation'));
-                const colPlannedIdx = headers.findIndex(h => h.includes('prevu') || h.includes('prévu') || h.includes('planned') || h.includes('devis'));
-                const colRealizedIdx = headers.findIndex(h => h.includes('realise') || h.includes('réalisé') || h.includes('completed') || h.includes('fait'));
+                // Scan first 10 rows to find headers
+                for (let i = 0; i < Math.min(jsonData.length, 10); i++) {
+                    const row = jsonData[i] ? jsonData[i].map(c => String(c || '').toLowerCase().trim()) : [];
+                    console.log(`🔎 [ExcelParser] Scanning Row ${i}:`, row);
+
+                    const nameIdx = row.findIndex(c =>
+                        c.includes('tache') || c.includes('tâche') || c.includes('section') ||
+                        c.includes('nom') || c.includes('designation') || c.includes('libelle') || c.includes('libellé')
+                    );
+
+                    if (nameIdx !== -1) {
+                        headerRowIdx = i;
+                        colNameIdx = nameIdx;
+                        colPlannedIdx = row.findIndex(c => c.includes('prevu') || c.includes('prévu') || c.includes('planned') || c.includes('devis') || c.includes('budget'));
+                        colRealizedIdx = row.findIndex(c => c.includes('realise') || c.includes('réalisé') || c.includes('completed') || c.includes('fait') || c.includes('conso'));
+
+                        console.log(`✅ [ExcelParser] Headers Found at Row ${i}: NameIdx=${colNameIdx}, PlannedIdx=${colPlannedIdx}, RealizedIdx=${colRealizedIdx}`);
+                        break;
+                    }
+                }
 
                 if (colNameIdx === -1) {
-                    // Fallback try: maybe no headers?
-                    // But for safety, request headers
-                    resolve({ error: "Colonnes introuvables. Le fichier doit avoir : 'Tâche' (ou Section), 'Prévu', 'Réalisé'" });
+                    const msg = "Colonnes introuvables. En-têtes attendus : 'Tâche' (ou Nom/Désignation), 'Heures Prévues', 'Heures Réalisées'.";
+                    console.warn("❌ [ExcelParser]", msg);
+                    resolve({ error: msg });
                     return;
                 }
 
                 let processedCount = 0;
                 let updatedCount = 0;
 
-                // Fetch existing Sections for this site to detect duplicates/updates
+                // Fetch existing Sections for this site
                 const { data: existingSections, error: fetchError } = await supabase
                     .from('project_tasks')
                     .select('*')
@@ -46,8 +67,8 @@ export const importProjectProgress = async (siteId, file, supabase) => {
                 const updates = [];
                 const inserts = [];
 
-                // Process rows (start at 1)
-                for (let i = 1; i < jsonData.length; i++) {
+                // Process rows (start after header)
+                for (let i = headerRowIdx + 1; i < jsonData.length; i++) {
                     const row = jsonData[i];
                     if (!Array.isArray(row) || row.length === 0) continue;
 
@@ -55,7 +76,8 @@ export const importProjectProgress = async (siteId, file, supabase) => {
                     if (!nameRaw) continue; // Skip empty names
 
                     const name = String(nameRaw).trim();
-                    if (!name) continue;
+                    // Filter out obviously bad rows
+                    if (!name || name.toLowerCase().includes('total') || name.toLowerCase().includes('page')) continue;
 
                     // Parse Numbers strictly
                     let plannedStr = '0';
@@ -73,6 +95,8 @@ export const importProjectProgress = async (siteId, file, supabase) => {
 
                     if (isNaN(planned)) planned = 0;
                     if (isNaN(completed)) completed = 0;
+
+                    // console.log(`👉 [ExcelParser] Row ${i}: "${name}" -> P:${planned} | C:${completed}`);
 
                     // UPSERT LOGIC
                     const existing = existingSections.find(s => s.name.toLowerCase() === name.toLowerCase());
@@ -94,19 +118,15 @@ export const importProjectProgress = async (siteId, file, supabase) => {
                     }
                 }
 
+                console.log(`📝 [ExcelParser] Summary: ${inserts.length} Inserts, ${updates.length} Updates found.`);
+
                 // EXECUTE BATCHES
-                // 1. Inserts
                 if (inserts.length > 0) {
                     const { error } = await supabase.from('project_tasks').insert(inserts);
                     if (error) console.error("Error inserting project_tasks:", error);
                     else processedCount += inserts.length;
                 }
 
-                // 2. Updates
-                // Supabase doesn't support bulk update with different values easily without upsert, 
-                // but usually looped updates are fine for small Excel files.
-                // Or use upsert if ID is present? Upsert requires all fields.
-                // We'll loop for safety and simplicity as files are small.
                 for (const up of updates) {
                     const { error } = await supabase.from('project_tasks').update({
                         planned_hours: up.planned_hours,
@@ -116,13 +136,7 @@ export const importProjectProgress = async (siteId, file, supabase) => {
                     if (!error) updatedCount++;
                 }
 
-                // 3. Update Site Total Planned Hours
-                // We need to re-fetch or calculate total manually.
-                // Best is to sum what we have in DB now.
-                // But simplified: allow AppContext real-time to eventually handle it? 
-                // Or force update site total here.
-
-                // Let's force update site total for consistency
+                // Update Site Total
                 const { data: allTasks } = await supabase.from('project_tasks').select('planned_hours').eq('project_id', siteId);
                 if (allTasks) {
                     const totalPlanned = allTasks.reduce((acc, t) => acc + (Number(t.planned_hours) || 0), 0);
