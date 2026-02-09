@@ -7,7 +7,7 @@ import GlobalTimer from './components/GlobalTimer';
 
 const VersionOverlay = () => (
   <div className="fixed bottom-0 right-0 bg-black/80 text-white text-[10px] p-1 z-[9999] pointer-events-none">
-    v0.9.3
+    v0.9.4
   </div>
 );
 import LoginPage from './pages/LoginPage';

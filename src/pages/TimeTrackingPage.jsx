@@ -327,15 +327,6 @@ const TimeTracking = () => {
         );
     }
 
-    // ... inside Change Task Modal ...
-    {
-        (() => {
-            const siteTasks = projectTasks.filter(pt => String(pt.project_id) === String(activeSession.site_id));
-            return siteTasks.map(task => (
-                <option key={task.id} value={task.id}>{task.name}</option>
-            ));
-        })()
-    }
 
 
     // --- ACTIONS ---
