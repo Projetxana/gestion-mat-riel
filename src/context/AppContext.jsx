@@ -942,21 +942,28 @@ export const AppProvider = ({ children }) => {
 
     const switchTask = async (sessionId, siteId, newSectionId) => {
         try {
+            console.log("Switching Task:", { sessionId, siteId, newSectionId });
+
             // 1. Close current session
-            await endTimeSession(sessionId, null, null);
+            const endResult = await endTimeSession(sessionId, null, null);
+            if (endResult.error) {
+                console.error("Failed to end session during switch:", endResult.error);
+                // Continue anyway? Or abort? If we abort, user is stuck.
+                // Better to try starting the new one if possible, or throw.
+            }
 
             // 2. Start new one
-            await startTimeSession(siteId, Number(newSectionId), null);
+            // Don't force Number() if it might be a string/uuid
+            const startResult = await startTimeSession(siteId, newSectionId, null);
 
-            // 3. FORCE RELOAD sessions from Supabase
-            const { data, error } = await supabase
-                .from('time_sessions')
-                .select('*')
-                .order('punch_start_at', { ascending: false });
+            if (startResult.error) {
+                console.error("Failed to start new session during switch:", startResult.error);
+                throw new Error(startResult.error);
+            }
 
-            if (error) throw error;
-
-            setTimeSessions(data);   // <-- THIS WAS MISSING
+            // 3. NO FORCE RELOAD NEEDED
+            // startTimeSession already updates state optimistically and with real data on success.
+            // fetching again introduces race conditions.
 
             return { success: true };
         } catch (err) {
