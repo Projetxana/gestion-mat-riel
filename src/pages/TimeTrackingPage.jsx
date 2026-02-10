@@ -5,6 +5,8 @@ import { Clock, Play, Square, RefreshCw, MapPin, AlertCircle, ChevronRight, Arro
 import { useNavigate, useLocation } from 'react-router-dom';
 import SmartCorrectionPopup from '../components/SmartCorrectionPopup';
 import WeeklySummary from '../components/WeeklySummary';
+import AdminHoursView from '../modules/hours_v2/AdminHoursView';
+import LeaderHoursView from '../modules/hours_v2/LeaderHoursView';
 
 const TimeTracking = () => {
     const {
@@ -22,6 +24,13 @@ const TimeTracking = () => {
     } = useAppContext();
     const navigate = useNavigate();
     const location = useLocation();
+
+    // --- HOURS V2 LOGIC ---
+    if (currentUser?.role === 'admin') {
+        return <AdminHoursView />;
+    }
+    // For Leader, we continue but will append the view at the bottom
+    const isLeader = currentUser?.role === 'leader';
 
     // VIEW STATE: 'INITIAL' | 'WIZARD_SITE' | 'WIZARD_TASK' | 'ACTIVE'
     const [viewMode, setViewMode] = useState('INITIAL');
@@ -722,6 +731,9 @@ const TimeTracking = () => {
 
                 {/* Companion View below active card */}
                 {renderCompanionView()}
+
+                {/* HOURS V2: LEADER VIEW */}
+                {isLeader && <LeaderHoursView />}
 
                 {showCorrection && (
                     <SmartCorrectionPopup
