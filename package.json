@@ -1,7 +1,7 @@
 {
   "name": "material-app",
   "private": true,
-  "version": "0.9.9",
+  "version": "0.9.10",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.90.0",
+    "date-fns": "^4.1.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",

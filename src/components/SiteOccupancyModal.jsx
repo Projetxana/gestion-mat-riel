@@ -3,7 +3,7 @@ import { X, Clock, User, HardHat } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
 const SiteOccupancyModal = ({ site, onClose }) => {
-    const { timeSessions, users, tasks } = useAppContext();
+    const { timeSessions, users, projectTasks } = useAppContext();
 
     // Filter active sessions for this site
     const activeSessions = timeSessions.filter(s =>
@@ -33,7 +33,7 @@ const SiteOccupancyModal = ({ site, onClose }) => {
                     ) : (
                         activeSessions.map((session) => {
                             const user = users.find(u => String(u.id) === String(session.user_id));
-                            const task = tasks.find(t => String(t.id) === String(session.task_id));
+                            const task = projectTasks?.find(t => String(t.id) === String(session.section_id));
                             const startTime = new Date(session.punch_start_at);
                             const now = new Date();
                             const diff = now - startTime;
