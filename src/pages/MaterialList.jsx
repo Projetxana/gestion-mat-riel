@@ -7,7 +7,7 @@ import MaterialDetailsModal from '../components/MaterialDetailsModal';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 
 const MaterialList = () => {
-    const { materials, sites } = useAppContext();
+    const { materials, sites, currentUser } = useAppContext();
     const [searchParams] = useSearchParams();
     const [showAddModal, setShowAddModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -104,13 +104,15 @@ const MaterialList = () => {
                     <h1 className="page-title">Outils et Matériel</h1>
                     <p className="text-slate-400">Gérez votre inventaire et suivez les emplacements</p>
                 </div>
-                <button
-                    onClick={() => setShowAddModal(true)}
-                    className="btn btn-primary"
-                >
-                    <Plus size={20} />
-                    <span>Ajouter</span>
-                </button>
+                {currentUser?.role === 'admin' && (
+                    <button
+                        onClick={() => setShowAddModal(true)}
+                        className="btn btn-primary"
+                    >
+                        <Plus size={20} />
+                        <span>Ajouter</span>
+                    </button>
+                )}
             </div>
 
             {/* Filters & Search */}

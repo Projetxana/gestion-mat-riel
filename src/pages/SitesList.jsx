@@ -5,7 +5,7 @@ import SiteFormModal from '../components/SiteFormModal';
 import SiteDetailsModal from '../components/SiteDetailsModal';
 
 const SitesList = () => {
-    const { sites, materials } = useAppContext();
+    const { sites, materials, currentUser } = useAppContext();
     const [viewMode, setViewMode] = useState('grid');
     const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
     const [showAddModal, setShowAddModal] = useState(false);
@@ -59,13 +59,15 @@ const SitesList = () => {
                         </button>
                     </div>
 
-                    <button
-                        onClick={() => setShowAddModal(true)}
-                        className="btn btn-primary"
-                    >
-                        <Plus size={20} />
-                        <span className="hidden sm:inline">Nouveau Chantier</span>
-                    </button>
+                    {currentUser?.role === 'admin' && (
+                        <button
+                            onClick={() => setShowAddModal(true)}
+                            className="btn btn-primary"
+                        >
+                            <Plus size={20} />
+                            <span className="hidden sm:inline">Nouveau Chantier</span>
+                        </button>
+                    )}
                 </div>
             </div>
 

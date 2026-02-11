@@ -384,7 +384,7 @@ export const AppProvider = ({ children }) => {
         let error = null;
 
         // If it's a generated user, we need to INSERT it as a new user in DB
-        if (userId.startsWith('generated-')) {
+        if (String(userId).startsWith('generated-')) {
             // We use the same ID (converted to string if needed) or let Supabase generate one?
             // Ideally we KEEP the generated ID to match what's in memory for the session, 
             // OR we replace it with the real one.

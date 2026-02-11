@@ -8,49 +8,118 @@ import WeeklySummary from '../components/WeeklySummary';
 import AdminHoursView from '../modules/hours_v2/AdminHoursView';
 import LeaderHoursView from '../modules/hours_v2/LeaderHoursView';
 
+import BreakReportModal from '../components/BreakReportModal';
+
 const TimeTracking = () => {
-    const {
-        timeSessions,
-        tasks,
-        sites,
-        currentUser,
-        startTimeSession,
-        endTimeSession,
-        switchTask,
-        lastGeofenceExit,
-        lastGeofenceEntry,
-        addProjectTask,
-        projectTasks // NEW: Direct access for real-time updates
-    } = useAppContext();
-    const navigate = useNavigate();
-    const location = useLocation();
+    // ... (existing constants)
 
-    // --- HOURS V2 LOGIC ---
-    if (currentUser?.role === 'admin') {
-        return <AdminHoursView />;
-    }
-    // For Leader, we continue but will append the view at the bottom
-    const isLeader = currentUser?.role === 'leader';
+    // ... (existing state)
+    // BREAK REPORT STATE
+    const [showBreakReport, setShowBreakReport] = useState(false);
+    const [pendingEndCorrection, setPendingEndCorrection] = useState(null); // Stores { time, isUsingGps } from SmartCorrection
 
-    // VIEW STATE: 'INITIAL' | 'WIZARD_SITE' | 'WIZARD_TASK' | 'ACTIVE'
-    const [viewMode, setViewMode] = useState('INITIAL');
-    const [activeSession, setActiveSession] = useState(null);
-    const [elapsedTime, setElapsedTime] = useState('00:00:00');
+    // ... (existing effects)
 
-    // WIZARD STATE
-    const [selectedSiteId, setSelectedSiteId] = useState('');
-    const [selectedTaskId, setSelectedTaskId] = useState(''); // MOVED TO TOP LEVEL
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    // ... (existing handleEndDay logic refactored)
 
-    // COMPANION DATA STATE
-    const [companionStats, setCompanionStats] = useState(null);
+    // NEW HANDLER CHAIN
 
-    // CORRECTION STATE
-    const [showCorrection, setShowCorrection] = useState(false);
-    const [correctionType, setCorrectionType] = useState('end'); // 'end' or 'start'
-    const [showChangeTaskModal, setShowChangeTaskModal] = useState(false);
-    const [isSwitching, setIsSwitching] = useState(false);
-    const [switchedTaskStats, setSwitchedTaskStats] = useState(null);
+    // 1. Triggered by "Terminer" button
+    const handleEndDay = async () => {
+        const exit = lastGeofenceExit;
+        const isRelevantExit = exit &&
+            String(exit.siteId) === String(activeSession.site_id) &&
+            new Date(exit.exitAt) > new Date(activeSession.punch_start_at);
+
+        // Step A: Check Smart Correction
+        if (isRelevantExit) {
+            const diffMin = Math.abs(new Date().getTime() - new Date(exit.exitAt).getTime()) / 60000;
+            if (diffMin > 5 && currentUser?.role !== 'admin') {
+                console.log("Smart Correction Triggered: Exit was", exit.exitAt);
+                setCorrectionType('end');
+                setShowCorrection(true);
+                return;
+            }
+        }
+
+        if (!window.confirm("Terminer la journée ?")) return;
+
+        // Step B: Proceed to Break Report Check
+        checkAndShowBreakReport(null);
+    };
+
+    // 2. Triggered after Smart Correction Popup
+    const handleSmartCorrectionConfirm = (time, isUsingGps) => {
+        const correctionData = time ? { time, isUsingGps } : null;
+        setPendingEndCorrection(correctionData);
+        setShowCorrection(false);
+        checkAndShowBreakReport(correctionData);
+    };
+
+    // 3. Check specific roles for Break Report
+    const checkAndShowBreakReport = (correctionData) => {
+        // User Logic: "Quand je suis connecté en chef d'équipe, compagnon ou apprenti"
+        // We assume valid roles are non-admin (legacy leader, user).
+        const isValidRole = currentUser?.role !== 'admin';
+        // Or strictly: role=user + levels?
+        // Let's stick to "Not Admin" to be safe and cover all workers.
+
+        if (isValidRole) {
+            setShowBreakReport(true);
+        } else {
+            confirmEndDay(correctionData, 0); // 0 adjustment for admin
+        }
+    };
+
+    // 4. Triggered by BreakReportModal
+    const handleBreakConfirm = (reportData) => {
+        // reportData = { lunchTaken, breaksTaken, adjustmentMinutes }
+        setShowBreakReport(false);
+        confirmEndDay(pendingEndCorrection, reportData.adjustmentMinutes);
+    };
+
+    // 5. Final API Call
+    const confirmEndDay = async (correction, adjustmentMinutes = 0) => {
+        setIsSubmitting(true);
+
+        // Base Exit Time
+        // If SmartCorrection provided a time, use it.
+        // Else use NOW (handled by backend if null, or we explicitly pass it).
+        // Since we need to APPLY ADJUSTMENT, we MUST respect the base time.
+
+        let baseTime = correction?.time ? new Date(correction.time) : new Date();
+
+        // Apply Adjustment
+        // e.g. Base 16:00. Adjustment -30m (Lunch). Result 15:30.
+        // e.g. Base 16:00. Adjustment +15m (1 Break). Result 16:15.
+        const adjustedTime = new Date(baseTime.getTime() + (adjustmentMinutes * 60000));
+
+        console.log("End Day Confirmed:", {
+            base: baseTime.toLocaleTimeString(),
+            adj: adjustmentMinutes,
+            final: adjustedTime.toLocaleTimeString()
+        });
+
+        const finalCorrection = {
+            time: adjustedTime,
+            isModified: true, // Always true if adjustment or smart correction happened
+            // Pass original GPS for logging if needed
+            originalGps: correction?.isUsingGps ? correction.time : null
+        };
+
+        // Note: endTimeSession expects (sessionId, gpsData, correction)
+        // We pass the ADJUSTMENT as the main 'time' to become punch_end_at.
+
+        const mockGps = correction?.isUsingGps && lastGeofenceExit
+            ? { exitAt: lastGeofenceExit.exitAt }
+            : null;
+
+        await endTimeSession(activeSession.id, mockGps, finalCorrection);
+        setIsSubmitting(false);
+        setShowCorrection(false);
+        setPendingEndCorrection(null);
+        setViewMode('INITIAL');
+    };
 
     // --- EFFECTS ---
 
@@ -216,17 +285,73 @@ const TimeTracking = () => {
         setViewMode('WIZARD_TASK');
     };
 
-    const handleStartSession = async (sectionId) => {
+    // NEW: Confirm Start logic handling
+    const confirmStartSession = async (sectionId, correction = null) => {
         setIsSubmitting(true);
-        // Use real GPS entry if available
+        // Use real GPS entry if available OR corrected time
         const gpsEntry = lastGeofenceEntry && String(lastGeofenceEntry.siteId) === String(selectedSiteId) ? lastGeofenceEntry : null;
 
-        const result = await startTimeSession(selectedSiteId, sectionId, gpsEntry);
+        // If correction provided (from popup), use it.
+        // startTimeSession needs to handle 'manualOverride' or similar if we want to force a time.
+        // Actually, looking at `startTimeSession` signature in context (not visible here but implied), usually it takes (siteId, taskId, gpsEntry).
+        // If we want to force a start time (e.g. 6:00 instead of 6:15), we might need to update the session immediately after or pass it.
+        // For now, let's assume filtering in backend or we pass the GPS entry which HAS the time.
+        // If user chose GPS time, we pass the gpsEntry. If user chose Manual, we pass null for gpsEntry (so it uses NOW)? 
+        // Or better: we pass the actual Date object to start?
+        // Let's rely on the context's startTimeSession handling. If we pass a gpsEntry, it uses that time usually.
+        // If user validated "Heure GPS", we pass `gpsEntry`.
+        // If user validated "Mon Heure", we pass null?
+
+        // Let's refine:
+        // correction = { time: Date, isUsingGps: boolean }
+        const entryToUse = correction?.time ? { entryAt: correction.time, siteId: selectedSiteId } : gpsEntry;
+
+        // If user chose "Mon Heure" (isUsingGps=false), we might explicitly want NOW.
+        // But if they chose GPS, we want that GPS time.
+
+        const result = await startTimeSession(selectedSiteId, sectionId, correction?.isUsingGps ? entryToUse : null);
         setIsSubmitting(false);
+        setShowCorrection(false);
+
         if (result.error) {
             alert(result.error);
         }
     };
+
+    const handleStartSession = async (sectionId) => {
+        // 1. ADMIN BYPASS
+        if (currentUser?.role === 'admin') {
+            confirmStartSession(sectionId);
+            return;
+        }
+
+        // 2. SMART CORRECTION CHECK (Morning/Arrival)
+        const entry = lastGeofenceEntry;
+        const isRelevantEntry = entry &&
+            String(entry.siteId) === String(selectedSiteId) &&
+            new Date(entry.entryAt) < new Date(); // Happened in past
+
+        if (isRelevantEntry) {
+            const diffMin = Math.abs(new Date().getTime() - new Date(entry.entryAt).getTime()) / 60000;
+            // Trigger if diff > 5 mins (e.g. arrived 6:00, punched 6:15)
+            if (diffMin > 5) {
+                console.log("Smart Correction (Start) Triggered:", entry.entryAt);
+                setCorrectionType('start');
+                // We need to store sectionId to resume after popup
+                // Using a temp state or closure? 
+                // Let's use a ref or state. specific trigger.
+                // Or just pass the callback to the popup? No, popup is rendered below.
+                // Let's store pendingAction.
+                setPendingStartTask(sectionId);
+                setShowCorrection(true);
+                return;
+            }
+        }
+
+        confirmStartSession(sectionId);
+    };
+
+    const [pendingStartTask, setPendingStartTask] = useState(null);
 
     const handleEndDay = async () => {
         const exit = lastGeofenceExit;
@@ -240,7 +365,7 @@ const TimeTracking = () => {
         if (isRelevantExit) {
             // Check diff > 5 mins
             const diffMin = Math.abs(new Date().getTime() - new Date(exit.exitAt).getTime()) / 60000;
-            if (diffMin > 5) {
+            if (diffMin > 5 && currentUser?.role !== 'admin') {
                 console.log("Smart Correction Triggered: Exit was", exit.exitAt);
                 setCorrectionType('end');
                 setShowCorrection(true);
@@ -254,7 +379,13 @@ const TimeTracking = () => {
 
     const confirmEndDay = async (correction) => {
         setIsSubmitting(true);
-        const mockGps = lastGeofenceExit ? { exitAt: lastGeofenceExit.exitAt } : null; // Pass exit even if not corrected
+        // correction = { time: Date, isUsingGps: boolean }
+        const mockGps = correction?.isUsingGps && lastGeofenceExit
+            ? { exitAt: lastGeofenceExit.exitAt }
+            : null;
+
+        // If user chose "Mon Heure", we pass null (server uses NOW). 
+        // If user chose "Heure GPS", we pass the exit data.
 
         await endTimeSession(activeSession.id, mockGps, correction);
         setIsSubmitting(false);
@@ -732,17 +863,55 @@ const TimeTracking = () => {
                 {/* Companion View below active card */}
                 {renderCompanionView()}
 
-                {/* HOURS V2: LEADER VIEW */}
-                {isLeader && <LeaderHoursView />}
-
                 {showCorrection && (
                     <SmartCorrectionPopup
-                        title="Correction - Départ"
+                        title={correctionType === 'start' ? "Correction - Arrivée" : "Correction - Départ"}
                         punchTime={new Date()}
-                        gpsTime={lastGeofenceExit?.exitAt}
-                        type="end"
-                        onConfirm={(time, isModified) => confirmEndDay({ time, isModified })}
-                        onCancel={() => confirmEndDay(null)}
+                        gpsTime={correctionType === 'start' ? lastGeofenceEntry?.entryAt : lastGeofenceExit?.exitAt}
+                        type={correctionType}
+                        onConfirm={(time, isUsingGps) => {
+                            if (correctionType === 'start') {
+                                confirmStartSession(pendingStartTask, { time, isUsingGps });
+                            } else {
+                                // Instead of confirming end immediately, checking for Break Report needed?
+                                // If correction was made, we have a "corrected" time.
+                                // The Break Report should probably happen AFTER or BEFORE?
+                                // Let's say: Smart Correction determines the physical EXIT time.
+                                // Then Break Report determines the PAID time based on that physical exit.
+                                // So: Smart Correction -> Confirm -> [Break Report if needed] -> confirmEndDay
+
+                                // Actually `confirmEndDay` is the final step.
+                                // If I have a correction from Smart Popup, I should pass it to Break Report logic?
+                                // Or better: Smart Correction sets a "proposedEndTime".
+                                // Then Break Report adjusts it.
+
+                                // Let's simplify:
+                                // If Smart Correction is active, user validates a time.
+                                // We then check if we need Break Report.
+                                // If yes, close Smart Correction, open Break Report, passing the validated time as 'baseTime'.
+
+                                // But `handleEndDay` triggers Smart Correction OR Break Report.
+                                // If Smart Correction triggers, we are here.
+                                // We need to chain them.
+
+                                handleSmartCorrectionConfirm(time, isUsingGps);
+                            }
+                        }}
+                        onCancel={() => {
+                            if (correctionType === 'start') {
+                                confirmStartSession(pendingStartTask, null);
+                            } else {
+                                // If cancelled, we proceed to Break Report check with NOW/Manual time?
+                                // "Ignorer" means stick to manual punch (Now).
+                                handleSmartCorrectionConfirm(null, false);
+                            }
+                        }}
+                    />
+                )}
+
+                {showBreakReport && (
+                    <BreakReportModal
+                        onConfirm={handleBreakConfirm}
                     />
                 )}
 

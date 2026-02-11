@@ -191,10 +191,16 @@ export const getWeeklyTimesheetForUser = async (userId, weekStart = null) => {
 };
 
 /**
- * 4. validateByLeader(timesheet_id)
+ * 4. validateByLeader(timesheet_id, user)
  * Passe leader_validated à true + timestamp
+ * Condition: user.role === 'user' && user.level === 'chef_equipe'
  */
-export const validateByLeader = async (timesheetId) => {
+export const validateByLeader = async (timesheetId, user) => {
+    // STRICT RULE: Only 'chef_equipe' can validate (or legacy 'leader' role)
+    if (!user || !((user.role === 'user' && user.level === 'chef_equipe') || user.role === 'leader')) {
+        return { error: 'Action non autorisée. Réservé aux Chefs d\'équipe.' };
+    }
+
     const { data, error } = await supabase
         .from('weekly_timesheets')
         .update({
@@ -210,10 +216,15 @@ export const validateByLeader = async (timesheetId) => {
 };
 
 /**
- * 5. validateByAdmin(timesheet_id)
+ * 5. validateByAdmin(timesheet_id, user)
  * Seulement si leader_validated = true
+ * Condition: user.role === 'admin'
  */
-export const validateByAdmin = async (timesheetId) => {
+export const validateByAdmin = async (timesheetId, user) => {
+    if (!user || user.role !== 'admin') {
+        return { error: 'Action non autorisée. Réservé aux Administrateurs.' };
+    }
+
     // Check first
     const { data: current, error: fetchError } = await supabase
         .from('weekly_timesheets')

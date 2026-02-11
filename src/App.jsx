@@ -7,7 +7,7 @@ import GlobalTimer from './components/GlobalTimer';
 
 const VersionOverlay = () => (
   <div className="fixed bottom-0 right-0 bg-black/80 text-white text-[10px] p-1 z-[9999] pointer-events-none">
-    v0.9.10
+    v0.9.11
   </div>
 );
 import LoginPage from './pages/LoginPage';
@@ -121,5 +121,5 @@ function App() {
 }
 
 export default App;
-// Force Vercel Deploy: 2026-02-05 17:45 - FIX: Optimized useEffect Loop
-// Version: 0.9.0
+// Force Vercel Deploy: 2026-02-11 07:22
+// Version: 0.9.11

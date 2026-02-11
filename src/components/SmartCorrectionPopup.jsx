@@ -8,9 +8,17 @@ const SmartCorrectionPopup = ({ title, punchTime, gpsTime, type, onConfirm, onCa
 
     if (!gpsTime) return null;
 
-    const timeDiffMinutes = Math.round(Math.abs(new Date(punchTime) - new Date(gpsTime)) / 60000);
+    const safeDate = (d) => {
+        const date = new Date(d);
+        return isNaN(date.getTime()) ? new Date() : date;
+    };
 
-    const formatTime = (date) => new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const validPunch = safeDate(punchTime);
+    const validGps = safeDate(gpsTime);
+
+    const timeDiffMinutes = Math.round(Math.abs(validPunch - validGps) / 60000);
+
+    const formatTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
@@ -21,15 +29,17 @@ const SmartCorrectionPopup = ({ title, punchTime, gpsTime, type, onConfirm, onCa
                     </div>
                     <div>
                         <h3 className="font-bold text-amber-900">{title || 'Correction Intelligente'}</h3>
-                        <p className="text-xs text-amber-700">Incohérence détectée ({timeDiffMinutes} min)</p>
+                        <p className="text-xs text-amber-700">Décalage détecté ({timeDiffMinutes} min)</p>
                     </div>
                 </div>
 
                 <div className="p-6 space-y-6">
                     <p className="text-sm text-slate-600">
                         {type === 'start'
-                            ? "Tu as pointé ton arrivée, mais le GPS t'a détecté sur site plus tôt."
-                            : "Tu termines ta journée, mais le GPS t'a vu partir du chantier plus tôt."}
+                            ? "Vous commencez la journée, mais le GPS vous a détecté sur site plus tôt."
+                            : "Vous terminez la journée, mais le GPS vous a vu partir du chantier plus tôt."}
+                        <br />
+                        <span className="font-bold mt-2 block">Quelle heure voulez-vous utiliser ?</span>
                     </p>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -42,7 +52,7 @@ const SmartCorrectionPopup = ({ title, punchTime, gpsTime, type, onConfirm, onCa
                                 }`}
                         >
                             <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Mon Heure</span>
-                            <span className="block text-xl font-bold text-slate-900">{formatTime(punchTime)}</span>
+                            <span className="block text-xl font-bold text-slate-900">{formatTime(validPunch)}</span>
                             <Clock className={`absolute top-3 right-3 ${!useGps ? 'text-blue-500' : 'text-slate-300'}`} size={18} />
                         </button>
 
@@ -55,7 +65,7 @@ const SmartCorrectionPopup = ({ title, punchTime, gpsTime, type, onConfirm, onCa
                                 }`}
                         >
                             <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Heure GPS</span>
-                            <span className="block text-xl font-bold text-slate-900">{formatTime(gpsTime)}</span>
+                            <span className="block text-xl font-bold text-slate-900">{formatTime(validGps)}</span>
                             <MapPin className={`absolute top-3 right-3 ${useGps ? 'text-green-500' : 'text-slate-300'}`} size={18} />
                         </button>
                     </div>

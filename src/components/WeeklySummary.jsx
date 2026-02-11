@@ -24,14 +24,27 @@ const WeeklySummary = ({ sessions, sites }) => {
 
     // 2. Filter & Aggregate Data
     const { totalHours, dailyBreakdown, projectBreakdown } = useMemo(() => {
+        const now = new Date();
         const weeklySessions = sessions.filter(s => {
             if (!s.punch_start_at) return false;
             const d = new Date(s.punch_start_at);
             return d >= startOfWeek && d <= endOfWeek;
         });
 
+        const calculateDuration = (s) => {
+            if (s.duration_hours) return Number(s.duration_hours);
+
+            // Handle active session (no end time)
+            if (s.punch_start_at && !s.punch_end_at) {
+                const start = new Date(s.punch_start_at);
+                const diff = now - start;
+                return diff > 0 ? diff / (1000 * 60 * 60) : 0;
+            }
+            return 0;
+        };
+
         // Total
-        const total = weeklySessions.reduce((acc, s) => acc + (Number(s.duration_hours) || 0), 0);
+        const total = weeklySessions.reduce((acc, s) => acc + calculateDuration(s), 0);
 
         // Daily Breakdown
         const daysMap = { 0: 'Lun', 1: 'Mar', 2: 'Mer', 3: 'Jeu', 4: 'Ven', 5: 'Sam', 6: 'Dim' };
@@ -42,8 +55,9 @@ const WeeklySummary = ({ sessions, sites }) => {
             // JS getDay: Sun=0, Mon=1...Sat=6. We want Mon=0...Sun=6
             let jsDay = d.getDay();
             const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
+
             if (daily[dayIndex]) {
-                daily[dayIndex].hours += (Number(s.duration_hours) || 0);
+                daily[dayIndex].hours += calculateDuration(s);
             }
         });
 
@@ -52,7 +66,7 @@ const WeeklySummary = ({ sessions, sites }) => {
         weeklySessions.forEach(s => {
             const siteName = sites.find(site => String(site.id) === String(s.site_id))?.name || 'Inconnu';
             if (!projects[siteName]) projects[siteName] = 0;
-            projects[siteName] += (Number(s.duration_hours) || 0);
+            projects[siteName] += calculateDuration(s);
         });
 
         return {

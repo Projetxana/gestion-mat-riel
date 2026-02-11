@@ -10,6 +10,7 @@ import InvoiceModal from '../components/InvoiceModal';
 import SiteOccupancyModal from '../components/SiteOccupancyModal';
 import ProjectMonitoringModal from '../components/ProjectMonitoringModal';
 import SiteFormModal from '../components/SiteFormModal';
+import LeaderHoursView from '../modules/hours_v2/LeaderHoursView';
 
 const Dashboard = () => {
     const { materials, sites, addLog, timeSessions, currentUser, projectTasks } = useAppContext();
@@ -81,9 +82,10 @@ const Dashboard = () => {
                     <h1 className="text-2xl font-bold text-white mb-1">
                         Tableau de Bord
                     </h1>
+                    <br />
                     <p className="text-sm text-slate-400">Bienvenue</p>
                 </div>
-                {(currentUser?.role === 'admin' || currentUser?.role === 'foreman') && (
+                {(currentUser?.role === 'admin') && (
                     <button
                         onClick={() => setShowSiteForm(true)}
                         className="p-2 bg-blue-600 hover:bg-blue-500 rounded-full text-white shadow-lg shadow-blue-500/30 transition-all active:scale-95"
@@ -282,6 +284,14 @@ const Dashboard = () => {
             {showCamera && <DeliveryNoteModal onClose={() => setShowCamera(false)} />}
             {showDailyReport && <DailyReportModal onClose={() => setShowDailyReport(false)} />}
             {showInvoiceModal && <InvoiceModal onClose={() => setShowInvoiceModal(false)} />}
+
+            {/* LEADER HOURS VIEW (Validation) */}
+            {((currentUser?.role === 'user' && currentUser?.level === 'chef_equipe') || currentUser?.role === 'leader') && (
+                <div className="mb-8">
+                    <LeaderHoursView />
+                </div>
+            )}
+
             {selectedSiteForOccupancy && (
                 <SiteOccupancyModal
                     site={selectedSiteForOccupancy}

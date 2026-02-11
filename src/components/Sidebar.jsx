@@ -10,7 +10,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         { icon: LayoutDashboard, label: 'Tableau de bord', path: '/' },
         { icon: Hammer, label: 'Matériel', path: '/material' },
         { icon: HardHat, label: 'Chantiers', path: '/sites' },
-        { icon: ClipboardList, label: 'Journal', path: '/journal' },
+        ...(currentUser?.role === 'admin' ? [{ icon: ClipboardList, label: 'Journal', path: '/journal' }] : []),
         { icon: Clock, label: 'Heures', path: '/hours' },
         { icon: Settings, label: 'Paramètres', path: '/settings' },
     ];
@@ -71,7 +71,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                         </div>
                         <div className="flex-1 overflow-hidden">
                             <p className="text-sm font-medium text-slate-900 truncate">{currentUser?.name}</p>
-                            <p className="text-xs text-slate-500 truncate capitalize">{currentUser?.role}</p>
+                            <p className="text-xs text-slate-500 truncate capitalize">{currentUser?.level || currentUser?.role}</p>
                         </div>
                     </div>
                     <button
