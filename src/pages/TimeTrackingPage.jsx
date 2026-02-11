@@ -11,9 +11,48 @@ import LeaderHoursView from '../modules/hours_v2/LeaderHoursView';
 import BreakReportModal from '../components/BreakReportModal';
 
 const TimeTracking = () => {
-    // ... (existing constants)
+    const {
+        timeSessions,
+        tasks,
+        sites,
+        currentUser,
+        startTimeSession,
+        endTimeSession,
+        switchTask,
+        lastGeofenceExit,
+        lastGeofenceEntry,
+        addProjectTask,
+        projectTasks // NEW: Direct access for real-time updates
+    } = useAppContext();
+    const navigate = useNavigate();
+    const location = useLocation();
 
-    // ... (existing state)
+    // --- HOURS V2 LOGIC ---
+    if (currentUser?.role === 'admin') {
+        return <AdminHoursView />;
+    }
+    // For Leader, we continue but will append the view at the bottom
+    const isLeader = currentUser?.role === 'leader';
+
+    // VIEW STATE: 'INITIAL' | 'WIZARD_SITE' | 'WIZARD_TASK' | 'ACTIVE'
+    const [viewMode, setViewMode] = useState('INITIAL');
+    const [activeSession, setActiveSession] = useState(null);
+    const [elapsedTime, setElapsedTime] = useState('00:00:00');
+
+    // WIZARD STATE
+    const [selectedSiteId, setSelectedSiteId] = useState('');
+    const [selectedTaskId, setSelectedTaskId] = useState(''); // MOVED TO TOP LEVEL
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // COMPANION DATA STATE
+    const [companionStats, setCompanionStats] = useState(null);
+
+    // CORRECTION STATE
+    const [showCorrection, setShowCorrection] = useState(false);
+    const [correctionType, setCorrectionType] = useState('end'); // 'end' or 'start'
+    const [showChangeTaskModal, setShowChangeTaskModal] = useState(false);
+    const [isSwitching, setIsSwitching] = useState(false);
+    const [switchedTaskStats, setSwitchedTaskStats] = useState(null);
     // BREAK REPORT STATE
     const [showBreakReport, setShowBreakReport] = useState(false);
     const [pendingEndCorrection, setPendingEndCorrection] = useState(null); // Stores { time, isUsingGps } from SmartCorrection
