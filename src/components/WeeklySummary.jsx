@@ -34,6 +34,14 @@ const WeeklySummary = ({ sessions, sites }) => {
         const calculateDuration = (s) => {
             if (s.duration_hours) return Number(s.duration_hours);
 
+            // Handle finished session (manual calc if duration_hours missing)
+            if (s.punch_start_at && s.punch_end_at) {
+                const start = new Date(s.punch_start_at);
+                const end = new Date(s.punch_end_at);
+                const diff = end - start;
+                return diff > 0 ? diff / (1000 * 60 * 60) : 0;
+            }
+
             // Handle active session (no end time)
             if (s.punch_start_at && !s.punch_end_at) {
                 const start = new Date(s.punch_start_at);
