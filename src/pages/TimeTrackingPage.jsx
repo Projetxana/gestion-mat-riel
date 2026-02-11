@@ -351,47 +351,7 @@ const TimeTracking = () => {
         confirmStartSession(sectionId);
     };
 
-    const [pendingStartTask, setPendingStartTask] = useState(null);
 
-    const handleEndDay = async () => {
-        const exit = lastGeofenceExit;
-        // Check if exit matches current session site
-        // And if the exit was somewhat recent (e.g. within last 2 hours? or just today?)
-        // Let's assume relevant if it happened AFTER session start
-        const isRelevantExit = exit &&
-            String(exit.siteId) === String(activeSession.site_id) &&
-            new Date(exit.exitAt) > new Date(activeSession.punch_start_at);
-
-        if (isRelevantExit) {
-            // Check diff > 5 mins
-            const diffMin = Math.abs(new Date().getTime() - new Date(exit.exitAt).getTime()) / 60000;
-            if (diffMin > 5 && currentUser?.role !== 'admin') {
-                console.log("Smart Correction Triggered: Exit was", exit.exitAt);
-                setCorrectionType('end');
-                setShowCorrection(true);
-                return;
-            }
-        }
-
-        if (!window.confirm("Terminer la journée ?")) return;
-        confirmEndDay(null);
-    };
-
-    const confirmEndDay = async (correction) => {
-        setIsSubmitting(true);
-        // correction = { time: Date, isUsingGps: boolean }
-        const mockGps = correction?.isUsingGps && lastGeofenceExit
-            ? { exitAt: lastGeofenceExit.exitAt }
-            : null;
-
-        // If user chose "Mon Heure", we pass null (server uses NOW). 
-        // If user chose "Heure GPS", we pass the exit data.
-
-        await endTimeSession(activeSession.id, mockGps, correction);
-        setIsSubmitting(false);
-        setShowCorrection(false);
-        setViewMode('INITIAL');
-    };
 
 
     const getTaskName = (taskId, siteId = null) => {
