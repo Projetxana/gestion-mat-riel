@@ -578,7 +578,7 @@ const TimeTracking = () => {
                 {/* WEEKLY SUMMARY SECTION */}
                 <div className="pt-4 border-t border-slate-200 mt-4">
                     <h3 className="text-sm font-bold text-slate-500 mb-4 px-1">MES HEURES SEMAINE</h3>
-                    <WeeklySummary sessions={timeSessions} sites={sites} />
+                    <WeeklySummary sessions={timeSessions} sites={sites} projectTasks={projectTasks} />
                 </div>
             </div>
         );

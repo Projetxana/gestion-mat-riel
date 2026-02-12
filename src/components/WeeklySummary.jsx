@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Clock, Briefcase, Calendar } from 'lucide-react';
+import DayDetailModal from './DayDetailModal';
 
-const WeeklySummary = ({ sessions, sites }) => {
+const WeeklySummary = ({ sessions, sites, projectTasks }) => {
+    const [selectedDayDetail, setSelectedDayDetail] = useState(null);
     // 1. Calculate Date Range (Mon-Sun)
     const { startOfWeek, endOfWeek, weekLabel } = useMemo(() => {
         const now = new Date();
@@ -101,6 +103,29 @@ const WeeklySummary = ({ sessions, sites }) => {
         return { normal, overtime, remaining };
     }, [totalHours]);
 
+    const handleDayClick = (dayStats) => {
+        // Calculate the actual date for this day index (0=Mon, 6=Sun)
+        // startOfWeek is Monday (00:00)
+        if (!startOfWeek) return;
+
+        const targetDate = new Date(startOfWeek);
+        targetDate.setDate(targetDate.getDate() + dayStats.index);
+
+        const sessionsForDay = sessions.filter(s => {
+            if (!s.punch_start_at) return false;
+            const d = new Date(s.punch_start_at);
+            return d.getDate() === targetDate.getDate() &&
+                d.getMonth() === targetDate.getMonth() &&
+                d.getFullYear() === targetDate.getFullYear();
+        });
+
+        setSelectedDayDetail({
+            dateStr: targetDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }),
+            sessions: sessionsForDay,
+            date: targetDate
+        });
+    };
+
     return (
         <div className="space-y-4 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Header */}
@@ -166,14 +191,18 @@ const WeeklySummary = ({ sessions, sites }) => {
                 <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4">
                     <div className="flex items-center gap-2 mb-3 text-slate-300 font-medium text-sm">
                         <Calendar size={16} className="text-blue-400" />
-                        Détail Journalier
+                        Détail Journalier <span className="text-xs text-slate-500 font-normal ml-auto">(Cliquer pour modifier)</span>
                     </div>
                     <div className="space-y-2">
                         {dailyBreakdown.map((d, i) => (
-                            <div key={d.day} className={`flex justify-between text-sm ${d.hours > 0 ? 'text-white' : 'text-slate-600'}`}>
+                            <button
+                                key={d.day}
+                                onClick={() => handleDayClick(d)}
+                                className={`w-full flex justify-between text-sm p-2 rounded-lg transition-colors hover:bg-slate-700/50 ${d.hours > 0 ? 'text-white' : 'text-slate-600'}`}
+                            >
                                 <span>{d.day}</span>
                                 <span className={d.hours > 0 ? 'font-medium' : ''}>{d.hours > 0 ? `${Math.round(d.hours * 10) / 10} h` : '-'}</span>
-                            </div>
+                            </button>
                         ))}
                     </div>
                 </div>
@@ -200,6 +229,29 @@ const WeeklySummary = ({ sessions, sites }) => {
                     </div>
                 </div>
             </div>
+
+            {selectedDayDetail && (
+                <DayDetailModal
+                    dateStr={selectedDayDetail.dateStr}
+                    sessions={selectedDayDetail.sessions}
+                    sites={sites}
+                    projectTasks={projectTasks} // Ensure this is passed from parent or context used inside modal?
+                    // Ideally we should pass it. WeeklySummary receives sites/sessions. 
+                    // Let's rely on context inside modal for sites? 
+                    // Or better, pass what we have.
+                    // But WeeklySummary doesn't have projectTasks prop.
+                    // We must update WeeklySummary signature OR use context in Modal.
+                    // Modal uses context for update, but here we pass data.
+                    // Let's pass null for projectTasks if we don't have it, Modal should fetch from Context?
+                    // Actually Modal imports useAppContext, so it can get projectTasks itself.
+                    // We can remove projectTasks prop from Modal or pass it if we want to avoid double context hook.
+                    // Let's check DayDetailModal definition...
+                    // "const DayDetailModal = ({ dateStr, sessions, sites, projectTasks, onClose })"
+                    // It EXPECTS projectTasks.
+                    // So we must get projectTasks in WeeklySummary to pass it.
+                    onClose={() => setSelectedDayDetail(null)}
+                />
+            )}
         </div>
     );
 };

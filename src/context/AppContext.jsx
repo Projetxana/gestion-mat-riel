@@ -942,6 +942,23 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    const updateTimeSession = async (sessionId, updates) => {
+        // Optimistic
+        setTimeSessions(prev => prev.map(s => s.id === sessionId ? { ...s, ...updates } : s));
+
+        // DB Update
+        const { error } = await supabase.from('time_sessions').update(updates).eq('id', sessionId);
+
+        if (error) {
+            console.error("Error updating session:", error);
+            // Rollback? (Need old state)
+            return { error: error.message };
+        } else {
+            addLog(`UPDATED SESSION: ${sessionId}`);
+            return { success: true };
+        }
+    };
+
     const switchTask = async (sessionId, siteId, newSectionId) => {
         try {
             console.log("Switching Task:", { sessionId, siteId, newSectionId });
@@ -1039,6 +1056,7 @@ export const AppProvider = ({ children }) => {
         lastGeofenceEntry,
         lastGeofenceExit,
         currentGeofenceSiteId,
+        updateTimeSession,
 
 
         projectTasks,
