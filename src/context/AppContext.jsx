@@ -959,6 +959,24 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    const deleteTimeSession = async (sessionId) => {
+        // Optimistic
+        const oldSessions = [...timeSessions];
+        setTimeSessions(prev => prev.filter(s => s.id !== sessionId));
+
+        // DB Update
+        const { error } = await supabase.from('time_sessions').delete().eq('id', sessionId);
+
+        if (error) {
+            console.error("Error deleting session:", error);
+            setTimeSessions(oldSessions); // Rollback
+            return { error: error.message };
+        } else {
+            addLog(`DELETED SESSION: ${sessionId}`);
+            return { success: true };
+        }
+    };
+
     const switchTask = async (sessionId, siteId, newSectionId) => {
         try {
             console.log("Switching Task:", { sessionId, siteId, newSectionId });
@@ -1057,6 +1075,7 @@ export const AppProvider = ({ children }) => {
         lastGeofenceExit,
         currentGeofenceSiteId,
         updateTimeSession,
+        deleteTimeSession,
 
 
         projectTasks,
