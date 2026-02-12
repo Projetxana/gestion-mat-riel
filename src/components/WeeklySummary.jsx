@@ -111,20 +111,20 @@ const WeeklySummary = ({ sessions, sites, projectTasks }) => {
         const targetDate = new Date(startOfWeek);
         targetDate.setDate(targetDate.getDate() + dayStats.index);
 
-        const sessionsForDay = sessions.filter(s => {
+        setSelectedDayDetail(targetDate);
+    };
+
+    // Derive sessions for the modal to ensure reactivity
+    const sessionsForSelectedDay = useMemo(() => {
+        if (!selectedDayDetail) return [];
+        return sessions.filter(s => {
             if (!s.punch_start_at) return false;
             const d = new Date(s.punch_start_at);
-            return d.getDate() === targetDate.getDate() &&
-                d.getMonth() === targetDate.getMonth() &&
-                d.getFullYear() === targetDate.getFullYear();
+            return d.getDate() === selectedDayDetail.getDate() &&
+                d.getMonth() === selectedDayDetail.getMonth() &&
+                d.getFullYear() === selectedDayDetail.getFullYear();
         });
-
-        setSelectedDayDetail({
-            dateStr: targetDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }),
-            sessions: sessionsForDay,
-            date: targetDate
-        });
-    };
+    }, [sessions, selectedDayDetail]);
 
     return (
         <div className="space-y-4 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -232,23 +232,10 @@ const WeeklySummary = ({ sessions, sites, projectTasks }) => {
 
             {selectedDayDetail && (
                 <DayDetailModal
-                    dateStr={selectedDayDetail.dateStr}
-                    sessions={selectedDayDetail.sessions}
+                    dateStr={selectedDayDetail.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    sessions={sessionsForSelectedDay}
                     sites={sites}
-                    projectTasks={projectTasks} // Ensure this is passed from parent or context used inside modal?
-                    // Ideally we should pass it. WeeklySummary receives sites/sessions. 
-                    // Let's rely on context inside modal for sites? 
-                    // Or better, pass what we have.
-                    // But WeeklySummary doesn't have projectTasks prop.
-                    // We must update WeeklySummary signature OR use context in Modal.
-                    // Modal uses context for update, but here we pass data.
-                    // Let's pass null for projectTasks if we don't have it, Modal should fetch from Context?
-                    // Actually Modal imports useAppContext, so it can get projectTasks itself.
-                    // We can remove projectTasks prop from Modal or pass it if we want to avoid double context hook.
-                    // Let's check DayDetailModal definition...
-                    // "const DayDetailModal = ({ dateStr, sessions, sites, projectTasks, onClose })"
-                    // It EXPECTS projectTasks.
-                    // So we must get projectTasks in WeeklySummary to pass it.
+                    projectTasks={projectTasks}
                     onClose={() => setSelectedDayDetail(null)}
                 />
             )}
