@@ -99,12 +99,27 @@ const DayDetailModal = ({ dateStr, sessions, sites, projectTasks, onClose }) => 
                                             <p className="text-xs text-slate-500">{taskName}</p>
                                         </div>
                                         {!isEditing && (
-                                            <button
-                                                onClick={() => handleEditClick(session)}
-                                                className="text-blue-600 text-xs font-bold hover:underline"
-                                            >
-                                                Modifier
-                                            </button>
+                                            <div className="flex flex-col gap-2 items-end">
+                                                <button
+                                                    onClick={() => handleEditClick(session)}
+                                                    className="text-blue-600 text-xs font-bold hover:underline"
+                                                >
+                                                    Modifier
+                                                </button>
+                                                <button
+                                                    onClick={async () => {
+                                                        if (window.confirm("Êtes-vous sûr de vouloir supprimer cette entrée ?")) {
+                                                            const res = await deleteTimeSession(session.id);
+                                                            if (res.error) {
+                                                                alert("Erreur lors de la suppression: " + res.error);
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="text-red-500 text-xs font-bold hover:underline flex items-center gap-1"
+                                                >
+                                                    <Trash2 size={12} /> Supprimer
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
 
@@ -131,18 +146,6 @@ const DayDetailModal = ({ dateStr, sessions, sites, projectTasks, onClose }) => 
                                                 </div>
                                             </div>
                                             <div className="flex justify-end gap-2 pt-2">
-                                                <button
-                                                    onClick={async () => {
-                                                        if (window.confirm("Êtes-vous sûr de vouloir supprimer cette entrée ?")) {
-                                                            await deleteTimeSession(session.id);
-                                                            // List updates automatically via context
-                                                        }
-                                                    }}
-                                                    className="px-3 py-1.5 text-xs font-bold text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg flex items-center gap-1 mr-auto"
-                                                >
-                                                    <Trash2 size={14} /> Supprimer
-                                                </button>
-
                                                 <button
                                                     onClick={() => setEditingSessionId(null)}
                                                     className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-lg"
