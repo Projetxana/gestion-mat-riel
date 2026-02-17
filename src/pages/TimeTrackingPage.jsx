@@ -70,7 +70,8 @@ const TimeTracking = () => {
             String(exit.siteId) === String(activeSession.site_id) &&
             new Date(exit.exitAt) > new Date(activeSession.punch_start_at);
 
-        // Step A: Check Smart Correction
+        // Step A: Check Smart Correction (DISABLED FOR TESTING)
+        /*
         if (isRelevantExit) {
             const diffMin = Math.abs(new Date().getTime() - new Date(exit.exitAt).getTime()) / 60000;
             if (diffMin > 5 && currentUser?.role !== 'admin') {
@@ -80,6 +81,7 @@ const TimeTracking = () => {
                 return;
             }
         }
+        */
 
         if (!window.confirm("Terminer la journée ?")) return;
 
@@ -364,7 +366,8 @@ const TimeTracking = () => {
             return;
         }
 
-        // 2. SMART CORRECTION CHECK (Morning/Arrival)
+        // 2. SMART CORRECTION CHECK (Morning/Arrival) (DISABLED FOR TESTING)
+        /*
         const entry = lastGeofenceEntry;
         const isRelevantEntry = entry &&
             String(entry.siteId) === String(selectedSiteId) &&
@@ -386,6 +389,7 @@ const TimeTracking = () => {
                 return;
             }
         }
+        */
 
         confirmStartSession(sectionId);
     };
