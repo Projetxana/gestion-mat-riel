@@ -56,6 +56,8 @@ export const importProjectProgress = async (siteId, file, supabase) => {
                 let processedCount = 0;
                 let updatedCount = 0;
 
+                const { data: companyId } = await supabase.rpc('get_user_company_id');
+
                 // Fetch existing Sections for this site
                 const { data: existingSections, error: fetchError } = await supabase
                     .from('project_tasks')
@@ -113,7 +115,8 @@ export const importProjectProgress = async (siteId, file, supabase) => {
                             name,
                             planned_hours: planned,
                             completed_hours: completed,
-                            is_active: true
+                            is_active: true,
+                            company_id: companyId ?? null
                         });
                     }
                 }

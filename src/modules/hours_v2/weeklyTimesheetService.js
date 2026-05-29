@@ -79,6 +79,8 @@ export const buildWeeklySnapshot = async (referenceDate = new Date()) => {
         entry.totalMs += duration;
     });
 
+    const { data: companyId } = await supabase.rpc('get_user_company_id');
+
     const results = [];
 
     // 4. Process each user
@@ -121,7 +123,8 @@ export const buildWeeklySnapshot = async (referenceDate = new Date()) => {
                     week_start: weekStartStr,
                     week_end: weekEndStr,
                     leader_validated: false,
-                    admin_validated: false
+                    admin_validated: false,
+                    company_id: companyId ?? null
                 }])
                 .select()
                 .single();
@@ -136,7 +139,8 @@ export const buildWeeklySnapshot = async (referenceDate = new Date()) => {
             site_id: g.site_id === 'unknown' ? null : g.site_id,
             section_id: g.section_id === 'unknown' ? null : g.section_id,
             source: g.source,
-            hours: Number((g.totalMs / (1000 * 60 * 60)).toFixed(2))
+            hours: Number((g.totalMs / (1000 * 60 * 60)).toFixed(2)),
+            company_id: companyId ?? null
         }));
 
         if (entriesPayload.length > 0) {

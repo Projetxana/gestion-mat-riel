@@ -4,7 +4,7 @@ import { Coffee, Utensils, ArrowRight, Check } from 'lucide-react';
 const BreakReportModal = ({ onConfirm }) => {
     // State
     const [lunchTaken, setLunchTaken] = useState(true); // Default to true (standard)
-    const [breaksTaken, setBreaksTaken] = useState(2); // Default to 2 (standard)
+    const [breaksTaken, setBreaksTaken] = useState(1); // Default to 1 pause
 
     const handleSubmit = () => {
         // Calculate Adjustment
@@ -76,8 +76,8 @@ const BreakReportModal = ({ onConfirm }) => {
                             <h3>Pauses Café (15 min)</h3>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-3">
-                            {[0, 1, 2].map(count => (
+                        <div className="grid grid-cols-2 gap-3">
+                            {[1, 2].map(count => (
                                 <button
                                     key={count}
                                     onClick={() => setBreaksTaken(count)}
@@ -88,7 +88,7 @@ const BreakReportModal = ({ onConfirm }) => {
                                 >
                                     {count}
                                     <span className="block text-[10px] items-center uppercase font-bold mt-1">
-                                        {count === 0 ? 'Aucune' : (count === 1 ? 'Pause' : 'Pauses')}
+                                        {count === 1 ? 'Pause' : 'Pauses'}
                                     </span>
                                     {breaksTaken === count && (
                                         <div className="absolute top-1 right-1">

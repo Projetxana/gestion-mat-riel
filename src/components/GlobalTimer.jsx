@@ -58,7 +58,7 @@ const GlobalTimer = () => {
             const task = site?.tasks?.find(t => t.id === activeSession.task_id);
             if (task) return task.name;
         }
-        return 'Tâche Inconnue';
+        return 'En cours';
     };
 
     return (

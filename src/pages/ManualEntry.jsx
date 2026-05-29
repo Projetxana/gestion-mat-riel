@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { ArrowLeft, CheckCircle, Clock, Calendar } from 'lucide-react';
+import { ArrowLeft, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const ManualEntry = () => {
-    const { sites, tasks, projectTasks, logManualTime } = useAppContext();
+    const { sites, projectTasks, logManualTime } = useAppContext();
     const navigate = useNavigate();
 
     const [siteId, setSiteId] = useState('');
@@ -91,40 +91,50 @@ const ManualEntry = () => {
                 {/* Task */}
                 <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Tâche</label>
-                    <div className="grid grid-cols-2 gap-2">
-
+                    <div className="relative">
                         {(() => {
-                            // FIX: Use projectTasks from context to ensure real-time updates (imports) are visible
-                            // without refreshing the page.
                             const liveSiteTasks = projectTasks && projectTasks.length > 0
                                 ? projectTasks.filter(pt => String(pt.project_id) === String(siteId))
                                 : [];
 
-                            // Fallback to site.project_tasks if global state is empty (rare) or site.tasks for legacy
                             const selectedSite = sites.find(s => String(s.id) === String(siteId));
                             const legacyTasks = selectedSite?.tasks || [];
 
                             const tasksToDisplay = liveSiteTasks.length > 0 ? liveSiteTasks : legacyTasks;
 
-                            if (siteId && tasksToDisplay.length === 0) {
-                                return <p className="col-span-2 text-xs text-red-400 italic text-center p-2">Aucune section définie pour ce chantier.</p>;
+                            if (!siteId) {
+                                return (
+                                    <select disabled className="w-full p-4 rounded-xl font-bold appearance-none border border-slate-300 shadow-sm opacity-50" style={{ backgroundColor: '#ffffff', color: '#000000', WebkitTextFillColor: '#000000', opacity: 1 }}>
+                                        <option>Sélectionner d'abord un chantier...</option>
+                                    </select>
+                                );
                             }
 
-                            return tasksToDisplay.map(t => (
-                                <button
-                                    key={t.id}
-                                    type="button"
-                                    onClick={() => setTaskId(t.id)}
-                                    className={`p-3 rounded-xl border text-sm font-bold transition-all ${String(taskId) === String(t.id)
-                                        ? 'bg-blue-600 border-blue-600 text-white'
-                                        : 'bg-white border-slate-200 text-slate-600 hover:border-blue-400'
-                                        }`}
+                            if (tasksToDisplay.length === 0) {
+                                return (
+                                    <select disabled className="w-full p-4 rounded-xl font-bold appearance-none border border-red-300 shadow-sm" style={{ backgroundColor: '#ffffff', color: '#ef4444', WebkitTextFillColor: '#ef4444', opacity: 1 }}>
+                                        <option>Aucune section définie pour ce chantier</option>
+                                    </select>
+                                );
+                            }
+
+                            return (
+                                <select
+                                    value={taskId}
+                                    onChange={e => setTaskId(e.target.value)}
+                                    className="w-full p-4 rounded-xl font-bold appearance-none border border-slate-300 shadow-sm focus:ring-2 focus:ring-blue-500"
+                                    style={{ backgroundColor: '#ffffff', color: '#000000', WebkitTextFillColor: '#000000', opacity: 1 }}
                                 >
-                                    {t.name}
-                                </button>
-                            ));
+                                    <option value="" disabled>Sélectionner une tâche...</option>
+                                    {tasksToDisplay.map(t => (
+                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                    ))}
+                                </select>
+                            );
                         })()}
-                        {!siteId && <p className="col-span-2 text-xs text-slate-400 italic text-center p-2">Veuillez d'abord sélectionner un chantier</p>}
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
+                            <ArrowLeft className="-rotate-90" size={20} />
+                        </div>
                     </div>
                 </div>
 

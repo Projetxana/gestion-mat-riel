@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { supabase } from './supabaseClient';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import Layout from './components/Layout';
@@ -23,13 +24,58 @@ import HiltiPage from './pages/HiltiPage';
 import TimeTracking from './pages/TimeTrackingPage'; // Renamed to bust cache
 import ManualEntry from './pages/ManualEntry';
 import ValidationPage from './pages/ValidationPage';
+import OnboardingPage from './pages/OnboardingPage';
 
 const ProtectedRoute = ({ children }) => {
   const { currentUser } = useAppContext();
-  if (!currentUser) {
+  const [loading, setLoading] = React.useState(true);
+  const [user, setUser] = React.useState(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    const initAuth = async () => {
+      try {
+        const response = await supabase.auth.getSession();
+        
+        if (mounted) {
+          if (response?.data?.session) {
+            setUser(response.data.session.user);
+          } else {
+            setUser(null);
+          }
+        }
+      } catch (error) {
+        console.error("Auth init error:", error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) {
+        setUser(session?.user ?? null);
+      }
+    });
+
+    return () => {
+      if (listener?.subscription) {
+        listener.subscription.unsubscribe()
+      }
+    }
+  }, [])
+
+  if (loading) return null
+
+  const isAuthenticated = user || currentUser;
+
+  if (!loading && !isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-  if (currentUser.must_change_password) {
+
+  if (currentUser?.must_change_password) {
     return <Navigate to="/change-password" replace />;
   }
   return children;
@@ -79,6 +125,7 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/onboarding" element={<OnboardingPage />} />
       <Route path="/change-password" element={<ChangePasswordPage />} />
       <Route
         path="/"
@@ -106,6 +153,18 @@ const AppRoutes = () => {
 };
 
 function App() {
+  useEffect(() => {
+    const debugAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      console.log("USER:", user)
+
+      const { data, error } = await supabase.rpc('get_user_company_id')
+      console.log("COMPANY:", data, error)
+    }
+
+    debugAuth()
+  }, [])
+
   return (
     <ErrorBoundary>
       <AppProvider>

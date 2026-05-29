@@ -14,8 +14,24 @@ export const AppProvider = ({ children }) => {
     const [timeSessions, setTimeSessions] = useState([]); // Time Tracking
     const [hiltiTools, setHiltiTools] = useState([]); // Hilti State
     const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
-    const [currentUser, setCurrentUser] = useState(null);
+    const [currentUser, setCurrentUser] = useState(() => {
+        try {
+            const saved = localStorage.getItem('legacy_currentUser');
+            return saved ? JSON.parse(saved) : null;
+        } catch (e) {
+            return null;
+        }
+    });
+
+    useEffect(() => {
+        if (currentUser) {
+            localStorage.setItem('legacy_currentUser', JSON.stringify(currentUser));
+        } else {
+            localStorage.removeItem('legacy_currentUser');
+        }
+    }, [currentUser]);
     const [dbError, setDbError] = useState(null);
+    const [saasSession, setSaasSession] = useState(null);
 
     // Initial Data Fetch
     // Geofence State
@@ -25,6 +41,14 @@ export const AppProvider = ({ children }) => {
 
     // Initial Data Fetch & Geofence Watcher
     useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setSaasSession(session);
+        });
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSaasSession(session);
+        });
+
         fetchData();
 
         // GEOLOCATION WATCHER (W6, W7)
@@ -92,6 +116,7 @@ export const AppProvider = ({ children }) => {
         ];
 
         return () => {
+            subscription.unsubscribe();
             if (watchId) navigator.geolocation.clearWatch(watchId);
             channels.forEach(channel => supabase.removeChannel(channel));
         };
@@ -310,10 +335,38 @@ export const AppProvider = ({ children }) => {
 
 
     // Actions
+
+    // --- SaaS Actions ---
+    const signupSaaS = async (email, password) => {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) return error.message;
+        return null;
+    };
+
+    const loginSaaS = async (email, password) => {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) return error.message;
+        return null;
+    };
+
+    const createCompanySaaS = async (name) => {
+        const { data, error } = await supabase.rpc('create_company', { p_name: name, p_user_id: saasSession?.user?.id });
+        if (error) return error.message;
+        return null;
+    };
+
+    const joinCompanySaaS = async (token) => {
+        const { error } = await supabase.rpc('accept_invite', { p_token: token, p_user_id: saasSession?.user?.id });
+        if (error) return error.message;
+        return null;
+    };
+
     const login = (email, password) => {
         // Hardcoded rescue admin
         if (email === 'admin@antigravity.com' && password === 'admin123') {
-            setCurrentUser({ id: 'rescue-admin', name: 'Rescue Admin', email: 'admin@antigravity.com', role: 'admin' });
+            const adminUser = { id: 'rescue-admin', name: 'Rescue Admin', email: 'admin@antigravity.com', role: 'admin' };
+            setCurrentUser(adminUser);
+            localStorage.setItem('legacy_currentUser', JSON.stringify(adminUser));
             return true;
         }
 
@@ -321,6 +374,7 @@ export const AppProvider = ({ children }) => {
         const user = users.find(u => u.email === email);
         if (user && user.password === password) {
             setCurrentUser(user);
+            localStorage.setItem('legacy_currentUser', JSON.stringify(user));
             return true;
         }
         return false;
@@ -465,6 +519,7 @@ export const AppProvider = ({ children }) => {
             qr_code: material.qrCode,
             location_type: material.locationType,
             location_id: material.locationId,
+            company_id: currentCompanyId ?? null,
             created_at: new Date()
         };
         // Remove camelCase keys
@@ -559,7 +614,7 @@ export const AppProvider = ({ children }) => {
         if (cleanPayload.start_date === '') cleanPayload.start_date = null;
         if (cleanPayload.end_date === '') cleanPayload.end_date = null;
 
-        const { data, error } = await supabase.from('sites').insert([{ ...cleanPayload, created_at: new Date() }]).select().single();
+        const { data, error } = await supabase.from('sites').insert([{ ...cleanPayload, company_id: currentCompanyId ?? null, created_at: new Date() }]).select().single();
 
         if (!error && data) {
             const newSiteId = data.id;
@@ -571,6 +626,7 @@ export const AppProvider = ({ children }) => {
                     name: t.name,
                     planned_hours: Number(t.planned_hours) || 0,
                     completed_hours: Number(t.completed_hours) || 0,
+                    company_id: currentCompanyId ?? null,
                     project_id: newSiteId
                 }));
             } else {
@@ -580,6 +636,7 @@ export const AppProvider = ({ children }) => {
                     name,
                     planned_hours: 0,
                     completed_hours: 0,
+                    company_id: currentCompanyId ?? null,
                     project_id: newSiteId
                 }));
             }
@@ -691,6 +748,7 @@ export const AppProvider = ({ children }) => {
                     name: t.name,
                     planned_hours: Number(t.planned_hours) || 0,
                     completed_hours: Number(t.completed_hours) || 0, // Manual Override
+                    company_id: currentCompanyId ?? null,
                     project_id: id
                 }));
                 const { data: inserted, error: insErr } = await supabase.from('project_tasks').insert(payload).select();
@@ -739,7 +797,8 @@ export const AppProvider = ({ children }) => {
             name: task.name,
             is_active: true,
             planned_hours: 0,
-            completed_hours: 0
+            completed_hours: 0,
+            company_id: currentCompanyId ?? null
         }]).select().single();
 
         if (!error && data) {
@@ -889,7 +948,8 @@ export const AppProvider = ({ children }) => {
             section_id: sectionId, // ✅ CHANGED: Use section_id FK to project_tasks
             punch_start_at: timestamp,
             gps_first_entry_at: gpsData?.entryAt || null,
-            manual_entry: false
+            manual_entry: false,
+            company_id: currentCompanyId ?? null
         };
 
         // Optimistic
@@ -1017,7 +1077,8 @@ export const AppProvider = ({ children }) => {
             punch_start_at: startAt,
             punch_end_at: endAt,
             manual_entry: true,
-            created_at: new Date()
+            created_at: new Date(),
+            company_id: currentCompanyId ?? null
         };
 
         const { data, error } = await supabase.from('time_sessions').insert([payload]).select().single();
@@ -1035,7 +1096,8 @@ export const AppProvider = ({ children }) => {
             action: 'action',
             user_id: currentUser?.id,
             details,
-            timestamp: new Date()
+            timestamp: new Date(),
+            company_id: currentCompanyId ?? null
         }]);
     }
 
@@ -1050,6 +1112,11 @@ export const AppProvider = ({ children }) => {
         companyInfo,
         login,
         logout,
+        saasSession,
+        signupSaaS,
+        loginSaaS,
+        createCompanySaaS,
+        joinCompanySaaS,
         changePassword,
         addMaterial,
         addSite,

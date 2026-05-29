@@ -71,6 +71,13 @@ const LoginPage = () => {
                 </form>
 
                 <div className="mt-8 text-center text-xs text-slate-500">
+                    <button 
+                        type="button" 
+                        onClick={() => navigate('/onboarding')}
+                        className="text-blue-400 hover:text-blue-300 underline mb-4 inline-block"
+                    >
+                        Nouvelle entreprise ? Rejoignez le mode SaaS
+                    </button>
                     <p>Antigravity - v{pkg.version}</p>
                 </div>
             </div>
