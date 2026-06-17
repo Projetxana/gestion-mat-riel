@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Clock, Briefcase, Calendar } from 'lucide-react';
+import { Clock, Briefcase, Calendar, Layers } from 'lucide-react';
 import DayDetailModal from './DayDetailModal';
 
-const WeeklySummary = ({ sessions, sites, projectTasks }) => {
+const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = true, showTaskBreakdown = false }) => {
     const [selectedDayDetail, setSelectedDayDetail] = useState(null);
     // 1. Calculate Date Range (Mon-Sun)
     const { startOfWeek, endOfWeek, weekLabel } = useMemo(() => {
@@ -25,7 +25,7 @@ const WeeklySummary = ({ sessions, sites, projectTasks }) => {
     }, []);
 
     // 2. Filter & Aggregate Data
-    const { totalHours, dailyBreakdown, projectBreakdown } = useMemo(() => {
+    const { totalHours, dailyBreakdown, projectBreakdown, taskBreakdown } = useMemo(() => {
         const now = new Date();
         const weeklySessions = sessions.filter(s => {
             if (!s.punch_start_at) return false;
@@ -79,12 +79,22 @@ const WeeklySummary = ({ sessions, sites, projectTasks }) => {
             projects[siteName] += calculateDuration(s);
         });
 
+        // Task Breakdown
+        const tasks = {};
+        weeklySessions.forEach(s => {
+            const task = projectTasks?.find(t => String(t.id) === String(s.section_id));
+            const taskName = task?.name || (s.section_id ? `Tâche #${s.section_id}` : 'Non assigné');
+            if (!tasks[taskName]) tasks[taskName] = 0;
+            tasks[taskName] += calculateDuration(s);
+        });
+
         return {
             totalHours: Math.round(total * 10) / 10,
             dailyBreakdown: daily,
-            projectBreakdown: projects
+            projectBreakdown: projects,
+            taskBreakdown: tasks
         };
-    }, [sessions, sites, startOfWeek, endOfWeek]);
+    }, [sessions, sites, projectTasks, startOfWeek, endOfWeek]);
 
     // 3. Overtime Logic
     const overtimeData = useMemo(() => {
@@ -207,7 +217,7 @@ const WeeklySummary = ({ sessions, sites, projectTasks }) => {
                     </div>
                 </div>
 
-                {/* CARD 3: PROJECT BREAKDOWN */}
+                {showProjectBreakdown && (
                 <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4">
                     <div className="flex items-center gap-2 mb-3 text-slate-300 font-medium text-sm">
                         <Briefcase size={16} className="text-purple-400" />
@@ -228,6 +238,32 @@ const WeeklySummary = ({ sessions, sites, projectTasks }) => {
                         )}
                     </div>
                 </div>
+                )}
+
+                {showTaskBreakdown && (
+                <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4">
+                    <div className="flex items-center gap-2 mb-3 text-slate-300 font-medium text-sm">
+                        <Layers size={16} className="text-cyan-400" />
+                        Par Tâche
+                    </div>
+                    <div className="space-y-3">
+                        {Object.keys(taskBreakdown).length > 0 ? (
+                            Object.entries(taskBreakdown)
+                                .sort(([,a], [,b]) => b - a)
+                                .map(([name, hours]) => (
+                                <div key={name} className="flex justify-between items-center text-sm">
+                                    <span className="text-slate-300 truncate max-w-[70%]">{name}</span>
+                                    <div className="bg-slate-700 px-2 py-1 rounded text-white text-xs font-mono">
+                                        {Math.round(hours * 10) / 10} h
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <p className="text-xs text-slate-600 italic text-center py-2">Aucune tâche cette semaine</p>
+                        )}
+                    </div>
+                </div>
+                )}
             </div>
 
             {selectedDayDetail && (

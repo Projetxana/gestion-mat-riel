@@ -132,8 +132,8 @@ const OnboardingPage = () => {
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
             <div className="glass-panel w-full max-w-md p-8">
                 <div className="text-center mb-8">
-                    <img src="/company-logo.png" alt="Logo" className="h-24 mx-auto mb-4 object-contain" fallback={<Building className="h-16 w-16 mx-auto mb-4 text-blue-400" />} />
-                    <h2 className="text-2xl font-bold text-white mb-2">Mode SaaS Multi-Entreprise</h2>
+                    <img src="/buildtrack-logo.png" alt="Build Track" className="h-28 mx-auto mb-4 object-contain" />
+                    <h2 className="text-2xl font-bold text-white mb-2">Build Track</h2>
                     <p className="text-slate-400">{isLoginMode ? 'Connectez-vous à votre compte' : 'Inscrivez-vous pour créer votre espace'}</p>
                 </div>
 

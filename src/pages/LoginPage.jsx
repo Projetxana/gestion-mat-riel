@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import BuildTrackLogo from '../components/BuildTrackLogo';
 import pkg from '../../package.json';
 
 const LoginPage = () => {
@@ -24,8 +25,8 @@ const LoginPage = () => {
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
             <div className="glass-panel w-full max-w-md p-8">
                 <div className="text-center mb-8">
-                    <img src="/company-logo.png" alt="Logo" className="h-24 mx-auto mb-4 object-contain" />
-                    <p className="text-slate-400">Système de Gestion de Matériel</p>
+                    <BuildTrackLogo size={180} />
+                    <p className="text-slate-400 text-base mt-3">Gestion de chantier intelligente</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-6">
@@ -78,7 +79,7 @@ const LoginPage = () => {
                     >
                         Nouvelle entreprise ? Rejoignez le mode SaaS
                     </button>
-                    <p>Antigravity - v{pkg.version}</p>
+                    <p>Build Track - v{pkg.version}</p>
                 </div>
             </div>
         </div>

@@ -8,7 +8,7 @@ const UserModal = ({ onClose, userToEdit = null }) => {
         name: '',
         email: '',
         password: '',
-        role: 'user',
+        role: 'apprentice',
         level: ''
     });
     const [inviteLink, setInviteLink] = useState('');
@@ -16,11 +16,14 @@ const UserModal = ({ onClose, userToEdit = null }) => {
 
     useEffect(() => {
         if (userToEdit) {
+            console.log('userToEdit =', userToEdit);
             setFormData({
                 name: userToEdit.name,
                 email: userToEdit.email,
                 password: userToEdit.password,
-                role: userToEdit.role,
+                role: userToEdit.role === 'user'
+        ? 'apprentice'
+        : userToEdit.role,
                 level: userToEdit.level || ''
             });
         } else {
@@ -33,9 +36,9 @@ const UserModal = ({ onClose, userToEdit = null }) => {
     useEffect(() => {
         // Generate invite link if we have email and password
         if (formData.email && formData.password) {
-            const subject = encodeURIComponent("Invitation à Gestion matériel - Protection Incendie CD");
-            const appUrl = window.location.origin;
-            const body = encodeURIComponent(`Bonjour ${formData.name},\n\nVous avez été invité à rejoindre l'application Gestion matériel pour Protection Incendie CD.\n\nAccéder à l'application : ${appUrl}\n\nVoici vos identifiants :\nEmail : ${formData.email}\nMot de passe : ${formData.password}\n\nVous devrez changer votre mot de passe lors de la première connexion.\n\nCordialement,`);
+            const subject = encodeURIComponent("Invitation à Build Track");
+            const appUrl = 'https://app.buildtrackapp.ca';
+            const body = encodeURIComponent(`Bonjour ${formData.name},\n\nVous avez été invité à rejoindre l'application Build Track.\n\nAccéder à l'application : ${appUrl}\n\nVoici vos identifiants :\nEmail : ${formData.email}\nMot de passe : ${formData.password}\n\nVous devrez changer votre mot de passe lors de la première connexion.\n\nCordialement,\nL'équipe Build Track`);
             setInviteLink(`mailto:${formData.email}?subject=${subject}&body=${body}`);
         }
     }, [formData]);
@@ -129,8 +132,8 @@ const UserModal = ({ onClose, userToEdit = null }) => {
                                 <input
                                     type="radio"
                                     name="role"
-                                    value="user"
-                                    checked={formData.role === 'user'}
+                                    value="apprentice"
+                                    checked={formData.role === 'apprentice'}
                                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                                 />
@@ -158,12 +161,9 @@ const UserModal = ({ onClose, userToEdit = null }) => {
                             className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-slate-900 bg-white"
                         >
                             <option value="">Sélectionner un niveau</option>
-                            <option value="Chef d'équipe">Chef d'équipe</option>
-                            <option value="Compagnon">Compagnon</option>
-                            <option value="Apprenti 4">Apprenti 4</option>
-                            <option value="Apprenti 3">Apprenti 3</option>
-                            <option value="Apprenti 2">Apprenti 2</option>
-                            <option value="Apprenti 1">Apprenti 1</option>
+                            <option value="chef_equipe">Chef d'équipe</option>
+                            <option value="compagnon">Compagnon</option>
+                            <option value="apprenti">Apprenti</option>
                         </select>
                     </div>
 

@@ -5,7 +5,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import WeeklySummary from '../components/WeeklySummary';
 import AdminHoursView from '../modules/hours_v2/AdminHoursView';
 import LeaderHoursView from '../modules/hours_v2/LeaderHoursView';
-import BreakReportModal from '../components/BreakReportModal';
+
+import SmartCorrectionPopup from '../components/SmartCorrectionPopup';
+import { useUserPreferences } from '../hooks/useUserPreferences';
 
 const TimeTracking = () => {
     const {
@@ -26,6 +28,7 @@ const TimeTracking = () => {
         return <AdminHoursView />;
     }
     const isLeader = currentUser?.role === 'leader';
+    const { preferences } = useUserPreferences(currentUser?.id);
 
     // VIEW STATE: 'INITIAL' | 'WIZARD_SITE' | 'WIZARD_TASK' | 'ACTIVE'
     const [viewMode, setViewMode] = useState('INITIAL');
@@ -42,30 +45,53 @@ const TimeTracking = () => {
     const [isSwitching, setIsSwitching] = useState(false);
     const [switchedTaskStats, setSwitchedTaskStats] = useState(null);
 
-    // BREAK REPORT STATE
-    const [showBreakReport, setShowBreakReport] = useState(false);
+
 
     // OVERTIME STATE
     const [showOvertimeModal, setShowOvertimeModal] = useState(false);
     const [pendingAdjustment, setPendingAdjustment] = useState(0);
     const [showOvertimeConfirmed, setShowOvertimeConfirmed] = useState(false);
 
+    // START CORRECTION STATE
+    const [showStartCorrection, setShowStartCorrection] = useState(false);
+    const [pendingStartSectionId, setPendingStartSectionId] = useState(null);
+
+    // END CORRECTION STATE
+    const [showEndCorrection, setShowEndCorrection] = useState(false);
+
     // --- HANDLERS ---
 
     const handleEndDay = async () => {
         if (!window.confirm("Terminer la journée ?")) return;
-        const isValidRole = currentUser?.role !== 'admin';
-        if (isValidRole) {
-            setShowBreakReport(true);
+        // Check if we should propose end-of-day correction (after 13:45)
+        const now = new Date();
+        const hours = now.getHours();
+        const minutes = now.getMinutes();
+        if (hours > 13 || (hours === 13 && minutes >= 45)) {
+            setShowEndCorrection(true);
         } else {
-            confirmEndDay(0);
+            proceedToBreakReport();
         }
     };
 
-    const handleBreakConfirm = (reportData) => {
-        setShowBreakReport(false);
-        // After break report, check if overtime
-        checkOvertime(reportData.adjustmentMinutes);
+    const handleEndCorrectionConfirm = (correctedTime, wasModified) => {
+        setShowEndCorrection(false);
+        if (wasModified && activeSession) {
+            // Calculate adjustment from now to the corrected time
+            const diffMs = correctedTime.getTime() - new Date().getTime();
+            const adjustmentMinutes = Math.round(diffMs / 60000);
+            setPendingAdjustment(adjustmentMinutes);
+        }
+        proceedToBreakReport();
+    };
+
+    const proceedToBreakReport = () => {
+        // Auto-calculate break adjustment from saved preferences (no popup)
+        const lunchAdjustment = preferences.defaultLunchTaken ? -30 : 0;
+        const breaksAdjustment = (2 - preferences.defaultBreaksTaken) * 15;
+        const breakAdj = lunchAdjustment + breaksAdjustment;
+        const totalAdj = pendingAdjustment + breakAdj;
+        checkOvertime(totalAdj);
     };
 
     const checkOvertime = (adjustmentMinutes) => {
@@ -177,8 +203,26 @@ const TimeTracking = () => {
     };
 
     const handleStartSession = async (sectionId) => {
+        // Check if we should propose start correction (after 6:00 AM, before 8:00 AM)
+        const now = new Date();
+        const hours = now.getHours();
+        if (hours >= 6 && hours < 8) {
+            setPendingStartSectionId(sectionId);
+            setShowStartCorrection(true);
+        } else {
+            doStartSession(sectionId, null);
+        }
+    };
+
+    const handleStartCorrectionConfirm = (correctedTime, wasModified) => {
+        setShowStartCorrection(false);
+        const correction = wasModified ? { time: correctedTime, isModified: true } : null;
+        doStartSession(pendingStartSectionId, correction);
+    };
+
+    const doStartSession = async (sectionId, correction) => {
         setIsSubmitting(true);
-        const result = await startTimeSession(selectedSiteId, sectionId, null);
+        const result = await startTimeSession(selectedSiteId, sectionId, correction);
         setIsSubmitting(false);
         if (result.error) {
             alert(result.error);
@@ -269,7 +313,7 @@ const TimeTracking = () => {
 
                 <div className="pt-4 border-t border-slate-200 mt-4">
                     <h3 className="text-sm font-bold text-slate-500 mb-4 px-1">MES HEURES SEMAINE</h3>
-                    <WeeklySummary sessions={timeSessions} sites={sites} projectTasks={projectTasks} />
+                    <WeeklySummary sessions={timeSessions} sites={sites} projectTasks={projectTasks} showProjectBreakdown={preferences.showHoursBySite} showTaskBreakdown={preferences.showHoursByTask} />
                 </div>
 
                 {isLeader && <LeaderHoursView />}
@@ -486,9 +530,28 @@ const TimeTracking = () => {
                     </div>
                 </div>
 
-                {showBreakReport && (
-                    <BreakReportModal onConfirm={handleBreakConfirm} />
+                {showStartCorrection && (
+                    <SmartCorrectionPopup
+                        type="start"
+                        onConfirm={handleStartCorrectionConfirm}
+                        onCancel={() => {
+                            setShowStartCorrection(false);
+                            doStartSession(pendingStartSectionId, null);
+                        }}
+                    />
                 )}
+
+                {showEndCorrection && (
+                    <SmartCorrectionPopup
+                        type="end"
+                        onConfirm={handleEndCorrectionConfirm}
+                        onCancel={() => {
+                            setShowEndCorrection(false);
+                            proceedToBreakReport();
+                        }}
+                    />
+                )}
+
 
                 {showOvertimeModal && (
                     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">

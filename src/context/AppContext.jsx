@@ -32,6 +32,8 @@ export const AppProvider = ({ children }) => {
     }, [currentUser]);
     const [dbError, setDbError] = useState(null);
     const [saasSession, setSaasSession] = useState(null);
+    const [currentCompanyId, setCurrentCompanyId] = useState(null);
+    const [companySetupComplete, setCompanySetupComplete] = useState(null); // null=loading, true/false
 
     // Initial Data Fetch
     // Geofence State
@@ -47,7 +49,16 @@ export const AppProvider = ({ children }) => {
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSaasSession(session);
+            if (session) {
+                fetchCompanyId();
+            } else {
+                setCurrentCompanyId(null);
+                setCompanySetupComplete(false);
+            }
         });
+
+        // Initial company ID fetch
+        fetchCompanyId();
 
         fetchData();
 
@@ -333,6 +344,24 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    // Fetch Company ID from Supabase RPC
+    const fetchCompanyId = async () => {
+        try {
+            const { data, error } = await supabase.rpc('get_user_company_id');
+            if (!error && data) {
+                setCurrentCompanyId(data);
+                setCompanySetupComplete(true);
+            } else {
+                setCurrentCompanyId(null);
+                setCompanySetupComplete(false);
+            }
+        } catch (e) {
+            console.log('No company found for user');
+            setCurrentCompanyId(null);
+            setCompanySetupComplete(false);
+        }
+    };
+
 
     // Actions
 
@@ -352,13 +381,52 @@ export const AppProvider = ({ children }) => {
     const createCompanySaaS = async (name) => {
         const { data, error } = await supabase.rpc('create_company', { p_name: name, p_user_id: saasSession?.user?.id });
         if (error) return error.message;
+        // Refresh company ID after creation
+        await fetchCompanyId();
         return null;
     };
 
     const joinCompanySaaS = async (token) => {
         const { error } = await supabase.rpc('accept_invite', { p_token: token, p_user_id: saasSession?.user?.id });
         if (error) return error.message;
+        // Refresh company ID after joining
+        await fetchCompanyId();
         return null;
+    };
+
+    // Invite employee to company
+    const inviteEmployee = async (email, role = 'user') => {
+        if (!currentCompanyId) return { error: 'Aucune compagnie configurée' };
+        const { data, error } = await supabase.from('invites').insert([{
+            company_id: currentCompanyId,
+            email,
+            status: 'pending'
+        }]).select().single();
+        if (error) return { error: error.message };
+        return { success: true, token: data.token, invite: data };
+    };
+
+    // Fetch company invites
+    const fetchCompanyInvites = async () => {
+        if (!currentCompanyId) return [];
+        const { data, error } = await supabase.from('invites')
+            .select('*')
+            .eq('company_id', currentCompanyId)
+            .order('created_at', { ascending: false });
+        if (error) return [];
+        return data || [];
+    };
+
+    // Upload company logo
+    const uploadCompanyLogo = async (file) => {
+        if (!currentCompanyId) return { error: 'Aucune compagnie' };
+        const filePath = `${currentCompanyId}/logo`;
+        const { error } = await supabase.storage.from('company-logos').upload(filePath, file, { upsert: true });
+        if (error) return { error: error.message };
+        const { data: urlData } = supabase.storage.from('company-logos').getPublicUrl(filePath);
+        // Update company info with logo URL
+        await supabase.from('companies').update({ logo_url: urlData.publicUrl }).eq('id', currentCompanyId);
+        return { success: true, url: urlData.publicUrl };
     };
 
     const login = (email, password) => {
@@ -413,7 +481,7 @@ export const AppProvider = ({ children }) => {
         // Optimistic
         setUsers(prev => [...prev, userWithFlags]);
 
-        const { data, error } = await supabase.from('users').insert([{ ...user, must_change_password: true, created_at: new Date() }]).select();
+        const { data, error } = aawait supabase.from('users').insert([{ ...user, must_change_password: true, created_at: new Date()}]).select();
 
         if (!error && data) {
             // Replace temp with real
@@ -426,43 +494,46 @@ export const AppProvider = ({ children }) => {
     };
 
     const updateUser = async (userId, updates) => {
+        console.log('UPDATE USER');
+        console.log('updates =', updates);
         // Optimistic
         const oldUsers = [...users];
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
 
-        // DB update
-        const dbUpdates = { ...updates };
-        delete dbUpdates.id;
-        delete dbUpdates.created_at;
+        // Only send columns that exist in the DB table
+        const allowedColumns = ['name', 'email', 'password', 'role', 'level', 'must_change_password'];
+        const dbUpdates = {};
+        for (const key of allowedColumns) {
+            if (updates[key] !== undefined) {
+                dbUpdates[key] = updates[key];
+            }
+        }
+
+        // Sanitize: empty strings → null for constrained columns
+        if (dbUpdates.level === '') dbUpdates.level = null;
+
+        console.log('dbUpdates =', dbUpdates);
+
+        if (Object.keys(dbUpdates).length === 0) {
+            console.warn("updateUser: no valid DB fields to update");
+            return;
+        }
 
         let error = null;
 
         // If it's a generated user, we need to INSERT it as a new user in DB
         if (String(userId).startsWith('generated-')) {
-            // We use the same ID (converted to string if needed) or let Supabase generate one?
-            // Ideally we KEEP the generated ID to match what's in memory for the session, 
-            // OR we replace it with the real one.
-            // But replacing IDs in memory is tricky for HiltiTools assignments that refer to it.
-            // EASIER: Just insert a new row, get the REAL ID, and update Hilti assignments?
-            // NO, let's try to keeping the ID if it's a string, assuming ID column allows text.
-            // If ID is int/uuid, 'generated-...' will fail.
-            // Given the schema isn't strictly known but usually UUID, let's assume we need a proper insert.
-
-            // BETTER STRATEGY: 
-            // 1. Insert new user with normal ID (auto).
-            // 2. Update all Hilti tools assigned to old 'generated-ID' to 'new-real-ID'.
-            // 3. Update 'users' state to replace old user with new user.
-
             const existingUser = users.find(u => u.id === userId);
 
             const newUserPayload = {
-                name: updates.name || existingUser.name,
-                email: updates.email || existingUser.email,
-                role: updates.role || existingUser.role,
-                password: updates.password || existingUser.password,
-                must_change_password: true,
-                created_at: new Date()
-            };
+  name: updates.name || existingUser.name,
+  email: updates.email || existingUser.email,
+  role: updates.role || existingUser.role,
+  password: updates.password || existingUser.password,
+  level: updates.level || existingUser.level || null,
+  must_change_password: true,
+  created_at: new Date()
+};
 
             const { data: insertedUser, error: insertError } = await supabase.from('users').insert([newUserPayload]).select().single();
 
@@ -488,24 +559,40 @@ export const AppProvider = ({ children }) => {
             console.error("Error updating user:", error);
             setDbError(error.message);
             setUsers(oldUsers); // Rollback
+            alert(`Erreur de sauvegarde: ${error.message}`);
         } else {
             addLog(`Updated user: ${updates.name || userId}`);
         }
     };
 
-    const deleteUser = async (userId) => {
-        // Optimistic
-        const userToDelete = users.find(u => u.id === userId);
-        setUsers(prev => prev.filter(u => u.id !== userId));
+   const deleteUser = async (userId) => {
+    const userToDelete = users.find(u => u.id === userId);
 
-        const { error } = await supabase.from('users').delete().eq('id', userId);
-        if (error) {
-            // Rollback
-            if (userToDelete) setUsers(prev => [...prev, userToDelete]);
-        } else {
-            addLog(`Deleted user: ${userToDelete?.name}`);
+    // Optimistic UI
+    setUsers(prev => prev.filter(u => u.id !== userId));
+
+    // Utilisateur temporaire (jamais enregistré en DB)
+    if (String(userId).startsWith('generated-')) {
+        addLog(`Deleted temporary user: ${userToDelete?.name}`);
+        return;
+    }
+
+    const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', userId);
+
+    if (error) {
+        console.error('Delete user error:', error);
+
+        // Rollback
+        if (userToDelete) {
+            setUsers(prev => [...prev, userToDelete]);
         }
-    };
+    } else {
+        addLog(`Deleted user: ${userToDelete?.name}`);
+    }
+};
 
     const addMaterial = async (material) => {
         // Check for duplicates
@@ -1144,10 +1231,15 @@ export const AppProvider = ({ children }) => {
         updateTimeSession,
         deleteTimeSession,
 
+        currentCompanyId,
+        companySetupComplete,
+        inviteEmployee,
+        fetchCompanyInvites,
+        uploadCompanyLogo,
 
         projectTasks,
-        updateProjectTask, // We focus on this one as requested
-        deleteProjectTask // In case needed
+        updateProjectTask,
+        deleteProjectTask
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

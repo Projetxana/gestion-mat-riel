@@ -1,13 +1,137 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import { Save, UserPlus, Shield, Users } from 'lucide-react';
+import { Save, UserPlus, Shield, Users, LogOut, Utensils, Coffee, MapPin, BarChart3, Briefcase, Settings as SettingsIcon } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 import UserModal from '../components/UserModal';
+import { useUserPreferences } from '../hooks/useUserPreferences';
 
 import pkg from '../../package.json';
 
+const ToggleSwitch = ({ checked, onChange, label, description, icon: Icon }) => (
+    <div className="flex items-center justify-between py-3">
+        <div className="flex items-center gap-3 flex-1 mr-3">
+            {Icon && (
+                <div className={`p-2 rounded-lg shrink-0 ${checked ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'} transition-colors`}>
+                    <Icon size={18} />
+                </div>
+            )}
+            <div>
+                <p className="font-medium text-slate-800 text-sm">{label}</p>
+                {description && <p className="text-xs text-slate-400 mt-0.5">{description}</p>}
+            </div>
+        </div>
+        <button
+            onClick={() => onChange(!checked)}
+            className={`relative shrink-0 w-12 h-7 rounded-full transition-colors duration-200 ${checked ? 'bg-blue-500' : 'bg-slate-300'}`}
+        >
+            <div className="absolute top-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform duration-200"
+                style={{ transform: checked ? 'translateX(20px)' : 'translateX(2px)' }}
+            />
+        </button>
+    </div>
+);
+
+const PreferencesPanel = ({ userId }) => {
+    const { preferences, updatePreference } = useUserPreferences(userId);
+
+    return (
+        <div className="space-y-4">
+            {/* Break Defaults */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
+                    <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wider flex items-center gap-2">
+                        <SettingsIcon size={14} />
+                        Fin de journée — Valeurs par défaut
+                    </h3>
+                </div>
+                <div className="px-5 divide-y divide-slate-100">
+                    <ToggleSwitch
+                        checked={preferences.defaultLunchTaken}
+                        onChange={(v) => updatePreference('defaultLunchTaken', v)}
+                        label="Pause dîner cochée par défaut"
+                        description="Si activé, la pause de 30 min sera pré-cochée"
+                        icon={Utensils}
+                    />
+                    <div className="py-3">
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="p-2 rounded-lg bg-amber-100 text-amber-600">
+                                <Coffee size={18} />
+                            </div>
+                            <div>
+                                <p className="font-medium text-slate-800 text-sm">Pauses café par défaut</p>
+                                <p className="text-xs text-slate-400">Nombre de pauses pré-sélectionné</p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                            {[0, 1, 2].map(count => (
+                                <button
+                                    key={count}
+                                    onClick={() => updatePreference('defaultBreaksTaken', count)}
+                                    className={`py-2 rounded-xl border-2 font-bold text-sm transition-all ${
+                                        preferences.defaultBreaksTaken === count
+                                            ? 'border-amber-500 bg-amber-50 text-amber-700'
+                                            : 'border-slate-200 text-slate-400 hover:border-slate-300'
+                                    }`}
+                                >
+                                    {count} {count <= 1 ? 'pause' : 'pauses'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Geolocation */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
+                    <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wider flex items-center gap-2">
+                        <MapPin size={14} />
+                        Géolocalisation
+                    </h3>
+                </div>
+                <div className="px-5">
+                    <ToggleSwitch
+                        checked={preferences.enableGeolocation}
+                        onChange={(v) => updatePreference('enableGeolocation', v)}
+                        label="Activer la géolocalisation pour le punch"
+                        description="Utiliser le GPS pour détecter l'arrivée sur chantier"
+                        icon={MapPin}
+                    />
+                </div>
+            </div>
+
+            {/* Hours Visibility */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
+                    <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wider flex items-center gap-2">
+                        <BarChart3 size={14} />
+                        Affichage des heures
+                    </h3>
+                </div>
+                <div className="px-5 divide-y divide-slate-100">
+                    <ToggleSwitch
+                        checked={preferences.showHoursByTask}
+                        onChange={(v) => updatePreference('showHoursByTask', v)}
+                        label="Voir les heures par tâche"
+                        description="Afficher le détail du temps par tâche"
+                        icon={BarChart3}
+                    />
+                    <ToggleSwitch
+                        checked={preferences.showHoursBySite}
+                        onChange={(v) => updatePreference('showHoursBySite', v)}
+                        label="Voir les heures par chantier"
+                        description="Afficher le temps total par chantier"
+                        icon={Briefcase}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const Settings = () => {
-    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, dbError } = useAppContext();
+    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, dbError, logout, saasSession } = useAppContext();
     const [localCompanyValues, setLocalCompanyValues] = useState({ name: '', address: '' });
     const [isEditing, setIsEditing] = useState(false);
     const [showUserModal, setShowUserModal] = useState(false);
@@ -24,14 +148,54 @@ const Settings = () => {
         setIsEditing(false);
     };
 
-
+    const handleLogout = async () => {
+        if (!window.confirm('Voulez-vous vraiment vous déconnecter ?')) return;
+        // Sign out from Supabase Auth
+        await supabase.auth.signOut();
+        // Also clear legacy session
+        logout();
+        localStorage.removeItem('legacy_currentUser');
+        window.location.href = '/login';
+    };
 
     if (currentUser?.role !== 'admin') {
         return (
-            <div className="p-8 text-center text-slate-400">
-                <Shield className="w-16 h-16 mx-auto mb-4 text-slate-400" />
-                <h2 className="text-xl font-bold mb-2">Accès Restreint</h2>
-                <p>Seuls les administrateurs peuvent modifier les paramètres.</p>
+            <div className="space-y-6 max-w-md mx-auto py-8">
+                <div className="text-center mb-6">
+                    <h1 className="text-xl font-bold text-slate-800">Paramètres</h1>
+                </div>
+
+                {/* User Info Card */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center">
+                            <span className="text-xl font-bold text-blue-600">
+                                {(currentUser?.name || saasSession?.user?.email || '?')[0].toUpperCase()}
+                            </span>
+                        </div>
+                        <div>
+                            <p className="font-bold text-slate-800">{currentUser?.name || 'Utilisateur'}</p>
+                            <p className="text-sm text-slate-500">{currentUser?.email || saasSession?.user?.email}</p>
+                            <span className="inline-block mt-1 px-2 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-full font-medium">
+                                {currentUser?.role || 'user'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Preferences Panel */}
+                <PreferencesPanel userId={currentUser?.id} />
+
+                {/* Logout Button */}
+                <button
+                    onClick={handleLogout}
+                    className="w-full py-4 bg-red-50 hover:bg-red-100 text-red-600 rounded-2xl font-bold border border-red-200 transition-all active:scale-95 flex items-center justify-center gap-3"
+                >
+                    <LogOut size={20} />
+                    Se déconnecter
+                </button>
+
+                <p className="text-center text-xs text-slate-300">v{pkg.version}</p>
             </div>
         );
     }
@@ -275,6 +439,18 @@ const Settings = () => {
                     Forcer la mise à jour
                 </button>
             </div>
+
+            {/* Admin Preferences */}
+            <PreferencesPanel userId={currentUser?.id} />
+
+            {/* Logout (Admin) */}
+            <button
+                onClick={handleLogout}
+                className="w-full py-4 bg-red-50 hover:bg-red-100 text-red-600 rounded-2xl font-bold border border-red-200 transition-all active:scale-95 flex items-center justify-center gap-3"
+            >
+                <LogOut size={20} />
+                Se déconnecter
+            </button>
         </div>
     );
 };

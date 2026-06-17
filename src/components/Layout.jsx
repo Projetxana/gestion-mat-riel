@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import BottomNav from './BottomNav';
 import SmartCorrectionPopup from './SmartCorrectionPopup';
 import { useAppContext } from '../context/AppContext';
+import { useUserPreferences } from '../hooks/useUserPreferences';
 
 // FIX: Layout shift for Global Timer
 // We can use context or just generic padding.
@@ -20,11 +21,14 @@ const Layout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     // Geofence Entry Logic
     const { companyInfo, lastGeofenceEntry, timeSessions, sites, currentUser } = useAppContext();
+    const { preferences } = useUserPreferences(currentUser?.id);
     const [showEntryPopup, setShowEntryPopup] = useState(false);
     const [entrySite, setEntrySite] = useState(null);
     const navigate = useNavigate();
 
     useEffect(() => {
+        // Only run geofence logic if user enabled geolocation
+        if (!preferences.enableGeolocation) return;
         if (lastGeofenceEntry && currentUser) {
             // Check if user already has an active session
             const activeSession = timeSessions.find(s => s.user_id === currentUser.id && s.punch_end_at === null);
@@ -38,7 +42,7 @@ const Layout = () => {
                 }
             }
         }
-    }, [lastGeofenceEntry, timeSessions, currentUser, sites]);
+    }, [lastGeofenceEntry, timeSessions, currentUser, sites, preferences.enableGeolocation]);
 
     const handleStartDay = () => {
         setShowEntryPopup(false);
@@ -86,8 +90,8 @@ const Layout = () => {
             {/* Mobile Header - Simplified without Menu button */}
             <div className="md:hidden bg-white border-b border-slate-200 p-3 flex items-center justify-center sticky top-0 z-30 shadow-sm">
                 <div className="flex items-center gap-2">
-                    <img src="/company-logo-small.png" alt="Logo" className="h-8 w-auto object-contain" />
-                    <span className="font-bold text-slate-900">{companyInfo?.name || 'Antigravity'}</span>
+                    <img src="/buildtrack-logo.png" alt="Build Track" className="h-8 w-auto object-contain" />
+                    <span className="font-bold text-slate-900">Build Track</span>
                 </div>
             </div>
 

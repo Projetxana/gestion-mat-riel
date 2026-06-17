@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Coffee, Utensils, ArrowRight, Check } from 'lucide-react';
 
-const BreakReportModal = ({ onConfirm }) => {
-    // State
-    const [lunchTaken, setLunchTaken] = useState(true); // Default to true (standard)
-    const [breaksTaken, setBreaksTaken] = useState(1); // Default to 1 pause
+const BreakReportModal = ({ onConfirm, defaultLunchTaken = false, defaultBreaksTaken = 1 }) => {
+    // State — initialized from user preferences
+    const [lunchTaken, setLunchTaken] = useState(defaultLunchTaken);
+    const [breaksTaken, setBreaksTaken] = useState(defaultBreaksTaken);
 
     const handleSubmit = () => {
         // Calculate Adjustment

@@ -21,13 +21,14 @@ import Journal from './pages/Journal';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import HiltiPage from './pages/HiltiPage';
-import TimeTracking from './pages/TimeTrackingPage'; // Renamed to bust cache
+import TimeTracking from './pages/TimeTrackingPage';
 import ManualEntry from './pages/ManualEntry';
 import ValidationPage from './pages/ValidationPage';
 import OnboardingPage from './pages/OnboardingPage';
+import SetupWizard from './pages/SetupWizard';
 
 const ProtectedRoute = ({ children }) => {
-  const { currentUser } = useAppContext();
+  const { currentUser, companySetupComplete, saasSession } = useAppContext();
   const [loading, setLoading] = React.useState(true);
   const [user, setUser] = React.useState(null);
 
@@ -73,6 +74,11 @@ const ProtectedRoute = ({ children }) => {
 
   if (!loading && !isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // If SaaS user has no company yet, redirect to setup wizard
+  if (user && companySetupComplete === false && !currentUser) {
+    return <Navigate to="/setup" replace />;
   }
 
   if (currentUser?.must_change_password) {
@@ -126,6 +132,7 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
+      <Route path="/setup" element={<SetupWizard />} />
       <Route path="/change-password" element={<ChangePasswordPage />} />
       <Route
         path="/"
