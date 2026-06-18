@@ -481,7 +481,7 @@ export const AppProvider = ({ children }) => {
         // Optimistic
         setUsers(prev => [...prev, userWithFlags]);
 
-        const { data, error } = aawait supabase.from('users').insert([{ ...user, must_change_password: true, created_at: new Date()}]).select();
+        const { data, error } = await supabase.from('users').insert([{ ...user, must_change_password: true, created_at: new Date()}]).select();
 
         if (!error && data) {
             // Replace temp with real
