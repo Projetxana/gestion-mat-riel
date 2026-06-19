@@ -79,9 +79,9 @@ const ProtectedRoute = ({ children }) => {
   }
 
   // If SaaS user has no company yet, redirect to setup wizard
-  if (user && companySetupComplete === false && !currentUser) {
+if (user && companySetupComplete === false) {
     return <Navigate to="/setup" replace />;
-  }
+}
 
   if (currentUser?.must_change_password) {
     return <Navigate to="/change-password" replace />;
@@ -162,25 +162,6 @@ const AppRoutes = () => {
 };
 
 function App() {
- useEffect(() => {
-  const debugAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-
-    console.log("AUTH USER:", user)
-
-    const { data: companyId, error } = await supabase.rpc(
-      'get_user_company_id'
-    )
-
-    console.log("CURRENT COMPANY:", companyId)
-
-    if (error) {
-      console.error("RPC ERROR:", error)
-    }
-  }
-
-  debugAuth()
-}, [])
 
   return (
     <ErrorBoundary>
