@@ -41,6 +41,8 @@ const ProtectedRoute = ({ children }) => {
         
         if (mounted) {
           if (response?.data?.session) {
+         console.log("SESSION =", response)
+         console.log("SESSION USER =", response?.data?.session?.user)
             setUser(response.data.session.user);
           } else {
             setUser(null);

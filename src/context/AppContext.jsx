@@ -14,22 +14,7 @@ export const AppProvider = ({ children }) => {
     const [timeSessions, setTimeSessions] = useState([]); // Time Tracking
     const [hiltiTools, setHiltiTools] = useState([]); // Hilti State
     const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
-    const [currentUser, setCurrentUser] = useState(() => {
-        try {
-            const saved = localStorage.getItem('legacy_currentUser');
-            return saved ? JSON.parse(saved) : null;
-        } catch (e) {
-            return null;
-        }
-    });
-
-    useEffect(() => {
-        if (currentUser) {
-            localStorage.setItem('legacy_currentUser', JSON.stringify(currentUser));
-        } else {
-            localStorage.removeItem('legacy_currentUser');
-        }
-    }, [currentUser]);
+    const [currentUser, setCurrentUser] = useState(null);
     const [dbError, setDbError] = useState(null);
     const [saasSession, setSaasSession] = useState(null);
     const [currentCompanyId, setCurrentCompanyId] = useState(null);
@@ -408,27 +393,15 @@ export const AppProvider = ({ children }) => {
         return { success: true, url: urlData.publicUrl };
     };
 
-    const login = (email, password) => {
-        // Hardcoded rescue admin
-        if (email === 'admin@antigravity.com' && password === 'admin123') {
-            const adminUser = { id: 'rescue-admin', name: 'Rescue Admin', email: 'admin@antigravity.com', role: 'admin' };
-            setCurrentUser(adminUser);
-            localStorage.setItem('legacy_currentUser', JSON.stringify(adminUser));
-            return true;
-        }
-
-        // Simple auth against loaded users
-        const user = users.find(u => u.email === email);
-        if (user && user.password === password) {
-            setCurrentUser(user);
-            localStorage.setItem('legacy_currentUser', JSON.stringify(user));
-            return true;
-        }
-        return false;
+    const login = async (email, password) => {
+        return await loginSaaS(email, password);
+};
     };
 
-    const logout = () => {
+    const logout = async () => {
         setCurrentUser(null);
+        localStorage.removeItem('legacy_currentUser');
+        await supabase.auth.signOut();
     };
 
     const changePassword = async (newPassword) => {
