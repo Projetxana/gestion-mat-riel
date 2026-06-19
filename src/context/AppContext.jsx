@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { initialHiltiTools, initialHiltiUsers } from '../data/hiltiData';
+import { initialHiltiTools } from '../data/hiltiData';
 
 const AppContext = createContext();
 
@@ -254,28 +254,7 @@ export const AppProvider = ({ children }) => {
 
             // --- SEED HILTI USERS IF MISSING ---
             // This ensures the users from the CSV exist in our app
-            const newUsers = [];
-            for (const userName of initialHiltiUsers) {
-                // Check if user exists (Normalized check to allow name corrections in DB)
-                const exists = loadedUsers.some(user => normalizeName(user.name) === normalizeName(userName));
-
-                if (!exists) {
-                    // Create a placeholder user
-                    const newUser = {
-                        id: `generated-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        name: userName,
-                        email: `${userName.toLowerCase().replace(/ /g, '.')}@antigravity.fake`,
-                        role: 'user',
-                        must_change_password: true,
-                        password: 'password123' // default for generated
-                    };
-                    newUsers.push(newUser);
-                }
-            }
-
-            if (newUsers.length > 0) {
-                loadedUsers = [...loadedUsers, ...newUsers];
-            }
+       
             setUsers(loadedUsers);
 
             // --- LOAD HILTI TOOLS ---
