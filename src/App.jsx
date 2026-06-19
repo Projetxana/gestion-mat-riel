@@ -160,17 +160,25 @@ const AppRoutes = () => {
 };
 
 function App() {
-  useEffect(() => {
-    const debugAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      console.log("USER:", user)
+ useEffect(() => {
+  const debugAuth = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
 
-      const { data, error } = await supabase.rpc('get_user_company_id')
-      console.log("COMPANY:", data, error)
+    console.log("AUTH USER:", user)
+
+    const { data: companyId, error } = await supabase.rpc(
+      'get_user_company_id'
+    )
+
+    console.log("CURRENT COMPANY:", companyId)
+
+    if (error) {
+      console.error("RPC ERROR:", error)
     }
+  }
 
-    debugAuth()
-  }, [])
+  debugAuth()
+}, [])
 
   return (
     <ErrorBoundary>
