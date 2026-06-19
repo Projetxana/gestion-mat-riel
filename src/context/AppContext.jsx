@@ -17,6 +17,7 @@ export const AppProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
     const [dbError, setDbError] = useState(null);
     const [saasSession, setSaasSession] = useState(null);
+    const authUser = saasSession?.user ?? null;
     const [currentCompanyId, setCurrentCompanyId] = useState(null);
     const [companySetupComplete, setCompanySetupComplete] = useState(null); // null=loading, true/false
 
@@ -1146,7 +1147,7 @@ export const AppProvider = ({ children }) => {
         logs,
 
         timeSessions,
-        currentUser,
+        currentUser: authUser,
         companyInfo,
         login,
         logout,
