@@ -395,7 +395,6 @@ export const AppProvider = ({ children }) => {
 
     const login = async (email, password) => {
         return await loginSaaS(email, password);
-};
     };
 
     const logout = async () => {
