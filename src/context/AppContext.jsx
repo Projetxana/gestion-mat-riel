@@ -343,13 +343,22 @@ export const AppProvider = ({ children }) => {
         return null;
     };
 
-    const createCompanySaaS = async (name) => {
-        const { data, error } = await supabase.rpc('create_company', { p_name: name, p_user_id: saasSession?.user?.id });
-        if (error) return error.message;
-        // Refresh company ID after creation
-        await fetchCompanyId();
-        return null;
-    };
+   const createCompanySaaS = async (name) => {
+    const { data, error } = await supabase.rpc(
+        'create_company',
+        {
+            company_name: name
+        }
+    )
+
+    console.log('CREATE COMPANY RESULT', data)
+    console.log('CREATE COMPANY ERROR', error)
+
+    if (error) return error.message
+
+    await fetchCompanyId()
+    return null
+    }
 
     const joinCompanySaaS = async (token) => {
         const { error } = await supabase.rpc('accept_invite', { p_token: token, p_user_id: saasSession?.user?.id });
