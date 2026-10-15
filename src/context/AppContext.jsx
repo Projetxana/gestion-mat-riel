@@ -13,11 +13,10 @@ export const AppProvider = ({ children }) => {
     const [projectTasks, setProjectTasks] = useState([]); // Project Sections
     const [timeSessions, setTimeSessions] = useState([]); // Time Tracking
     const [hiltiTools, setHiltiTools] = useState([]); // Hilti State
-    const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
+    const [companyInfo, setCompanyInfo] = useState({ name: 'Build Track', address: '' });
     const [currentUser, setCurrentUser] = useState(null);
     const [dbError, setDbError] = useState(null);
     const [saasSession, setSaasSession] = useState(null);
-    const authUser = saasSession?.user ?? null;
     const [currentCompanyId, setCurrentCompanyId] = useState(null);
     const [companySetupComplete, setCompanySetupComplete] = useState(null); // null=loading, true/false
 
@@ -29,24 +28,41 @@ export const AppProvider = ({ children }) => {
 
     // Initial Data Fetch & Geofence Watcher
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSaasSession(session);
-        });
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
+            console.log('[AUTH] getSession:', session ? session.user.email : 'no session');
             setSaasSession(session);
             if (session) {
-                fetchCompanyId();
+                const { data: dbUser, error: dbErr } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('auth_user_id', session.user.id)
+                    .single();
+                console.log('[AUTH] dbUser:', dbUser?.email, 'error:', dbErr?.message);
+                setCurrentUser(dbUser);
+                await fetchCompanyId();
+            }
+        });
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+            console.log('[AUTH] onAuthStateChange:', _event, session ? session.user.email : 'no session');
+            setSaasSession(session);
+            if (session) {
+                const { data: dbUser, error: dbErr } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('auth_user_id', session.user.id)
+                    .single();
+                console.log('[AUTH] dbUser:', dbUser?.email, 'error:', dbErr?.message);
+                setCurrentUser(dbUser);
+                await fetchCompanyId();
             } else {
+                setCurrentUser(null);
                 setCurrentCompanyId(null);
                 setCompanySetupComplete(false);
             }
         });
 
-        // Initial company ID fetch
-        fetchCompanyId();
-
-        fetchData();
+        // fetchData is now triggered by currentCompanyId change below
 
         // GEOLOCATION WATCHER (W6, W7)
         let watchId;
@@ -117,7 +133,15 @@ export const AppProvider = ({ children }) => {
             if (watchId) navigator.geolocation.clearWatch(watchId);
             channels.forEach(channel => supabase.removeChannel(channel));
         };
-    }, []); // Check dependency array carefully if using sites inside checkGeofences (might need ref/layout effect or just simpler approach)
+    }, []);
+
+    // Fetch data only when company is resolved
+    useEffect(() => {
+        if (currentCompanyId) {
+            fetchData();
+        }
+    }, [currentCompanyId]);
+
 
     // Helper: Calculate distance
     const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
@@ -313,15 +337,18 @@ export const AppProvider = ({ children }) => {
     const fetchCompanyId = async () => {
         try {
             const { data, error } = await supabase.rpc('get_user_company_id');
+            console.log('[COMPANY] RPC get_user_company_id:', { data, error: error?.message });
             if (!error && data) {
                 setCurrentCompanyId(data);
                 setCompanySetupComplete(true);
+                console.log('[COMPANY] companySetupComplete = true, id =', data);
             } else {
+                console.warn('[COMPANY] No company found, error:', error?.message);
                 setCurrentCompanyId(null);
                 setCompanySetupComplete(false);
             }
         } catch (e) {
-            console.log('No company found for user');
+            console.error('[COMPANY] fetchCompanyId exception:', e);
             setCurrentCompanyId(null);
             setCompanySetupComplete(false);
         }
@@ -352,9 +379,15 @@ export const AppProvider = ({ children }) => {
     )
 
     console.log('CREATE COMPANY RESULT', data)
-    console.log('CREATE COMPANY ERROR', error)
+    console.log("FULL ERROR");
+    console.dir(error);
+    console.log(JSON.stringify(error, null, 2));
 
-    if (error) return error.message
+    if (error) {
+        console.log(error)
+        alert(JSON.stringify(error, null, 2))
+        return error.message
+    }
 
     await fetchCompanyId()
     return null
@@ -409,18 +442,18 @@ export const AppProvider = ({ children }) => {
 
     const logout = async () => {
         setCurrentUser(null);
-        localStorage.removeItem('legacy_currentUser');
+        setCurrentCompanyId(null);
+        setCompanySetupComplete(null);
         await supabase.auth.signOut();
     };
 
     const changePassword = async (newPassword) => {
-        if (!currentUser) return;
-
-        const updates = { password: newPassword, must_change_password: false };
-
-        // Optimistic
-        setCurrentUser(prev => ({ ...prev, ...updates }));
-        updateUser(currentUser.id, updates);
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+        if (currentUser?.id) {
+            // Never persist credentials in public.users.
+            await updateUser(currentUser.id, { must_change_password: false });
+        }
     };
 
     const updateCompanyInfo = async (info) => {
@@ -431,26 +464,37 @@ export const AppProvider = ({ children }) => {
     };
 
     const addUser = async (user) => {
-        // Force new users to change password
-        const userWithFlags = {
-            ...user,
-            must_change_password: true,
-            id: `temp-${Date.now()}`,
-            created_at: new Date()
-        };
-
-        // Optimistic
+        // Optimistic UI
+        const tempId = `temp-${Date.now()}`;
+        const userWithFlags = { ...user, must_change_password: true, id: tempId, created_at: new Date() };
         setUsers(prev => [...prev, userWithFlags]);
 
-        const { data, error } = await supabase.from('users').insert([{ ...user, must_change_password: true, created_at: new Date()}]).select();
+        try {
+            // Call the RPC that creates auth account + public.users + company_users
+            const { data, error } = await supabase.rpc('create_company_user', {
+                p_name: user.name,
+                p_email: user.email,
+                p_password: user.password,
+                p_role: user.role || 'apprentice',
+                p_level: user.level || null
+            });
 
-        if (!error && data) {
-            // Replace temp with real
-            setUsers(prev => prev.map(u => u.id === userWithFlags.id ? data[0] : u));
-            addLog(`Added user: ${user.name}`);
-        } else {
-            // Rollback
-            setUsers(prev => prev.filter(u => u.id !== userWithFlags.id));
+            if (error) {
+                console.error('create_company_user error:', error);
+                setUsers(prev => prev.filter(u => u.id !== tempId));
+                alert(`Erreur: ${error.message}`);
+                return;
+            }
+
+            // Replace temp with real user from DB
+            if (data) {
+                setUsers(prev => prev.map(u => u.id === tempId ? data : u));
+                addLog(`Added user: ${user.name}`);
+            }
+        } catch (e) {
+            console.error('addUser exception:', e);
+            setUsers(prev => prev.filter(u => u.id !== tempId));
+            alert(`Erreur: ${e.message}`);
         }
     };
 
@@ -1156,7 +1200,7 @@ export const AppProvider = ({ children }) => {
         logs,
 
         timeSessions,
-        currentUser: authUser,
+        currentUser,
         companyInfo,
         login,
         logout,

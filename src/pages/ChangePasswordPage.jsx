@@ -24,8 +24,12 @@ const ChangePasswordPage = () => {
             return;
         }
 
-        await changePassword(password);
-        navigate('/');
+        try {
+            await changePassword(password);
+            navigate('/');
+        } catch (err) {
+            setError(err.message || 'Impossible de modifier le mot de passe.');
+        }
     };
 
     return (

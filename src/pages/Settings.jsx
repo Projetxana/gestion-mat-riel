@@ -150,11 +150,7 @@ const Settings = () => {
 
     const handleLogout = async () => {
         if (!window.confirm('Voulez-vous vraiment vous déconnecter ?')) return;
-        // Sign out from Supabase Auth
-        await supabase.auth.signOut();
-        // Also clear legacy session
-        logout();
-        localStorage.removeItem('legacy_currentUser');
+        await logout();
         window.location.href = '/login';
     };
 

@@ -299,7 +299,7 @@ const TimeTracking = () => {
                 </button>
 
                 <button
-                    onClick={() => navigate('/timetracking/manual')}
+                    onClick={() => navigate('/timetracking/weekly')}
                     className="w-full py-4 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl border-2 border-slate-200 hover:border-blue-300 shadow-sm flex items-center justify-center gap-3 transition-all active:scale-95"
                 >
                     <PenLine size={20} className="text-blue-500" />

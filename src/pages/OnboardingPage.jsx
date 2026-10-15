@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Building, Plus, Mail } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
+import BuildTrackLogo from '../components/BuildTrackLogo';
 
 const OnboardingPage = () => {
     const navigate = useNavigate();
@@ -132,8 +133,8 @@ const OnboardingPage = () => {
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
             <div className="glass-panel w-full max-w-md p-8">
                 <div className="text-center mb-8">
-                    <img src="/buildtrack-logo.png" alt="Build Track" className="h-28 mx-auto mb-4 object-contain" />
-                    <h2 className="text-2xl font-bold text-white mb-2">Build Track</h2>
+                    <BuildTrackLogo size={140} />
+                    <div className="h-2" />
                     <p className="text-slate-400">{isLoginMode ? 'Connectez-vous à votre compte' : 'Inscrivez-vous pour créer votre espace'}</p>
                 </div>
 

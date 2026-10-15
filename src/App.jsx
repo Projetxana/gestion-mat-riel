@@ -13,6 +13,7 @@ const VersionOverlay = () => (
 );
 import LoginPage from './pages/LoginPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import MaterialList from './pages/MaterialList';
 import PlaceholderPage from './pages/Placeholders';
 import SitesList from './pages/SitesList';
@@ -26,66 +27,45 @@ import ManualEntry from './pages/ManualEntry';
 import ValidationPage from './pages/ValidationPage';
 import OnboardingPage from './pages/OnboardingPage';
 import SetupWizard from './pages/SetupWizard';
+import WeeklyTimeEntry from './pages/WeeklyTimeEntry';
 
 const ProtectedRoute = ({ children }) => {
-  const { currentUser, companySetupComplete, saasSession } = useAppContext();
+  const { companySetupComplete } = useAppContext();
   const [loading, setLoading] = React.useState(true);
   const [user, setUser] = React.useState(null);
 
   React.useEffect(() => {
     let mounted = true;
 
-    const initAuth = async () => {
-      try {
-        const response = await supabase.auth.getSession();
-        
-        if (mounted) {
-          if (response?.data?.session) {
-         console.log("SESSION =", response)
-         console.log("SESSION USER =", response?.data?.session?.user)
-            setUser(response.data.session.user);
-          } else {
-            setUser(null);
-          }
-        }
-      } catch (error) {
-        console.error("Auth init error:", error);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    initAuth();
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    supabase.auth.getSession().then(({ data }) => {
       if (mounted) {
-        setUser(session?.user ?? null);
+        setUser(data?.session?.user ?? null);
+        setLoading(false);
       }
     });
 
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setUser(session?.user ?? null);
+    });
+
     return () => {
-      if (listener?.subscription) {
-        listener.subscription.unsubscribe()
-      }
-    }
-  }, [])
+      mounted = false;
+      listener?.subscription?.unsubscribe();
+    };
+  }, []);
 
-  if (loading) return null
+  if (loading) return null;
 
-  const isAuthenticated = user || currentUser;
+  // 1. Not authenticated → login
+  if (!user) return <Navigate to="/login" replace />;
 
-  if (!loading && !isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  // 2. Company check loading → wait
+  if (companySetupComplete === null) return null;
 
-  // If SaaS user has no company yet, redirect to setup wizard
-if (user && companySetupComplete === false) {
-    return <Navigate to="/setup" replace />;
-}
+  // 3. No company → setup wizard
+  if (companySetupComplete === false) return <Navigate to="/setup" replace />;
 
-  if (currentUser?.must_change_password) {
-    return <Navigate to="/change-password" replace />;
-  }
+  // 4. Authenticated + company → render app
   return children;
 };
 
@@ -136,6 +116,7 @@ const AppRoutes = () => {
       <Route path="/onboarding" element={<OnboardingPage />} />
       <Route path="/setup" element={<SetupWizard />} />
       <Route path="/change-password" element={<ChangePasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route
         path="/"
         element={
@@ -154,6 +135,7 @@ const AppRoutes = () => {
         <Route path="hours" element={<TimeTracking />} />
         <Route path="timetracking" element={<TimeTracking />} />
         <Route path="timetracking/manual" element={<ManualEntry />} />
+        <Route path="timetracking/weekly" element={<WeeklyTimeEntry />} />
         <Route path="timetracking/validation" element={<ValidationPage />} />
         <Route path="*" element={<PlaceholderPage title="Page Non Trouvée" />} /> {/* Added catch-all route */}
       </Route>

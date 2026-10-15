@@ -11,13 +11,20 @@ const LoginPage = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
-        if (login(email, password)) {
-            navigate('/');
+        setLoading(true);
+        setError('');
+        const errorMsg = await login(email, password);
+        setLoading(false);
+        if (errorMsg) {
+            setError(errorMsg === 'Invalid login credentials' 
+                ? 'Email ou mot de passe incorrect' 
+                : errorMsg);
         } else {
-            setError('Email ou mot de passe incorrect');
+            navigate('/');
         }
     };
 
@@ -65,9 +72,10 @@ const LoginPage = () => {
 
                     <button
                         type="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                        disabled={loading}
+                        className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:opacity-60 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
-                        <span>Se connecter</span>
+                        <span>{loading ? 'Connexion...' : 'Se connecter'}</span>
                     </button>
                 </form>
 

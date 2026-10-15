@@ -56,7 +56,6 @@ export const importProjectProgress = async (siteId, file, supabase) => {
                 let processedCount = 0;
                 let updatedCount = 0;
 
-                const { data: companyId } = await supabase.rpc('get_user_company_id');
 
                 // Fetch existing Sections for this site
                 const { data: existingSections, error: fetchError } = await supabase
@@ -110,25 +109,37 @@ export const importProjectProgress = async (siteId, file, supabase) => {
                             completed_hours: completed
                         });
                     } else {
-                        inserts.push({
+                    inserts.push({
                             project_id: siteId,
                             name,
                             planned_hours: planned,
-                            completed_hours: completed,
-                            is_active: true,
-                            company_id: companyId ?? null
-                        });
+                            completed_hours: completed
+});
                     }
                 }
 
                 console.log(`📝 [ExcelParser] Summary: ${inserts.length} Inserts, ${updates.length} Updates found.`);
-
+                console.log("INSERTS =", inserts);
+                console.log("UPDATES =", updates);
+                console.log("EXISTING =", existingSections);
+                
                 // EXECUTE BATCHES
                 if (inserts.length > 0) {
-                    const { error } = await supabase.from('project_tasks').insert(inserts);
-                    if (error) console.error("Error inserting project_tasks:", error);
-                    else processedCount += inserts.length;
-                }
+    console.log("INSERTING", inserts);
+
+    const result = await supabase
+        .from('project_tasks')
+        .insert(inserts)
+        .select();
+
+    console.log("INSERT RESULT", result);
+
+    if (result.error) {
+        console.error("INSERT ERROR", result.error);
+    } else {
+        processedCount += inserts.length;
+    }
+}
 
                 for (const up of updates) {
                     const { error } = await supabase.from('project_tasks').update({
