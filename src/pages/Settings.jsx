@@ -136,6 +136,32 @@ const Settings = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [showUserModal, setShowUserModal] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
+    const [companyRole, setCompanyRole] = useState(null);
+    const [roleLoading, setRoleLoading] = useState(true);
+
+    useEffect(() => {
+        let active = true;
+        const loadRole = async () => {
+            setRoleLoading(true);
+            const { data: { user }, error: authError } = await supabase.auth.getUser();
+            if (!active) return;
+            if (authError || !user) {
+                setCompanyRole(null);
+                setRoleLoading(false);
+                return;
+            }
+            const { data, error } = await supabase.from('company_users')
+                .select('role').eq('user_id', user.id).limit(1).maybeSingle();
+            if (!active) return;
+            if (error) console.error('Unable to load company role:', error.message);
+            setCompanyRole(error ? null : data?.role ?? null);
+            setRoleLoading(false);
+        };
+        loadRole();
+        return () => { active = false; };
+    }, [saasSession?.user?.id]);
+
+    const isCompanyAdmin = companyRole === 'admin';
 
     useEffect(() => {
         if (companyInfo) {
@@ -150,15 +176,11 @@ const Settings = () => {
 
     const handleLogout = async () => {
         if (!window.confirm('Voulez-vous vraiment vous déconnecter ?')) return;
-        // Sign out from Supabase Auth
-        await supabase.auth.signOut();
-        // Also clear legacy session
-        logout();
-        localStorage.removeItem('legacy_currentUser');
+        await logout();
         window.location.href = '/login';
     };
 
-    if (currentUser?.role !== 'admin') {
+    if (!isCompanyAdmin) {
         return (
             <div className="space-y-6 max-w-md mx-auto py-8">
                 <div className="text-center mb-6">
@@ -177,7 +199,7 @@ const Settings = () => {
                             <p className="font-bold text-slate-800">{currentUser?.name || 'Utilisateur'}</p>
                             <p className="text-sm text-slate-500">{currentUser?.email || saasSession?.user?.email}</p>
                             <span className="inline-block mt-1 px-2 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-full font-medium">
-                                {currentUser?.role || 'user'}
+                                {roleLoading ? 'chargement…' : (companyRole || currentUser?.role || 'user')}
                             </span>
                         </div>
                     </div>
@@ -312,18 +334,9 @@ const Settings = () => {
                 <div className="flex items-center justify-between mb-8">
                     <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
                         <Users className="text-green-600" size={24} />
-                        Gestion Utilisateurs
+                        Gestion Utilisateurs (consultation)
                     </h2>
-                    <button
-                        onClick={() => {
-                            setEditingUser(null);
-                            setShowUserModal(true);
-                        }}
-                        className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium shadow-md shadow-green-500/20 transition-all flex items-center gap-2"
-                    >
-                        <UserPlus size={20} />
-                        <span>Inviter Utilisateur</span>
-                    </button>
+                    <span className="text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg">Modification désactivée jusqu’à sécurisation des permissions</span>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -334,7 +347,7 @@ const Settings = () => {
                                 <th className="py-4 px-4 font-semibold">Email</th>
                                 <th className="py-4 px-4 font-semibold">Niveau</th>
                                 <th className="py-4 px-4 font-semibold">Rôle</th>
-                                <th className="py-4 px-4 font-semibold text-right">Actions</th>
+                                <th className="py-4 px-4 font-semibold text-right">Statut</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -357,33 +370,7 @@ const Settings = () => {
                                             {user.role}
                                         </span>
                                     </td>
-                                    <td className="py-4 px-4 text-right">
-                                        {currentUser?.id !== user.id && (
-                                            <div className="flex items-center justify-end gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        setEditingUser(user);
-                                                        setShowUserModal(true);
-                                                    }}
-                                                    className="text-blue-400 hover:text-blue-600 p-2 rounded-lg hover:bg-blue-50 transition-colors"
-                                                    title="Modifier l'utilisateur"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        if (window.confirm(`Voulez-vous vraiment supprimer ${user.name} ?`)) {
-                                                            deleteUser(user.id);
-                                                        }
-                                                    }}
-                                                    className="text-red-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors"
-                                                    title="Supprimer l'utilisateur"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg>
-                                                </button>
-                                            </div>
-                                        )}
-                                    </td>
+                                    <td className="py-4 px-4 text-right text-xs text-slate-400">Lecture seule</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -395,7 +382,7 @@ const Settings = () => {
 
 
 
-            {showUserModal && (
+            {false && showUserModal && (
                 <UserModal
                     onClose={() => setShowUserModal(false)}
                     userToEdit={editingUser}
