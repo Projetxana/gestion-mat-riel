@@ -4,7 +4,10 @@ import { LayoutDashboard, Hammer, HardHat, ClipboardList, Settings, LogOut, Cloc
 import { useAppContext } from '../context/AppContext';
 
 const Sidebar = ({ isOpen, onClose }) => {
-    const { logout, currentUser, companyInfo } = useAppContext();
+    const { logout, currentUser, companyInfo, users } = useAppContext();
+    const employee = users.find((u) => u.auth_user_id === currentUser?.id);
+    const displayName = employee?.name || currentUser?.user_metadata?.full_name || currentUser?.email || 'Utilisateur';
+    const displayRole = employee?.level || employee?.role || 'Utilisateur';
 
     const navItems = [
         { icon: LayoutDashboard, label: 'Tableau de bord', path: '/' },
@@ -67,11 +70,11 @@ const Sidebar = ({ isOpen, onClose }) => {
                 <div className="p-4 border-t border-slate-100">
                     <div className="flex items-center gap-3 px-4 py-3 mb-2">
                         <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold border border-slate-200">
-                            {currentUser?.name?.charAt(0) || 'U'}
+                            {displayName.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 overflow-hidden">
-                            <p className="text-sm font-medium text-slate-900 truncate">{currentUser?.name}</p>
-                            <p className="text-xs text-slate-500 truncate capitalize">{currentUser?.level || currentUser?.role}</p>
+                            <p className="text-sm font-medium text-slate-900 truncate">{displayName}</p>
+                            <p className="text-xs text-slate-500 truncate capitalize">{displayRole}</p>
                         </div>
                     </div>
                     <button

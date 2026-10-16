@@ -12,12 +12,25 @@ const LoginPage = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
 
-    const handleLogin = (e) => {
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleLogin = async (e) => {
         e.preventDefault();
-        if (login(email, password)) {
-            navigate('/');
-        } else {
-            setError('Email ou mot de passe incorrect');
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        setError('');
+        try {
+            const loginError = await login(email, password);
+            if (loginError) {
+                setError('Email ou mot de passe incorrect');
+                return;
+            }
+            navigate('/', { replace: true });
+        } catch (error) {
+            console.error('Login failed:', error);
+            setError('Connexion indisponible. Veuillez réessayer.');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -65,9 +78,10 @@ const LoginPage = () => {
 
                     <button
                         type="submit"
+                        disabled={isSubmitting}
                         className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
-                        <span>Se connecter</span>
+                        <span>{isSubmitting ? 'Connexion…' : 'Se connecter'}</span>
                     </button>
                 </form>
 
