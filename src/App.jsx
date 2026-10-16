@@ -12,6 +12,7 @@ const VersionOverlay = () => (
   </div>
 );
 import LoginPage from './pages/LoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import MaterialList from './pages/MaterialList';
@@ -113,6 +114,7 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
       <Route path="/setup" element={<SetupWizard />} />
       <Route path="/change-password" element={<ChangePasswordPage />} />

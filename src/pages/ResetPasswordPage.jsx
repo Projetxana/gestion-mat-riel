@@ -53,7 +53,7 @@ export default function ResetPasswordPage() {
   async function submit(event) {
     event.preventDefault();
     if (busy || state !== 'ready') return;
-    if (password.length < 12) return setMessage('Utilise au moins 12 caractères.');
+    if (password.length < 6) return setMessage('Utilise au moins 6 caractères.');
     if (password !== confirmation) return setMessage('Les deux mots de passe ne correspondent pas.');
     setBusy(true);
     setMessage('');
@@ -83,10 +83,10 @@ export default function ResetPasswordPage() {
         {state === 'ready' && (
           <form onSubmit={submit} className="space-y-4">
             <label className="block">Nouveau mot de passe
-              <input className="block w-full mt-1 rounded bg-slate-800 border border-slate-600 p-3" type="password" autoComplete="new-password" minLength={12} required value={password} onChange={e => setPassword(e.target.value)} />
+              <input className="block w-full mt-1 rounded bg-slate-800 border border-slate-600 p-3" type="password" autoComplete="new-password" minLength={6} required value={password} onChange={e => setPassword(e.target.value)} />
             </label>
             <label className="block">Confirmer le mot de passe
-              <input className="block w-full mt-1 rounded bg-slate-800 border border-slate-600 p-3" type="password" autoComplete="new-password" minLength={12} required value={confirmation} onChange={e => setConfirmation(e.target.value)} />
+              <input className="block w-full mt-1 rounded bg-slate-800 border border-slate-600 p-3" type="password" autoComplete="new-password" minLength={6} required value={confirmation} onChange={e => setConfirmation(e.target.value)} />
             </label>
             <button disabled={busy} className="w-full rounded bg-blue-600 px-4 py-3 disabled:opacity-50" type="submit">{busy ? 'Enregistrement…' : 'Enregistrer le mot de passe'}</button>
           </form>

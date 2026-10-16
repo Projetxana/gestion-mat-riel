@@ -70,6 +70,12 @@ const LoginPage = () => {
                         </div>
                     </div>
 
+                    <div className="text-right">
+                        <a href="/forgot-password" className="text-sm text-blue-400 hover:text-blue-300 underline">
+                            Mot de passe oublié ?
+                        </a>
+                    </div>
+
                     <button
                         type="submit"
                         disabled={loading}
