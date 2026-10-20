@@ -131,10 +131,35 @@ const PreferencesPanel = ({ userId }) => {
 };
 
 const Settings = () => {
-    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, dbError, logout, saasSession, companyRoleLoading } = useAppContext();
+    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, dbError, logout, saasSession, companyRoleLoading, currentCompanyId } = useAppContext();
     const [localCompanyValues, setLocalCompanyValues] = useState({ name: '', address: '' });
     const [isEditing, setIsEditing] = useState(false);
     const [showUserModal, setShowUserModal] = useState(false);
+    const [inviteOpen, setInviteOpen] = useState(false);
+    const [inviteBusy, setInviteBusy] = useState(false);
+    const [inviteMessage, setInviteMessage] = useState('');
+    const [inviteForm, setInviteForm] = useState({ name: '', email: '', level: 'apprenti', role: 'member' });
+
+    const sendInvite = async (event) => {
+        event.preventDefault();
+        if (inviteBusy || !isCompanyAdmin || !currentCompanyId) return;
+        setInviteBusy(true);
+        setInviteMessage('');
+        try {
+            const { data, error } = await supabase.functions.invoke('buildtrack-invite-user', {
+                body: { ...inviteForm, companyId: currentCompanyId }
+            });
+            if (error) throw error;
+            if (!data || data.message !== 'Invitation envoyée.') throw new Error(data?.message || 'Invitation non confirmée');
+            setInviteMessage('Invitation envoyée. Demandez à la personne de vérifier sa boîte courriel.');
+            setInviteForm({ name: '', email: '', level: 'apprenti', role: 'member' });
+        } catch (error) {
+            setInviteMessage(`Échec de l’invitation : ${error.message || 'erreur réseau'}`);
+        } finally {
+            setInviteBusy(false);
+        }
+    };
+
     const [editingUser, setEditingUser] = useState(null);
     const isCompanyAdmin =
         !companyRoleLoading && currentUser?.role === 'admin';
@@ -310,10 +335,29 @@ const Settings = () => {
                 <div className="flex items-center justify-between mb-8">
                     <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
                         <Users className="text-green-600" size={24} />
-                        Gestion Utilisateurs (consultation)
+                        Gestion utilisateurs
                     </h2>
-                    <span className="text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg">Modification désactivée jusqu’à sécurisation des permissions</span>
+                    <button type="button" onClick={() => setInviteOpen(x => !x)} className="bg-blue-600 text-white rounded-lg px-4 py-2 font-semibold">+ Ajouter un utilisateur</button>
                 </div>
+
+                {inviteOpen && (
+                    <form onSubmit={sendInvite} className="mb-6 rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
+                        <p className="font-semibold text-slate-900">Inviter un nouvel employé</p>
+                        <p className="text-sm text-slate-600">Un courriel d’invitation sera envoyé. Aucun mot de passe n’est créé dans BuildTrack.</p>
+                        <input required minLength={2} maxLength={120} placeholder="Nom complet" value={inviteForm.name} onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))} className="w-full rounded-lg border p-3" />
+                        <input required type="email" placeholder="Courriel" value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border p-3" />
+                        <label className="block text-sm">Niveau</label>
+                        <select value={inviteForm.level} onChange={e => setInviteForm(f => ({ ...f, level: e.target.value }))} className="w-full rounded-lg border p-3">
+                            <option value="apprenti">Apprenti</option><option value="compagnon">Compagnon</option><option value="chef_equipe">Chef d'équipe</option>
+                        </select>
+                        <label className="block text-sm">Accès</label>
+                        <select value={inviteForm.role} onChange={e => setInviteForm(f => ({ ...f, role: e.target.value }))} className="w-full rounded-lg border p-3">
+                            <option value="member">Employé</option><option value="admin">Administrateur</option>
+                        </select>
+                        <button disabled={inviteBusy || !currentCompanyId} type="submit" className="rounded-lg bg-blue-600 text-white px-4 py-3 disabled:opacity-50">{inviteBusy ? 'Envoi…' : 'Envoyer l’invitation'}</button>
+                        {inviteMessage && <p role="status" className="text-sm text-slate-700">{inviteMessage}</p>}
+                    </form>
+                )}
 
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
