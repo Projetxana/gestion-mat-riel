@@ -266,7 +266,7 @@ export const AppProvider = ({ children }) => {
             }
             if (s) loadedSites = s;
 
-            const { data: u, error: userError } = await supabase.from('users').select('*');
+            const { data: u, error: userError } = await supabase.from('users').select('id, name, email, role, level, created_at, must_change_password, auth_user_id');
             if (userError) {
                 console.error("Error fetching users:", userError);
                 setDbError(userError.message);
