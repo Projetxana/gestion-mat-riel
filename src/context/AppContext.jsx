@@ -20,6 +20,42 @@ export const AppProvider = ({ children }) => {
     const authUser = saasSession?.user ?? null;
     const [currentCompanyId, setCurrentCompanyId] = useState(null);
     const [companySetupComplete, setCompanySetupComplete] = useState(null); // null=loading, true/false
+    const [companyRole, setCompanyRole] = useState(null);
+    const [companyRoleLoading, setCompanyRoleLoading] = useState(true);
+
+    // Membership is looked up server-side for the authenticated Supabase user.
+    // This is for UI routing only; RLS/RPC must enforce access to data.
+    useEffect(() => {
+        let active = true;
+        const loadRole = async () => {
+            setCompanyRoleLoading(true);
+            setCompanyRole(null);
+            if (!authUser?.id) {
+                if (active) setCompanyRoleLoading(false);
+                return;
+            }
+            try {
+                let q = supabase.from('company_users')
+                    .select('role, company_id')
+                    .eq('user_id', authUser.id);
+                if (currentCompanyId) q = q.eq('company_id', currentCompanyId);
+                const { data, error } = await q.limit(2);
+                if (!active) return;
+                if (error) throw error;
+                // Never infer administrator privileges from an ambiguous membership.
+                if ((data || []).length === 1) setCompanyRole(data[0].role);
+                else if ((data || []).length > 1) console.warn('Ambiguous company membership; role not applied');
+            } catch (e) {
+                if (active) console.error('Unable to resolve company role:', e);
+            } finally {
+                if (active) setCompanyRoleLoading(false);
+            }
+        };
+        loadRole();
+        return () => { active = false; };
+    }, [authUser?.id, currentCompanyId]);
+
+    const resolvedUser = authUser ? { ...authUser, role: companyRole } : null;
 
     // Initial Data Fetch
     // Geofence State
@@ -1156,7 +1192,8 @@ export const AppProvider = ({ children }) => {
         logs,
 
         timeSessions,
-        currentUser: authUser,
+        currentUser: resolvedUser,
+        companyRoleLoading,
         companyInfo,
         login,
         logout,
