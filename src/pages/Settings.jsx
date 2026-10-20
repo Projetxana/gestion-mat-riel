@@ -131,37 +131,13 @@ const PreferencesPanel = ({ userId }) => {
 };
 
 const Settings = () => {
-    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, dbError, logout, saasSession } = useAppContext();
+    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, dbError, logout, saasSession, companyRoleLoading } = useAppContext();
     const [localCompanyValues, setLocalCompanyValues] = useState({ name: '', address: '' });
     const [isEditing, setIsEditing] = useState(false);
     const [showUserModal, setShowUserModal] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
-    const [companyRole, setCompanyRole] = useState(null);
-    const [roleLoading, setRoleLoading] = useState(true);
-
-    useEffect(() => {
-        let active = true;
-        const loadRole = async () => {
-            setRoleLoading(true);
-            const { data: { user }, error: authError } = await supabase.auth.getUser();
-            if (!active) return;
-            if (authError || !user) {
-                setCompanyRole(null);
-                setRoleLoading(false);
-                return;
-            }
-            const { data, error } = await supabase.from('company_users')
-                .select('role').eq('user_id', user.id).limit(1).maybeSingle();
-            if (!active) return;
-            if (error) console.error('Unable to load company role:', error.message);
-            setCompanyRole(error ? null : data?.role ?? null);
-            setRoleLoading(false);
-        };
-        loadRole();
-        return () => { active = false; };
-    }, [saasSession?.user?.id]);
-
-    const isCompanyAdmin = companyRole === 'admin';
+    const isCompanyAdmin =
+        !companyRoleLoading && currentUser?.role === 'admin';
 
     useEffect(() => {
         if (companyInfo) {
@@ -199,7 +175,7 @@ const Settings = () => {
                             <p className="font-bold text-slate-800">{currentUser?.name || 'Utilisateur'}</p>
                             <p className="text-sm text-slate-500">{currentUser?.email || saasSession?.user?.email}</p>
                             <span className="inline-block mt-1 px-2 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-full font-medium">
-                                {roleLoading ? 'chargement…' : (companyRole || currentUser?.role || 'user')}
+                                {companyRoleLoading ? 'chargement…' : (currentUser?.role || 'user')}
                             </span>
                         </div>
                     </div>
