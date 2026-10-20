@@ -22,7 +22,7 @@ import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import HiltiPage from './pages/HiltiPage';
 import TimeTracking from './pages/TimeTrackingPage';
-import ManualEntry from './pages/ManualEntry';
+import WeeklyTimeEntry from './pages/WeeklyTimeEntry';
 import ValidationPage from './pages/ValidationPage';
 import OnboardingPage from './pages/OnboardingPage';
 import SetupWizard from './pages/SetupWizard';
@@ -129,6 +129,14 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// Employee-only weekly entry: wait for the company membership before exposing the form.
+const EmployeeWeeklyRoute = () => {
+  const { currentUser, companyRoleLoading } = useAppContext();
+  if (companyRoleLoading) return <p className="p-6 text-slate-400">Chargement de votre profil…</p>;
+  if (!currentUser?.role || currentUser.role === 'admin') return <Navigate to="/hours" replace />;
+  return <WeeklyTimeEntry />;
+};
+
 const AppRoutes = () => {
   return (
     <Routes>
@@ -153,7 +161,7 @@ const AppRoutes = () => {
         <Route path="hilti" element={<HiltiPage />} />
         <Route path="hours" element={<TimeTracking />} />
         <Route path="timetracking" element={<TimeTracking />} />
-        <Route path="timetracking/manual" element={<ManualEntry />} />
+        <Route path="timetracking/manual" element={<EmployeeWeeklyRoute />} />
         <Route path="timetracking/validation" element={<ValidationPage />} />
         <Route path="*" element={<PlaceholderPage title="Page Non Trouvée" />} /> {/* Added catch-all route */}
       </Route>

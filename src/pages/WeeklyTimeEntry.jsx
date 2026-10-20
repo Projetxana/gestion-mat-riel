@@ -268,6 +268,11 @@ const WeeklyTimeEntry = () => {
 
     // Submit
     const handleSubmit = async () => {
+        if (!currentUser?.id || !currentCompanyId || !currentUser?.role || currentUser.role === 'admin') {
+            alert('Compte employé ou entreprise non disponible. Reconnectez-vous.');
+            return;
+        }
+        if (isSubmitting) return;
         const valid = getValidEntries();
         if (valid.length === 0) {
             alert('Aucune entrée valide à enregistrer.');
