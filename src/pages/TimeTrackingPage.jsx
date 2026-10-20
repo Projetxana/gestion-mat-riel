@@ -9,7 +9,7 @@ import LeaderHoursView from '../modules/hours_v2/LeaderHoursView';
 import SmartCorrectionPopup from '../components/SmartCorrectionPopup';
 import { useUserPreferences } from '../hooks/useUserPreferences';
 
-const TimeTracking = () => {
+const EmployeeTimeTracking = () => {
     const {
         timeSessions,
         sites,
@@ -23,10 +23,6 @@ const TimeTracking = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // --- HOURS V2 LOGIC ---
-    if (currentUser?.role === 'admin') {
-        return <AdminHoursView />;
-    }
     const isLeader = currentUser?.role === 'leader';
     const { preferences } = useUserPreferences(currentUser?.id);
 
@@ -673,6 +669,15 @@ const TimeTracking = () => {
     }
 
     return <div className="p-8 text-center text-slate-400">Loading...</div>;
+};
+
+// Keep role-dependent rendering outside the employee component to preserve hook order.
+const TimeTracking = () => {
+    const { currentUser, companyRoleLoading } = useAppContext();
+    if (companyRoleLoading) return <div className="p-6 text-slate-300">Chargement de votre profil…</div>;
+    if (!currentUser?.role) return <div className="p-6 text-amber-200">Rôle entreprise introuvable. Contactez votre administrateur.</div>;
+    if (currentUser.role === 'admin') return <AdminHoursView />;
+    return <EmployeeTimeTracking />;
 };
 
 export default TimeTracking;
