@@ -67,22 +67,24 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSaasSession(session);
+            if (session) {
+                fetchCompanyId();
+                fetchData();
+            }
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSaasSession(session);
             if (session) {
                 fetchCompanyId();
+                fetchData();
             } else {
                 setCurrentCompanyId(null);
                 setCompanySetupComplete(false);
             }
         });
 
-        // Initial company ID fetch
-        fetchCompanyId();
-
-        fetchData();
+        // Protected data is loaded only after Supabase Auth restores a session.
 
         // GEOLOCATION WATCHER (W6, W7)
         let watchId;
