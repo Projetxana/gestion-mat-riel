@@ -136,9 +136,55 @@ const Settings = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [showUserModal, setShowUserModal] = useState(false);
     const [inviteOpen, setInviteOpen] = useState(false);
+    const [companyMembers, setCompanyMembers] = useState([]);
+    const [membersLoading, setMembersLoading] = useState(true);
+    const [removeBusy, setRemoveBusy] = useState(null);
+    const [removeMessage, setRemoveMessage] = useState('');
     const [inviteBusy, setInviteBusy] = useState(false);
     const [inviteMessage, setInviteMessage] = useState('');
     const [inviteForm, setInviteForm] = useState({ name: '', email: '', level: 'apprenti', role: 'member' });
+
+    useEffect(() => {
+        let active = true;
+        setMembersLoading(true);
+        setCompanyMembers([]);
+        if (!currentCompanyId || companyRoleLoading || currentUser?.role !== 'admin') {
+            setMembersLoading(false);
+            return () => { active = false; };
+        }
+        supabase.from('company_users')
+            .select('user_id, role')
+            .eq('company_id', currentCompanyId)
+            .then(({ data, error }) => {
+                if (!active) return;
+                if (error) setRemoveMessage(`Chargement des membres impossible : ${error.message}`);
+                else setCompanyMembers(data || []);
+                setMembersLoading(false);
+            });
+        return () => { active = false; };
+    }, [currentCompanyId, companyRoleLoading, currentUser?.role]);
+
+    const removeCompanyMember = async (member, profile) => {
+        if (!isCompanyAdmin || !currentCompanyId || removeBusy) return;
+        if (member.user_id === saasSession?.user?.id) return;
+        const displayName = profile?.name || profile?.email || member.user_id;
+        if (!window.confirm(`Retirer ${displayName} de cette entreprise ?\n\nSon accès sera révoqué. Son historique restera conservé.`)) return;
+        setRemoveBusy(member.user_id);
+        setRemoveMessage('');
+        try {
+            const { data, error } = await supabase.rpc('bt_remove_company_member', {
+                p_company_id: currentCompanyId, p_target_user_id: member.user_id
+            });
+            if (error) throw error;
+            if (data !== true) throw new Error('Ce membre ne fait déjà plus partie de cette entreprise.');
+            setCompanyMembers(prev => prev.filter(m => m.user_id !== member.user_id));
+            setRemoveMessage(`${displayName} a été retiré de cette entreprise. Historique conservé.`);
+        } catch (error) {
+            setRemoveMessage(`Retrait impossible : ${error.message || 'erreur réseau'}`);
+        } finally {
+            setRemoveBusy(null);
+        }
+    };
 
     const sendInvite = async (event) => {
         event.preventDefault();
@@ -153,6 +199,8 @@ const Settings = () => {
             if (!data || data.message !== 'Invitation envoyée.') throw new Error(data?.message || 'Invitation non confirmée');
             setInviteMessage('Invitation envoyée. Demandez à la personne de vérifier sa boîte courriel.');
             setInviteForm({ name: '', email: '', level: 'apprenti', role: 'member' });
+            const { data: refreshed } = await supabase.from('company_users').select('user_id, role').eq('company_id', currentCompanyId);
+            if (refreshed) setCompanyMembers(refreshed);
         } catch (error) {
             setInviteMessage(`Échec de l’invitation : ${error.message || 'erreur réseau'}`);
         } finally {
@@ -359,6 +407,8 @@ const Settings = () => {
                     </form>
                 )}
 
+                {removeMessage && <p role="status" className="mb-3 text-sm text-slate-700">{removeMessage}</p>}
+                {membersLoading && <p className="mb-3 text-sm text-slate-500">Chargement des membres…</p>}
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
@@ -367,32 +417,45 @@ const Settings = () => {
                                 <th className="py-4 px-4 font-semibold">Email</th>
                                 <th className="py-4 px-4 font-semibold">Niveau</th>
                                 <th className="py-4 px-4 font-semibold">Rôle</th>
-                                <th className="py-4 px-4 font-semibold text-right">Statut</th>
+                                <th className="py-4 px-4 font-semibold text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {users.map((user) => (
-                                <tr key={user.id} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors">
-                                    <td className="py-4 px-4 font-medium text-slate-900">{user.name}</td>
-                                    <td className="py-4 px-4 text-slate-500">{user.email}</td>
+                            {companyMembers.map((member) => {
+                                const user = users.find(u => u.auth_user_id === member.user_id);
+                                return (
+                                <tr key={member.user_id} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors">
+                                    <td className="py-4 px-4 font-medium text-slate-900">{user?.name || 'Compte invité'}</td>
+                                    <td className="py-4 px-4 text-slate-500">{user?.email || '—'}</td>
                                     <td className="py-4 px-4">
-                                        {user.level && (
+                                        {user?.level && (
                                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                                                {user.level}
+                                                {user?.level}
                                             </span>
                                         )}
                                     </td>
                                     <td className="py-4 px-4">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${user.role === 'admin'
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${member.role === 'admin'
                                             ? 'bg-blue-50 text-blue-700 border-blue-100'
                                             : 'bg-slate-50 text-slate-600 border-slate-100'
                                             }`}>
-                                            {user.role}
+                                            {member.role}
                                         </span>
                                     </td>
-                                    <td className="py-4 px-4 text-right text-xs text-slate-400">Lecture seule</td>
+                                    <td className="py-4 px-4 text-right text-xs">
+                                        {member.user_id === saasSession?.user?.id ? (
+                                            <span className="text-slate-400">Votre compte</span>
+                                        ) : (
+                                            <button type="button" disabled={!!removeBusy}
+                                                onClick={() => removeCompanyMember(member, user)}
+                                                className="rounded-lg border border-red-200 px-3 py-2 text-red-700 hover:bg-red-50 disabled:opacity-50">
+                                                {removeBusy === member.user_id ? 'Retrait…' : 'Retirer'}
+                                            </button>
+                                        )}
+                                    </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
