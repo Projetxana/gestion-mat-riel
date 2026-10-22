@@ -131,37 +131,86 @@ const PreferencesPanel = ({ userId }) => {
 };
 
 const Settings = () => {
-    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, dbError, logout, saasSession } = useAppContext();
+    const { users, currentUser, companyInfo, updateCompanyInfo, clearData, deleteUser, dbError, logout, saasSession, companyRoleLoading, currentCompanyId } = useAppContext();
     const [localCompanyValues, setLocalCompanyValues] = useState({ name: '', address: '' });
     const [isEditing, setIsEditing] = useState(false);
     const [showUserModal, setShowUserModal] = useState(false);
-    const [editingUser, setEditingUser] = useState(null);
-    const [companyRole, setCompanyRole] = useState(null);
-    const [roleLoading, setRoleLoading] = useState(true);
+    const [inviteOpen, setInviteOpen] = useState(false);
+    const [companyMembers, setCompanyMembers] = useState([]);
+    const [membersLoading, setMembersLoading] = useState(true);
+    const [removeBusy, setRemoveBusy] = useState(null);
+    const [removeMessage, setRemoveMessage] = useState('');
+    const [inviteBusy, setInviteBusy] = useState(false);
+    const [inviteMessage, setInviteMessage] = useState('');
+    const [inviteForm, setInviteForm] = useState({ name: '', email: '', level: 'apprenti', role: 'member' });
 
     useEffect(() => {
         let active = true;
-        const loadRole = async () => {
-            setRoleLoading(true);
-            const { data: { user }, error: authError } = await supabase.auth.getUser();
-            if (!active) return;
-            if (authError || !user) {
-                setCompanyRole(null);
-                setRoleLoading(false);
-                return;
-            }
-            const { data, error } = await supabase.from('company_users')
-                .select('role').eq('user_id', user.id).limit(1).maybeSingle();
-            if (!active) return;
-            if (error) console.error('Unable to load company role:', error.message);
-            setCompanyRole(error ? null : data?.role ?? null);
-            setRoleLoading(false);
-        };
-        loadRole();
+        setMembersLoading(true);
+        setCompanyMembers([]);
+        if (!currentCompanyId || companyRoleLoading || currentUser?.role !== 'admin') {
+            setMembersLoading(false);
+            return () => { active = false; };
+        }
+        supabase.from('company_users')
+            .select('user_id, role')
+            .eq('company_id', currentCompanyId)
+            .then(({ data, error }) => {
+                if (!active) return;
+                if (error) setRemoveMessage(`Chargement des membres impossible : ${error.message}`);
+                else setCompanyMembers(data || []);
+                setMembersLoading(false);
+            });
         return () => { active = false; };
-    }, [saasSession?.user?.id]);
+    }, [currentCompanyId, companyRoleLoading, currentUser?.role]);
 
-    const isCompanyAdmin = companyRole === 'admin';
+    const removeCompanyMember = async (member, profile) => {
+        if (!isCompanyAdmin || !currentCompanyId || removeBusy) return;
+        if (member.user_id === saasSession?.user?.id) return;
+        const displayName = profile?.name || profile?.email || member.user_id;
+        if (!window.confirm(`Retirer ${displayName} de cette entreprise ?\n\nSon accès sera révoqué. Son historique restera conservé.`)) return;
+        setRemoveBusy(member.user_id);
+        setRemoveMessage('');
+        try {
+            const { data, error } = await supabase.rpc('bt_remove_company_member', {
+                p_company_id: currentCompanyId, p_target_user_id: member.user_id
+            });
+            if (error) throw error;
+            if (data !== true) throw new Error('Ce membre ne fait déjà plus partie de cette entreprise.');
+            setCompanyMembers(prev => prev.filter(m => m.user_id !== member.user_id));
+            setRemoveMessage(`${displayName} a été retiré de cette entreprise. Historique conservé.`);
+        } catch (error) {
+            setRemoveMessage(`Retrait impossible : ${error.message || 'erreur réseau'}`);
+        } finally {
+            setRemoveBusy(null);
+        }
+    };
+
+    const sendInvite = async (event) => {
+        event.preventDefault();
+        if (inviteBusy || !isCompanyAdmin || !currentCompanyId) return;
+        setInviteBusy(true);
+        setInviteMessage('');
+        try {
+            const { data, error } = await supabase.functions.invoke('buildtrack-invite-user', {
+                body: { ...inviteForm, companyId: currentCompanyId }
+            });
+            if (error) throw error;
+            if (!data || data.message !== 'Invitation envoyée.') throw new Error(data?.message || 'Invitation non confirmée');
+            setInviteMessage('Invitation envoyée. Demandez à la personne de vérifier sa boîte courriel.');
+            setInviteForm({ name: '', email: '', level: 'apprenti', role: 'member' });
+            const { data: refreshed } = await supabase.from('company_users').select('user_id, role').eq('company_id', currentCompanyId);
+            if (refreshed) setCompanyMembers(refreshed);
+        } catch (error) {
+            setInviteMessage(`Échec de l’invitation : ${error.message || 'erreur réseau'}`);
+        } finally {
+            setInviteBusy(false);
+        }
+    };
+
+    const [editingUser, setEditingUser] = useState(null);
+    const isCompanyAdmin =
+        !companyRoleLoading && currentUser?.role === 'admin';
 
     useEffect(() => {
         if (companyInfo) {
@@ -199,7 +248,7 @@ const Settings = () => {
                             <p className="font-bold text-slate-800">{currentUser?.name || 'Utilisateur'}</p>
                             <p className="text-sm text-slate-500">{currentUser?.email || saasSession?.user?.email}</p>
                             <span className="inline-block mt-1 px-2 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-full font-medium">
-                                {roleLoading ? 'chargement…' : (companyRole || currentUser?.role || 'user')}
+                                {companyRoleLoading ? 'chargement…' : (currentUser?.role || 'user')}
                             </span>
                         </div>
                     </div>
@@ -274,7 +323,7 @@ const Settings = () => {
                     <div className="pt-4">
                         {!isEditing ? (
                             <button
-                                onClick={() => setIsEditing(true)}
+                                disabled title="Modification désactivée temporairement pour la sécurité multi-entreprise"
                                 className="px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg font-medium transition-colors"
                             >
                                 Modifier
@@ -334,11 +383,32 @@ const Settings = () => {
                 <div className="flex items-center justify-between mb-8">
                     <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
                         <Users className="text-green-600" size={24} />
-                        Gestion Utilisateurs (consultation)
+                        Gestion utilisateurs
                     </h2>
-                    <span className="text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg">Modification désactivée jusqu’à sécurisation des permissions</span>
+                    <button type="button" onClick={() => setInviteOpen(x => !x)} className="bg-blue-600 text-white rounded-lg px-4 py-2 font-semibold">+ Ajouter un utilisateur</button>
                 </div>
 
+                {inviteOpen && (
+                    <form onSubmit={sendInvite} className="mb-6 rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
+                        <p className="font-semibold text-slate-900">Inviter un nouvel employé</p>
+                        <p className="text-sm text-slate-600">Un courriel d’invitation sera envoyé. Aucun mot de passe n’est créé dans BuildTrack.</p>
+                        <input required minLength={2} maxLength={120} placeholder="Nom complet" value={inviteForm.name} onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))} className="w-full rounded-lg border p-3" />
+                        <input required type="email" placeholder="Courriel" value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} className="w-full rounded-lg border p-3" />
+                        <label className="block text-sm">Niveau</label>
+                        <select value={inviteForm.level} onChange={e => setInviteForm(f => ({ ...f, level: e.target.value }))} className="w-full rounded-lg border p-3">
+                            <option value="apprenti">Apprenti</option><option value="compagnon">Compagnon</option><option value="chef_equipe">Chef d'équipe</option>
+                        </select>
+                        <label className="block text-sm">Accès</label>
+                        <select value={inviteForm.role} onChange={e => setInviteForm(f => ({ ...f, role: e.target.value }))} className="w-full rounded-lg border p-3">
+                            <option value="member">Employé</option><option value="admin">Administrateur</option>
+                        </select>
+                        <button disabled={inviteBusy || !currentCompanyId} type="submit" className="rounded-lg bg-blue-600 text-white px-4 py-3 disabled:opacity-50">{inviteBusy ? 'Envoi…' : 'Envoyer l’invitation'}</button>
+                        {inviteMessage && <p role="status" className="text-sm text-slate-700">{inviteMessage}</p>}
+                    </form>
+                )}
+
+                {removeMessage && <p role="status" className="mb-3 text-sm text-slate-700">{removeMessage}</p>}
+                {membersLoading && <p className="mb-3 text-sm text-slate-500">Chargement des membres…</p>}
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
@@ -347,32 +417,45 @@ const Settings = () => {
                                 <th className="py-4 px-4 font-semibold">Email</th>
                                 <th className="py-4 px-4 font-semibold">Niveau</th>
                                 <th className="py-4 px-4 font-semibold">Rôle</th>
-                                <th className="py-4 px-4 font-semibold text-right">Statut</th>
+                                <th className="py-4 px-4 font-semibold text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {users.map((user) => (
-                                <tr key={user.id} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors">
-                                    <td className="py-4 px-4 font-medium text-slate-900">{user.name}</td>
-                                    <td className="py-4 px-4 text-slate-500">{user.email}</td>
+                            {companyMembers.map((member) => {
+                                const user = users.find(u => u.auth_user_id === member.user_id);
+                                return (
+                                <tr key={member.user_id} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors">
+                                    <td className="py-4 px-4 font-medium text-slate-900">{user?.name || 'Compte invité'}</td>
+                                    <td className="py-4 px-4 text-slate-500">{user?.email || '—'}</td>
                                     <td className="py-4 px-4">
-                                        {user.level && (
+                                        {user?.level && (
                                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                                                {user.level}
+                                                {user?.level}
                                             </span>
                                         )}
                                     </td>
                                     <td className="py-4 px-4">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${user.role === 'admin'
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${member.role === 'admin'
                                             ? 'bg-blue-50 text-blue-700 border-blue-100'
                                             : 'bg-slate-50 text-slate-600 border-slate-100'
                                             }`}>
-                                            {user.role}
+                                            {member.role}
                                         </span>
                                     </td>
-                                    <td className="py-4 px-4 text-right text-xs text-slate-400">Lecture seule</td>
+                                    <td className="py-4 px-4 text-right text-xs">
+                                        {member.user_id === saasSession?.user?.id ? (
+                                            <span className="text-slate-400">Votre compte</span>
+                                        ) : (
+                                            <button type="button" disabled={!!removeBusy}
+                                                onClick={() => removeCompanyMember(member, user)}
+                                                className="rounded-lg border border-red-200 px-3 py-2 text-red-700 hover:bg-red-50 disabled:opacity-50">
+                                                {removeBusy === member.user_id ? 'Retrait…' : 'Retirer'}
+                                            </button>
+                                        )}
+                                    </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

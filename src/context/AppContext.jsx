@@ -13,13 +13,70 @@ export const AppProvider = ({ children }) => {
     const [projectTasks, setProjectTasks] = useState([]); // Project Sections
     const [timeSessions, setTimeSessions] = useState([]); // Time Tracking
     const [hiltiTools, setHiltiTools] = useState([]); // Hilti State
-    const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
+    const [companyInfo, setCompanyInfo] = useState({ name: '', address: '' });
     const [currentUser, setCurrentUser] = useState(null);
     const [dbError, setDbError] = useState(null);
     const [saasSession, setSaasSession] = useState(null);
     const authUser = saasSession?.user ?? null;
     const [currentCompanyId, setCurrentCompanyId] = useState(null);
     const [companySetupComplete, setCompanySetupComplete] = useState(null); // null=loading, true/false
+    const [companyRole, setCompanyRole] = useState(null);
+    const [companyRoleLoading, setCompanyRoleLoading] = useState(true);
+
+    // Membership is looked up server-side for the authenticated Supabase user.
+    // This is for UI routing only; RLS/RPC must enforce access to data.
+    useEffect(() => {
+        let active = true;
+        const loadRole = async () => {
+            setCompanyRoleLoading(true);
+            setCompanyRole(null);
+            if (!authUser?.id) {
+                if (active) setCompanyRoleLoading(false);
+                return;
+            }
+            try {
+                let q = supabase.from('company_users')
+                    .select('role, company_id')
+                    .eq('user_id', authUser.id);
+                if (currentCompanyId) q = q.eq('company_id', currentCompanyId);
+                const { data, error } = await q.limit(2);
+                if (!active) return;
+                if (error) throw error;
+                // Never infer administrator privileges from an ambiguous membership.
+                if ((data || []).length === 1) setCompanyRole(data[0].role);
+                else if ((data || []).length > 1) console.warn('Ambiguous company membership; role not applied');
+            } catch (e) {
+                if (active) console.error('Unable to resolve company role:', e);
+            } finally {
+                if (active) setCompanyRoleLoading(false);
+            }
+        };
+        loadRole();
+        return () => { active = false; };
+    }, [authUser?.id, currentCompanyId]);
+
+    const resolvedUser = authUser ? { ...authUser, role: companyRole } : null;
+
+    // Company details are keyed to the authenticated user's actual membership.
+    useEffect(() => {
+        let active = true;
+        setCompanyInfo({ name: '', address: '' });
+        if (!currentCompanyId || !authUser?.id) return () => { active = false; };
+        const loadCompany = async () => {
+            const { data: membership, error: membershipError } = await supabase
+                .from('company_users').select('company_id')
+                .eq('company_id', currentCompanyId).eq('user_id', authUser.id).maybeSingle();
+            if (!active || membershipError || !membership) return;
+            const { data, error } = await supabase.from('companies')
+                .select('name').eq('id', currentCompanyId).maybeSingle();
+            if (!active) return;
+            if (error) { console.error('Company name load failed:', error); return; }
+            if (data) setCompanyInfo({ name: data.name || '', address: '' });
+        };
+        loadCompany();
+        return () => { active = false; };
+    }, [currentCompanyId, authUser?.id]);
+
 
     // Initial Data Fetch
     // Geofence State
@@ -31,22 +88,24 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSaasSession(session);
+            if (session) {
+                fetchCompanyId();
+                fetchData();
+            }
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSaasSession(session);
             if (session) {
                 fetchCompanyId();
+                fetchData();
             } else {
                 setCurrentCompanyId(null);
                 setCompanySetupComplete(false);
             }
         });
 
-        // Initial company ID fetch
-        fetchCompanyId();
-
-        fetchData();
+        // Protected data is loaded only after Supabase Auth restores a session.
 
         // GEOLOCATION WATCHER (W6, W7)
         let watchId;
@@ -92,9 +151,7 @@ export const AppProvider = ({ children }) => {
                 if (payload.eventType === 'INSERT') setLogs(prev => [payload.new, ...prev]);
             }).subscribe(),
 
-            supabase.channel('public:company_info').on('postgres_changes', { event: '*', schema: 'public', table: 'company_info' }, payload => {
-                if (payload.eventType === 'UPDATE') setCompanyInfo(payload.new);
-            }).subscribe(),
+            // Removed global company_info listener (cross-company leak)..subscribe(),
 
 
 
@@ -230,7 +287,7 @@ export const AppProvider = ({ children }) => {
             }
             if (s) loadedSites = s;
 
-            const { data: u, error: userError } = await supabase.from('users').select('*');
+            const { data: u, error: userError } = await supabase.from('users').select('id, name, email, role, level, created_at, must_change_password, auth_user_id');
             if (userError) {
                 console.error("Error fetching users:", userError);
                 setDbError(userError.message);
@@ -300,8 +357,7 @@ export const AppProvider = ({ children }) => {
                 console.log("Time Sessions table missing or empty");
             }
 
-            const { data: c } = await supabase.from('company_info').select('*').single();
-            if (c) setCompanyInfo(c);
+            // Company metadata is loaded through company-scoped membership.
 
         } catch (globalErr) {
             console.error("CRITICAL ERROR IN FETCHDATA:", globalErr);
@@ -423,11 +479,8 @@ export const AppProvider = ({ children }) => {
         updateUser(currentUser.id, updates);
     };
 
-    const updateCompanyInfo = async (info) => {
-        // Optimistic
-        setCompanyInfo(prev => ({ ...prev, ...info }));
-        const { error } = await supabase.from('company_info').update(info).eq('id', companyInfo.id || 1);
-        if (!error) addLog('Updated company information');
+    const updateCompanyInfo = async () => {
+        throw new Error('Modification entreprise temporairement désactivée.');
     };
 
     const addUser = async (user) => {
@@ -1156,7 +1209,8 @@ export const AppProvider = ({ children }) => {
         logs,
 
         timeSessions,
-        currentUser: authUser,
+        currentUser: resolvedUser,
+        companyRoleLoading,
         companyInfo,
         login,
         logout,
