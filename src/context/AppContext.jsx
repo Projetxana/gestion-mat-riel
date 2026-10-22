@@ -13,7 +13,7 @@ export const AppProvider = ({ children }) => {
     const [projectTasks, setProjectTasks] = useState([]); // Project Sections
     const [timeSessions, setTimeSessions] = useState([]); // Time Tracking
     const [hiltiTools, setHiltiTools] = useState([]); // Hilti State
-    const [companyInfo, setCompanyInfo] = useState({ name: 'Antigravity Inc.', address: 'Loading...' });
+    const [companyInfo, setCompanyInfo] = useState({ name: '', address: '' });
     const [currentUser, setCurrentUser] = useState(null);
     const [dbError, setDbError] = useState(null);
     const [saasSession, setSaasSession] = useState(null);
@@ -56,6 +56,27 @@ export const AppProvider = ({ children }) => {
     }, [authUser?.id, currentCompanyId]);
 
     const resolvedUser = authUser ? { ...authUser, role: companyRole } : null;
+
+    // Company details are keyed to the authenticated user's actual membership.
+    useEffect(() => {
+        let active = true;
+        setCompanyInfo({ name: '', address: '' });
+        if (!currentCompanyId || !authUser?.id) return () => { active = false; };
+        const loadCompany = async () => {
+            const { data: membership, error: membershipError } = await supabase
+                .from('company_users').select('company_id')
+                .eq('company_id', currentCompanyId).eq('user_id', authUser.id).maybeSingle();
+            if (!active || membershipError || !membership) return;
+            const { data, error } = await supabase.from('companies')
+                .select('name').eq('id', currentCompanyId).maybeSingle();
+            if (!active) return;
+            if (error) { console.error('Company name load failed:', error); return; }
+            if (data) setCompanyInfo({ name: data.name || '', address: '' });
+        };
+        loadCompany();
+        return () => { active = false; };
+    }, [currentCompanyId, authUser?.id]);
+
 
     // Initial Data Fetch
     // Geofence State
@@ -130,9 +151,7 @@ export const AppProvider = ({ children }) => {
                 if (payload.eventType === 'INSERT') setLogs(prev => [payload.new, ...prev]);
             }).subscribe(),
 
-            supabase.channel('public:company_info').on('postgres_changes', { event: '*', schema: 'public', table: 'company_info' }, payload => {
-                if (payload.eventType === 'UPDATE') setCompanyInfo(payload.new);
-            }).subscribe(),
+            // Removed global company_info listener (cross-company leak)..subscribe(),
 
 
 
@@ -338,8 +357,7 @@ export const AppProvider = ({ children }) => {
                 console.log("Time Sessions table missing or empty");
             }
 
-            const { data: c } = await supabase.from('company_info').select('*').single();
-            if (c) setCompanyInfo(c);
+            // Company metadata is loaded through company-scoped membership.
 
         } catch (globalErr) {
             console.error("CRITICAL ERROR IN FETCHDATA:", globalErr);
@@ -461,11 +479,8 @@ export const AppProvider = ({ children }) => {
         updateUser(currentUser.id, updates);
     };
 
-    const updateCompanyInfo = async (info) => {
-        // Optimistic
-        setCompanyInfo(prev => ({ ...prev, ...info }));
-        const { error } = await supabase.from('company_info').update(info).eq('id', companyInfo.id || 1);
-        if (!error) addLog('Updated company information');
+    const updateCompanyInfo = async () => {
+        throw new Error('Modification entreprise temporairement désactivée.');
     };
 
     const addUser = async (user) => {

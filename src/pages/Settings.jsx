@@ -323,7 +323,7 @@ const Settings = () => {
                     <div className="pt-4">
                         {!isEditing ? (
                             <button
-                                onClick={() => setIsEditing(true)}
+                                disabled title="Modification désactivée temporairement pour la sécurité multi-entreprise"
                                 className="px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg font-medium transition-colors"
                             >
                                 Modifier
