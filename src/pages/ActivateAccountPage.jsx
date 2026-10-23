@@ -16,14 +16,11 @@ export default function ActivateAccountPage() {
 
     useEffect(() => {
         let active = true;
-        const refresh = async () => {
-            const { data, error: authError } = await supabase.auth.getUser();
+        const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
             if (!active) return;
-            setSessionEmail(!authError ? (data?.user?.email || '').toLowerCase() : '');
+            setSessionEmail((session?.user?.email || '').toLowerCase());
             setLoading(false);
-        };
-        refresh();
-        const { data: listener } = supabase.auth.onAuthStateChange(() => { refresh(); });
+        });
         return () => { active = false; listener.subscription.unsubscribe(); };
     }, []);
 
