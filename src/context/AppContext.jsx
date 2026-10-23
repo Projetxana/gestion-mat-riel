@@ -713,7 +713,6 @@ export const AppProvider = ({ children }) => {
                     name: t.name,
                     planned_hours: Number(t.planned_hours) || 0,
                     completed_hours: Number(t.completed_hours) || 0,
-                    company_id: currentCompanyId ?? null,
                     project_id: newSiteId
                 }));
             } else {
@@ -723,9 +722,19 @@ export const AppProvider = ({ children }) => {
                     name,
                     planned_hours: 0,
                     completed_hours: 0,
-                    company_id: currentCompanyId ?? null,
                     project_id: newSiteId
                 }));
+            }
+
+            if (!sectionsPayload.some(t =>
+                t.name?.trim().toLowerCase() === 'travaux généraux'
+            )) {
+                sectionsPayload.unshift({
+                    name: 'Travaux généraux',
+                    planned_hours: 0,
+                    completed_hours: 0,
+                    project_id: newSiteId
+                });
             }
 
             const { data: createdSections, error: sectionError } = await supabase.from('project_tasks').insert(sectionsPayload).select();
@@ -835,7 +844,6 @@ export const AppProvider = ({ children }) => {
                     name: t.name,
                     planned_hours: Number(t.planned_hours) || 0,
                     completed_hours: Number(t.completed_hours) || 0, // Manual Override
-                    company_id: currentCompanyId ?? null,
                     project_id: id
                 }));
                 const { data: inserted, error: insErr } = await supabase.from('project_tasks').insert(payload).select();
@@ -885,7 +893,6 @@ export const AppProvider = ({ children }) => {
             is_active: true,
             planned_hours: 0,
             completed_hours: 0,
-            company_id: currentCompanyId ?? null
         }]).select().single();
 
         if (!error && data) {
