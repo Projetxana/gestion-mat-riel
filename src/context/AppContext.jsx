@@ -36,7 +36,8 @@ export const AppProvider = ({ children }) => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSaasSession(session);
             if (session) {
-                fetchCompanyId();
+                // Exécuter hors du callback Supabase Auth.
+                setTimeout(() => { fetchCompanyId(); }, 0);
             } else {
                 setCurrentCompanyId(null);
                 setCompanySetupComplete(false);
