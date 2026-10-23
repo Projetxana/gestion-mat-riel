@@ -8,7 +8,7 @@ import GlobalTimer from './components/GlobalTimer';
 
 const VersionOverlay = () => (
   <div className="fixed bottom-0 right-0 bg-black/80 text-white text-[10px] p-1 z-[9999] pointer-events-none">
-    v0.9.12
+    Web {String(__BUILDTRACK_RELEASE__).slice(0, 7)}
   </div>
 );
 import LoginPage from './pages/LoginPage';
@@ -23,7 +23,7 @@ import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import HiltiPage from './pages/HiltiPage';
 import TimeTracking from './pages/TimeTrackingPage';
-import ManualEntry from './pages/ManualEntry';
+import WeeklyTimeEntry from './pages/WeeklyTimeEntry';
 import ValidationPage from './pages/ValidationPage';
 import OnboardingPage from './pages/OnboardingPage';
 import SetupWizard from './pages/SetupWizard';
@@ -130,6 +130,20 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+const CompanyHoursRoute = () => {
+  const { currentCompanyId, companyRoleLoading, currentUser } = useAppContext();
+  if (!currentCompanyId || companyRoleLoading) return <p className="p-6 text-slate-400">Chargement de votre entreprise…</p>;
+  if (!currentUser?.role) return <p className="p-6 text-amber-300">Accès entreprise introuvable. Contactez votre administrateur.</p>;
+  return <TimeTracking />;
+};
+
+const EmployeeWeeklyRoute = () => {
+  const { currentCompanyId, companyRoleLoading, currentUser } = useAppContext();
+  if (!currentCompanyId || companyRoleLoading) return <p className="p-6 text-slate-400">Chargement de votre entreprise…</p>;
+  if (!currentUser?.role || currentUser.role === 'admin') return <Navigate to="/hours" replace />;
+  return <WeeklyTimeEntry />;
+};
+
 const AppRoutes = () => {
   return (
     <Routes>
@@ -153,9 +167,9 @@ const AppRoutes = () => {
         <Route path="journal" element={<Journal />} />
         <Route path="settings" element={<Settings />} />
         <Route path="hilti" element={<HiltiPage />} />
-        <Route path="hours" element={<TimeTracking />} />
-        <Route path="timetracking" element={<TimeTracking />} />
-        <Route path="timetracking/manual" element={<ManualEntry />} />
+        <Route path="hours" element={<CompanyHoursRoute />} />
+        <Route path="timetracking" element={<CompanyHoursRoute />} />
+        <Route path="timetracking/manual" element={<EmployeeWeeklyRoute />} />
         <Route path="timetracking/validation" element={<ValidationPage />} />
         <Route path="*" element={<PlaceholderPage title="Page Non Trouvée" />} /> {/* Added catch-all route */}
       </Route>

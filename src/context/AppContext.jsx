@@ -20,6 +20,37 @@ export const AppProvider = ({ children }) => {
     const authUser = saasSession?.user ?? null;
     const [currentCompanyId, setCurrentCompanyId] = useState(null);
     const [companySetupComplete, setCompanySetupComplete] = useState(null); // null=loading, true/false
+    const [companyRole, setCompanyRole] = useState(null);
+    const [companyRoleLoading, setCompanyRoleLoading] = useState(true);
+
+    useEffect(() => {
+        let active = true;
+        setCompanyRole(null);
+        setCompanyRoleLoading(true);
+        if (!authUser?.id || !currentCompanyId) {
+            if (!authUser?.id) setCompanyRoleLoading(false);
+            return () => { active = false; };
+        }
+        const loadRole = async () => {
+            try {
+                const { data, error } = await supabase.from('company_users')
+                    .select('role').eq('company_id', currentCompanyId)
+                    .eq('user_id', authUser.id).maybeSingle();
+                if (error) throw error;
+                if (active && (data?.role === 'admin' || data?.role === 'member')) {
+                    setCompanyRole(data.role);
+                }
+            } catch (error) {
+                if (active) console.error('Membership lookup failed:', error);
+            } finally {
+                if (active) setCompanyRoleLoading(false);
+            }
+        };
+        loadRole();
+        return () => { active = false; };
+    }, [authUser?.id, currentCompanyId]);
+
+    const resolvedUser = authUser ? { ...authUser, role: companyRole } : null;
 
     // Initial Data Fetch
     // Geofence State
@@ -31,23 +62,30 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSaasSession(session);
+            if (session) {
+                fetchCompanyId();
+                fetchData();
+            }
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSaasSession(session);
             if (session) {
-                // Exécuter hors du callback Supabase Auth.
-                setTimeout(() => { fetchCompanyId(); }, 0);
+                // Ne jamais appeler Supabase de façon synchrone dans onAuthStateChange.
+                setTimeout(() => { fetchCompanyId(); fetchData(); }, 0);
             } else {
                 setCurrentCompanyId(null);
                 setCompanySetupComplete(false);
+                setSites([]);
+                setMaterials([]);
+                setProjectTasks([]);
+                setTimeSessions([]);
+                setUsers([]);
+                setLogs([]);
             }
         });
 
-        // Initial company ID fetch
-        fetchCompanyId();
-
-        fetchData();
+        // Data are fetched only after an authenticated session is restored.
 
         // GEOLOCATION WATCHER (W6, W7)
         let watchId;
@@ -231,7 +269,7 @@ export const AppProvider = ({ children }) => {
             }
             if (s) loadedSites = s;
 
-            const { data: u, error: userError } = await supabase.from('users').select('*');
+            const { data: u, error: userError } = await supabase.from('users').select('id, name, email, role, level, created_at, must_change_password, auth_user_id');
             if (userError) {
                 console.error("Error fetching users:", userError);
                 setDbError(userError.message);
@@ -1157,7 +1195,8 @@ export const AppProvider = ({ children }) => {
         logs,
 
         timeSessions,
-        currentUser: authUser,
+        currentUser: resolvedUser,
+        companyRoleLoading,
         companyInfo,
         login,
         logout,

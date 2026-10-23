@@ -42,9 +42,15 @@ export default function ActivateAccountPage() {
         const { error: updateError } = await supabase.auth.updateUser({ password });
         setSaving(false);
         if (updateError) return setError(updateError.message);
-        setSuccess('Mot de passe défini. Vous pouvez maintenant continuer.');
+        setSuccess('Mot de passe défini. Redirection vers la connexion…');
         setPassword('');
         setConfirmPassword('');
+        const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
+        if (signOutError) {
+            setError('Mot de passe enregistré, mais déconnexion impossible : ' + signOutError.message);
+            return;
+        }
+        navigate('/login', { replace: true });
     };
 
     return (
@@ -68,7 +74,7 @@ export default function ActivateAccountPage() {
                         {error && <p role="alert" className="text-red-300">{error}</p>}
                         {success && <p role="status" className="text-green-300">{success}</p>}
                         <button type="submit" disabled={saving || !sessionEmail || !!success} className="w-full rounded-lg bg-blue-600 disabled:opacity-50 p-3 font-semibold"><Lock size={16} className="inline mr-2" />{saving ? 'Enregistrement…' : 'Définir le mot de passe'}</button>
-                        {success && <button type="button" onClick={() => navigate('/')} className="w-full rounded-lg bg-slate-700 p-3">Continuer vers BuildTrack</button>}
+                        {success && <button type="button" onClick={() => navigate('/login', { replace: true })} className="w-full rounded-lg bg-slate-700 p-3">Continuer vers BuildTrack</button>}
                     </form>
                 )}
             </div>
