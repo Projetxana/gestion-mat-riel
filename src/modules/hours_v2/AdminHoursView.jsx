@@ -1,353 +1,132 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { getCurrentWeekRange, buildWeeklySnapshot, validateByAdmin, validateByLeader } from './weeklyTimesheetService';
-import { supabase } from '../../supabaseClient';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
 
-const AdminHoursView = () => {
-    const [currentWeek, setCurrentWeek] = useState(getCurrentWeekRange());
-    const [activeSessions, setActiveSessions] = useState([]);
-    const [weeklyData, setWeeklyData] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [users, setUsers] = useState({});
-    const [sites, setSites] = useState({});
-
-    // Load initial data
-    useEffect(() => {
-        loadData();
-    }, [currentWeek]); // Reload when week changes
-
-    const loadData = async () => {
-        setLoading(true);
-        try {
-            // 1. Fetch Users & Sites for display names
-            const { data: usersData } = await supabase.from('users').select('id, name');
-            const { data: sitesData } = await supabase.from('sites').select('id, name');
-
-            const userMap = (usersData || []).reduce((acc, u) => ({ ...acc, [u.id]: u.name }), {});
-            const siteMap = (sitesData || []).reduce((acc, s) => ({ ...acc, [s.id]: s.name }), {});
-            setUsers(userMap);
-            setSites(siteMap);
-
-            // 2. Fetch Active Sessions (Live)
-            const { data: active } = await supabase
-                .from('time_sessions')
-                .select('*')
-                .is('punch_end_at', null);
-            setActiveSessions(active || []);
-
-            // 3. Build/Fetch Weekly Snapshot
-            // This service function does the heavy lifting: reading sessions, aggregating, etc.
-            // We pass the start date of the current week view to generate/fetch that specific week.
-            await buildWeeklySnapshot(currentWeek.start);
-
-            // 4. Fetch the resulting Weekly Timesheets from DB
-            const { start, end } = currentWeek;
-            const startStr = start.toISOString().split('T')[0];
-
-            const { data: timesheets } = await supabase
-                .from('weekly_timesheets')
-                .select(`
-                    id,
-                    user_id,
-                    week_start,
-                    week_end,
-                    leader_validated,
-                    admin_validated,
-                    weekly_timesheet_entries (hours)
-                `)
-                .eq('week_start', startStr);
-
-            // Calculate totals locally for display
-            const processed = (timesheets || []).map(ts => {
-                const total = ts.weekly_timesheet_entries.reduce((acc, e) => acc + (e.hours || 0), 0);
-                return { ...ts, totalHours: total };
-            });
-
-            setWeeklyData(processed);
-
-        } catch (error) {
-            console.error("Error loading AdminHoursView:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const { currentUser } = useAppContext(); // Get currentUser to pass to validation service
-
-    const handleValidate = async (timesheetId) => {
-        if (!window.confirm("Valider cette semaine pour cet employé ?")) return;
-
-        // Admin validation requires Leader validation first.
-        const result = await validateByAdmin(timesheetId, currentUser);
-        if (result.error) {
-            alert("Erreur: " + result.error);
-        } else {
-            loadData(); // Refresh
-        }
-    };
-
-    const handlePreviousWeek = () => {
-        const newStart = new Date(currentWeek.start);
-        newStart.setDate(newStart.getDate() - 7);
-        const newEnd = new Date(newStart);
-        newEnd.setDate(newStart.getDate() + 6);
-        newEnd.setHours(23, 59, 59, 999);
-        setCurrentWeek({ start: newStart, end: newEnd });
-    };
-
-    const handleNextWeek = () => {
-        const newStart = new Date(currentWeek.start);
-        newStart.setDate(newStart.getDate() + 7);
-        const newEnd = new Date(newStart);
-        newEnd.setDate(newStart.getDate() + 6);
-        newEnd.setHours(23, 59, 59, 999);
-        setCurrentWeek({ start: newStart, end: newEnd });
-    };
-
-    const handleResetAppData = async () => {
-        const confirm1 = window.confirm("ATTENTION : Vous êtes sur le point de supprimer TOUTES les heures saisies par les utilisateurs.");
-        if (!confirm1) return;
-
-        const confirm2 = window.confirm("Êtes-vous vraiment sûr ? Cette action est irréversible.\n\nCela ne supprimera PAS :\n- Les tâches importées\n- Le matériel\n- Les utilisateurs");
-        if (!confirm2) return;
-
-        const password = window.prompt("Pour confirmer, tapez 'DELETE' :");
-        if (password !== 'DELETE') {
-            alert("Annulé.");
-            return;
-        }
-
-        setLoading(true);
-        try {
-            // 1. Delete Time Sessions
-            const { error: errorSessions } = await supabase
-                .from('time_sessions')
-                .delete()
-                .neq('id', 0); // Delete all where id is not 0 (effectively all)
-
-            if (errorSessions) throw errorSessions;
-
-            // 2. Delete Weekly Timesheet Entries (Cascade should handle this but manual is safer)
-            const { error: errorEntries } = await supabase
-                .from('weekly_timesheet_entries')
-                .delete()
-                .neq('id', 0);
-
-            if (errorEntries) throw errorEntries;
-
-            // 3. Delete Weekly Timesheets
-            const { error: errorSheets } = await supabase
-                .from('weekly_timesheets')
-                .delete()
-                .neq('id', 0);
-
-            if (errorSheets) throw errorSheets;
-
-            alert("Succès ! Toutes les heures ont été supprimées. L'application repart à zéro.");
-            loadData(); // Refresh
-
-        } catch (error) {
-            console.error("Reset Error:", error);
-            alert("Erreur lors de la réinitialisation : " + error.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div className="p-4 space-y-8 bg-slate-50 min-h-screen pb-24">
-            <h1 className="text-2xl font-bold text-slate-800">Gestion des Heures (v2)</h1>
-
-            {/* 1. Active Sessions */}
-            <section className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                <h2 className="text-lg font-semibold mb-4 text-blue-600">En cours maintenant</h2>
-                {activeSessions.length === 0 ? (
-                    <p className="text-slate-500 italic">Aucune activité en cours.</p>
-                ) : (
-                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                        {activeSessions.map(session => (
-                            <div key={session.id} className="flex items-center p-3 bg-blue-50 rounded-lg border border-blue-100">
-                                <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse mr-3"></div>
-                                <div>
-                                    <div className="font-bold text-slate-800">{users[session.user_id] || 'Utilisateur inconnu'}</div>
-                                    <div className="text-sm text-slate-600">{sites[session.site_id] || 'Site inconnu'}</div>
-                                    <div className="text-xs text-slate-400 mt-1">
-                                        Depuis {format(new Date(session.punch_start_at), 'HH:mm')}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </section>
-
-            {/* 2. Weekly Table / List */}
-            <section className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                    <h2 className="text-lg font-semibold text-slate-800 text-center md:text-left">
-                        Semaine du {format(currentWeek.start, 'dd MMM', { locale: fr })} au {format(currentWeek.end, 'dd MMM yyyy', { locale: fr })}
-                    </h2>
-                    <div className="flex gap-2 w-full md:w-auto justify-center">
-                        <button onClick={handlePreviousWeek} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 text-sm flex-1 md:flex-none">
-                            &lt; Précédent
-                        </button>
-                        <button onClick={() => setCurrentWeek(getCurrentWeekRange())} className="px-3 py-2 bg-blue-50 text-blue-600 rounded text-sm flex-1 md:flex-none">
-                            Aujourd'hui
-                        </button>
-                        <button onClick={handleNextWeek} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded text-slate-600 text-sm flex-1 md:flex-none">
-                            Suivant &gt;
-                        </button>
-                    </div>
-                </div>
-
-                {loading ? (
-                    <div className="text-center py-10 text-slate-400">Chargement...</div>
-                ) : (
-                    <>
-                        {/* DESKTOP TABLE */}
-                        <div className="hidden md:block overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-slate-200 text-slate-500 text-sm">
-                                        <th className="py-3 px-2">Employé</th>
-                                        <th className="py-3 px-2 text-right">Heures (Sem.)</th>
-                                        <th className="py-3 px-2 text-center">Statut Leader</th>
-                                        <th className="py-3 px-2 text-center">Statut Admin</th>
-                                        <th className="py-3 px-2 text-right">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {weeklyData.map(ts => (
-                                        <tr key={ts.id} className="border-b border-slate-100 hover:bg-slate-50">
-                                            <td className="py-3 px-2 font-medium text-slate-800">
-                                                {users[ts.user_id] || ts.user_id}
-                                            </td>
-                                            <td className="py-3 px-2 text-right font-bold text-slate-700">
-                                                {ts.totalHours.toFixed(2)} h
-                                            </td>
-                                            <td className="py-3 px-2 text-center">
-                                                {ts.leader_validated ? (
-                                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
-                                                        Validé
-                                                    </span>
-                                                ) : (
-                                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-yellow-50 text-yellow-600">
-                                                        En attente
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="py-3 px-2 text-center">
-                                                {ts.admin_validated ? (
-                                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700">
-                                                        Approuvé
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-slate-400 text-sm">-</span>
-                                                )}
-                                            </td>
-                                            <td className="py-3 px-2 text-right">
-                                                {!ts.admin_validated && (
-                                                    <button
-                                                        onClick={() => handleValidate(ts.id)}
-                                                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${ts.leader_validated
-                                                            ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                                            : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                                            }`}
-                                                        disabled={!ts.leader_validated}
-                                                    >
-                                                        Valider
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {weeklyData.length === 0 && (
-                                        <tr>
-                                            <td colSpan="5" className="py-8 text-center text-slate-400">
-                                                Aucune donnée pour cette semaine.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* MOBILE CARDS */}
-                        <div className="md:hidden space-y-4">
-                            {weeklyData.length === 0 ? (
-                                <p className="text-center text-slate-400 py-8">Aucune donnée.</p>
-                            ) : (
-                                weeklyData.map(ts => (
-                                    <div key={ts.id} className="bg-slate-50 rounded-xl p-4 border border-slate-200 shadow-sm">
-                                        <div className="flex justify-between items-start mb-3">
-                                            <div className="font-bold text-slate-800 text-lg">
-                                                {users[ts.user_id] || ts.user_id}
-                                            </div>
-                                            <div className="text-xl font-bold text-blue-600">
-                                                {ts.totalHours.toFixed(2)} h
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-2 mb-4 text-sm">
-                                            <div className="bg-white p-2 rounded border border-slate-100">
-                                                <p className="text-xs text-slate-400 uppercase">Leader</p>
-                                                <p className="font-medium">
-                                                    {ts.leader_validated ? (
-                                                        <span className="text-green-600">Validé</span>
-                                                    ) : (
-                                                        <span className="text-amber-600">En attente</span>
-                                                    )}
-                                                </p>
-                                            </div>
-                                            <div className="bg-white p-2 rounded border border-slate-100">
-                                                <p className="text-xs text-slate-400 uppercase">Admin</p>
-                                                <p className="font-medium">
-                                                    {ts.admin_validated ? (
-                                                        <span className="text-blue-600">Approuvé</span>
-                                                    ) : (
-                                                        <span className="text-slate-400">-</span>
-                                                    )}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {!ts.admin_validated && (
-                                            <button
-                                                onClick={() => handleValidate(ts.id)}
-                                                className={`w-full py-3 rounded-lg font-bold text-sm shadow-sm transition-colors ${ts.leader_validated
-                                                    ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/30'
-                                                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                                                    }`}
-                                                disabled={!ts.leader_validated}
-                                            >
-                                                {ts.leader_validated ? 'VALIDER CETTE SEMAINE' : 'Attente Validation Leader'}
-                                            </button>
-                                        )}
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </>
-                )}
-            </section>
-
-            {/* DANGER ZONE */}
-            <section className="bg-red-50 p-6 rounded-xl border border-red-200 mt-12">
-                <h3 className="text-red-700 font-bold text-lg mb-2">⚠️ Zone de Danger</h3>
-                <p className="text-red-600 text-sm mb-4">
-                    Ces actions sont irréversibles. Soyez prudent.
-                </p>
-                <button
-                    onClick={handleResetAppData}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-lg shadow-red-500/30 transition-all active:scale-95"
-                >
-                    PURGER TOUTES LES HEURES (RAZ)
-                </button>
-            </section>
-        </div>
-    );
+const localDate = (date) => {
+    const d = new Date(date);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+const mondayOf = (date) => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d;
+};
+const hoursBetween = (start, end) => {
+    const ms = Date.parse(end) - Date.parse(start);
+    return Number.isFinite(ms) && ms > 0 ? ms / 3600000 : 0;
 };
 
-export default AdminHoursView;
+export default function AdminHoursView() {
+    const { currentUser, currentCompanyId, users, sites, timeSessions } = useAppContext();
+    const [week, setWeek] = useState(() => mondayOf(new Date()));
+    const end = new Date(week);
+    end.setDate(end.getDate() + 7);
+    const rows = useMemo(() => {
+        if (currentUser?.role !== 'admin' || !currentCompanyId) return [];
+        const employees = new Map();
+        for (const u of users || []) {
+            employees.set(String(u.id), u.name || u.email || 'Employé');
+            if (u.auth_user_id) employees.set(String(u.auth_user_id), u.name || u.email || 'Employé');
+        }
+        const siteNames = new Map((sites || []).map(s => [String(s.id), s.name]));
+        const totals = new Map();
+        for (const s of timeSessions || []) {
+            // Fail closed: never display sessions without an explicit company match.
+            if (String(s.company_id || '') !== String(currentCompanyId)) continue;
+            if (!s.punch_start_at || !s.punch_end_at) continue;
+            const t = new Date(s.punch_start_at);
+            if (t < week || t >= end) continue;
+            const employeeKey = String(s.user_id);
+            if (!employees.has(employeeKey)) continue;
+            const item = totals.get(employeeKey) || { name: employees.get(employeeKey), hours: 0, sessions: 0, bySite: {} };
+            const h = hoursBetween(s.punch_start_at, s.punch_end_at);
+            item.hours += h;
+            item.sessions += 1;
+            const site = siteNames.get(String(s.site_id)) || 'Chantier non identifié';
+            item.bySite[site] = (item.bySite[site] || 0) + h;
+            totals.set(employeeKey, item);
+        }
+        return [...totals.values()].sort((a,b)=>a.name.localeCompare(b.name));
+    }, [currentUser?.role, currentCompanyId, users, sites, timeSessions, week]);
+    if (currentUser?.role !== 'admin') return null;
+    const changeWeek = (step) => setWeek(prev => { const next = new Date(prev); next.setDate(next.getDate() + step * 7); return next; });
+    const number = value => value.toLocaleString('fr-CA', { maximumFractionDigits: 2, minimumFractionDigits: 1 });
+    const reportTitle = `Heures - semaine du ${localDate(week)} au ${localDate(new Date(end.getTime() - 86400000))}`;
+    const reportRows = rows.flatMap(employee => Object.entries(employee.bySite).sort().map(([site, hours]) => ({
+        employee: employee.name, site, hours
+    })));
+    const exportExcel = async () => {
+        if (!currentCompanyId || currentUser?.role !== 'admin' || !reportRows.length) return;
+        try {
+            const XLSX = await import('xlsx');
+            const workbook = XLSX.utils.book_new();
+            const sheetData = [
+                ['Rapport provisoire - ' + reportTitle],
+                ['Employé', 'Chantier', 'Heures'],
+                ...reportRows.map(r => [r.employee, r.site, Number(r.hours.toFixed(4))]),
+                ['TOTAL', '', Number(rows.reduce((sum, r) => sum + r.hours, 0).toFixed(4))],
+            ];
+            const sheet = XLSX.utils.aoa_to_sheet(sheetData);
+            sheet['!cols'] = [{ wch: 32 }, { wch: 42 }, { wch: 16 }];
+            XLSX.utils.book_append_sheet(workbook, sheet, 'Heures semaine');
+            XLSX.writeFile(workbook, `buildtrack-heures-${localDate(week)}.xlsx`);
+        } catch (error) {
+            console.error('Excel export failed', error);
+            alert('Impossible de créer le fichier Excel sur cet appareil.');
+        }
+    };
+    const exportPrintPdf = () => {
+        if (!currentCompanyId || currentUser?.role !== 'admin' || !reportRows.length) return;
+        const popup = window.open('', '_blank');
+        if (!popup) {
+            alert('Autorisez les fenêtres surgissantes pour imprimer ou enregistrer en PDF.');
+            return;
+        }
+        const escapeHtml = value => String(value).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+        const trs = reportRows.map(r => `<tr><td>${escapeHtml(r.employee)}</td><td>${escapeHtml(r.site)}</td><td class="num">${escapeHtml(number(r.hours))}</td></tr>`).join('');
+        const total = number(rows.reduce((sum, r) => sum + r.hours, 0));
+        popup.document.open();
+        popup.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escapeHtml(reportTitle)}</title><style>
+            body{font-family:Arial,sans-serif;color:#172033;padding:24px}h1{font-size:20px}
+            table{border-collapse:collapse;width:100%;margin-top:24px}th,td{border:1px solid #d1d5db;padding:9px;text-align:left}
+            th{background:#eef2f7}.num{text-align:right}tfoot{font-weight:bold}
+            .note{font-size:11px;color:#5b6473;margin-top:20px}
+            @media print{body{padding:0}tr{break-inside:avoid}}
+            </style></head><body><h1>${escapeHtml(reportTitle)}</h1>
+            <table><thead><tr><th>Employé</th><th>Chantier</th><th>Heures</th></tr></thead>
+            <tbody>${trs}</tbody><tfoot><tr><td>TOTAL</td><td></td><td class="num">${escapeHtml(total)}</td></tr></tfoot></table>
+            <p class="note">Rapport provisoire : heures terminées seulement, sans déduction des pauses ni validation de paie.</p>
+            </body></html>`);
+        popup.document.close();
+        popup.focus();
+        popup.print();
+    };
+    return (
+        <div className="mx-auto max-w-4xl p-4 pb-24 text-slate-100 space-y-5">
+            <div><h1 className="text-2xl font-bold">Heures des employés</h1><p className="text-slate-400">Consultation seulement — aucune modification des pointages.</p></div>
+            <div className="flex items-center gap-3 rounded-xl bg-slate-800 p-3">
+                <button className="rounded-lg bg-slate-700 px-4 py-2" onClick={() => changeWeek(-1)} aria-label="Semaine précédente">←</button>
+                <span className="flex-1 text-center font-semibold">Semaine du {localDate(week)} au {localDate(new Date(end.getTime() - 86400000))}</span>
+                <button className="rounded-lg bg-slate-700 px-4 py-2" onClick={() => changeWeek(1)} aria-label="Semaine suivante">→</button>
+            </div>
+            <div className="rounded-xl bg-slate-800 p-4"><span className="text-slate-300">Total de la semaine</span><p className="text-3xl font-bold">{number(rows.reduce((sum, x) => sum + x.hours, 0))} h</p></div>
+            <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={!rows.length || !currentCompanyId} onClick={exportExcel} className="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white disabled:opacity-40">Exporter Excel (.xlsx)</button>
+                <button type="button" disabled={!rows.length || !currentCompanyId} onClick={exportPrintPdf} className="rounded-lg bg-slate-700 px-4 py-2 font-semibold text-white disabled:opacity-40">Imprimer / PDF</button>
+            </div>
+            {!currentCompanyId && <p className="text-amber-300">Entreprise non chargée : aucun relevé affiché.</p>}
+            {rows.length === 0 && <p className="rounded-xl bg-slate-800 p-4 text-slate-300">Aucune heure terminée et attribuée à cette entreprise pour cette semaine. Les anciennes entrées sans entreprise associée ne sont pas incluses.</p>}
+            {rows.map((r, i) => <section key={`${r.name}-${i}`} className="rounded-xl bg-slate-800 p-4 space-y-2">
+                <div className="flex justify-between gap-3"><h2 className="font-bold">{r.name}</h2><strong>{number(r.hours)} h</strong></div>
+                <p className="text-sm text-slate-400">{r.sessions} entrée(s)</p>
+                {Object.entries(r.bySite).sort().map(([name,h]) => <div key={name} className="flex justify-between gap-3 border-t border-slate-700 pt-2 text-sm"><span>{name}</span><span>{number(h)} h</span></div>)}
+            </section>)}
+            <p className="text-xs text-slate-400">Calcul provisoire sur les pointages terminés, sans déduction automatique des pauses ni validation de paie. Ne pas utiliser pour la paie avant rapprochement.</p>
+        </div>
+    );
+}

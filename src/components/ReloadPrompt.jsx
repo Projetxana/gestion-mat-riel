@@ -1,55 +1,44 @@
-// Simplified ReloadPrompt for autoUpdate strategy
 import React from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
-// With autoUpdate, this component just handles offline ready messages or silent background updates
-const ReloadPrompt = () => {
-    const {
-        offlineReady: [offlineReady, setOfflineReady],
-        needRefresh: [needRefresh, setNeedRefresh],
-        updateServiceWorker,
-    } = useRegisterSW({
-        onRegistered(r) {
-            console.log('SW Registered: ' + r);
-        },
-        onRegisterError(error) {
-            console.log('SW registration error', error);
-        },
-    });
+export default function ReloadPrompt() {
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
+  const [newVersion, setNewVersion] = React.useState(false);
 
-    const close = () => {
-        setOfflineReady(false);
-        setNeedRefresh(false);
+  React.useEffect(() => {
+    // La version native est distribuée par TestFlight/App Store, pas par Vercel.
+    if (!['http:', 'https:'].includes(window.location.protocol)) return;
+    let alive = true;
+    const check = async () => {
+      try {
+        const response = await fetch('/release.json', { cache: 'no-store' });
+        if (!response.ok) return;
+        const latest = await response.json();
+        if (alive && latest.id && latest.id !== __BUILDTRACK_RELEASE__) setNewVersion(true);
+      } catch (_) { /* Hors ligne : ne pas interrompre la saisie d'heures. */ }
     };
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    check();
+    const timer = setInterval(check, 180000);
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
-    // Show toast if update available or offline ready
-    if (!offlineReady && !needRefresh) return null;
-
-    return (
-        <div className="fixed bottom-4 right-4 z-50 p-4 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom duration-300">
-            <div className="text-white text-sm">
-                {offlineReady ? (
-                    <span>App ready to work offline</span>
-                ) : (
-                    <span>New content available, click on reload button to update.</span>
-                )}
-            </div>
-            {needRefresh && (
-                <button
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
-                    onClick={() => updateServiceWorker(true)}
-                >
-                    Reload
-                </button>
-            )}
-            <button
-                className="text-slate-400 hover:text-white"
-                onClick={close}
-            >
-                ✕
-            </button>
-        </div>
-    );
-};
-
-export default ReloadPrompt;
+  if (!needRefresh && !newVersion) return null;
+  return (
+    <div role="status" className="fixed bottom-20 left-3 right-3 z-[9999] mx-auto max-w-md rounded-xl bg-slate-800 border border-blue-500 p-4 text-white shadow-2xl">
+      <p className="text-sm font-semibold mb-2">Une nouvelle version de BuildTrack est disponible.</p>
+      <p className="text-xs text-slate-300 mb-3">Enregistrez vos heures avant d'actualiser.</p>
+      <button type="button" className="rounded-lg bg-blue-600 px-4 py-2 font-semibold" onClick={() => {
+        if (needRefresh) updateServiceWorker(true);
+        else window.location.reload();
+      }}>Actualiser BuildTrack</button>
+    </div>
+  );
+}

@@ -2,9 +2,18 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+const releaseId = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || new Date().toISOString();
+const releaseManifest = {
+  name: 'buildtrack-release-manifest',
+  generateBundle() {
+    this.emitFile({ type: 'asset', fileName: 'release.json', source: JSON.stringify({ id: releaseId }) });
+  },
+};
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [
+  define: { __BUILDTRACK_RELEASE__: JSON.stringify(releaseId) },
+  plugins: [releaseManifest,
     react(),
     VitePWA({
       selfDestroying: true, // NUCLEAR OPTION: Unregisters existing SW to fix cache issues
