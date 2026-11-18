@@ -72,14 +72,18 @@ export function ProjectHoursCards({ rows, showSites, showTasks }) {
     const groups = new Map();
     rows.forEach((row) => {
         const key = String(row.site_id);
-        if (!groups.has(key)) groups.set(key, { name: row.site_name, tasks: [] });
+        if (!groups.has(key)) groups.set(key, { name: row.site_name, tasks: [], lastWorkedAt: row.last_worked_at || null });
         const group = groups.get(key);
         if (row.kind === 'site') group.site = row;
         if (row.kind === 'task') group.tasks.push(row);
     });
     const visible = [...groups.entries()]
         .filter(([, group]) => (showSites && group.site) || (showTasks && group.tasks.length))
-        .sort((a, b) => a[1].name.localeCompare(b[1].name, 'fr-CA'));
+        .sort((a, b) => {
+            const timestamp = value => value ? Date.parse(value) || 0 : 0;
+            const recentFirst = timestamp(b[1].lastWorkedAt) - timestamp(a[1].lastWorkedAt);
+            return recentFirst || a[1].name.localeCompare(b[1].name, 'fr-CA');
+        });
     return (
         <div className="space-y-4">
             {visible.length === 0 && <p>Aucun chantier ou aucune tâche disponible.</p>}

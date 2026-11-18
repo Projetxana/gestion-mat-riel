@@ -108,14 +108,14 @@ test('BuildTrack 128/160 h, 3 tâches, 16 h personnelles, sécurité admin/membe
     assert.equal(getNumber(findRow(result, 'task', 1, 10), 'consumed_hours'), 42);
     assert.equal(getNumber(findRow(result, 'task', 1, 11), 'consumed_hours'), 60);
     assert.equal(getNumber(findRow(result, 'task', 1, 12), 'consumed_hours'), 26);
-    assert.equal(getNumber(findRow(result, 'site', 2), 'consumed_hours'), 0);
-    assert.equal(getNumber(findRow(result, 'task', 2, 20), 'consumed_hours'), 0);
-    assert.equal(findRow(result, 'task', 2, 20).budget_hours, null);
+    // Un employé ne voit pas les chantiers sur lesquels il n'a jamais saisi d'heures.
+    assert.equal(result.some(r => r.site_id === '2'), false);
+    assert.ok(findRow(result, 'site', 1).last_worked_at);
     assert.equal(result.some(r => r.site_id === '3'), false);
     assert.deepEqual(Object.keys(result[0]).sort(), [
-      'kind','site_id','section_id','name','site_name','budget_hours','consumed_hours',
+      'kind','site_id','section_id','name','site_name','budget_hours','consumed_hours','last_worked_at',
     ].sort());
-    assert.equal(result.filter(r => r.kind === 'site').length, 2);
+    assert.equal(result.filter(r => r.kind === 'site').length, 1);
     // L'employé ne peut pas lire les heures individuelles du collègue.
     const ownSessions = (await db.query('SELECT user_id FROM public.time_sessions')).rows;
     assert.equal(ownSessions.length, 1);
@@ -123,7 +123,12 @@ test('BuildTrack 128/160 h, 3 tâches, 16 h personnelles, sécurité admin/membe
     await assert.rejects(db.query(`SELECT * FROM public.collective_hours_progress('${COMPANY_B}')`), /Accès refusé/);
 
     await setActor(db, ADMIN);
-    assert.equal((await db.query(query)).rows.length, 6);
+    const adminRows = (await db.query(query)).rows;
+    assert.equal(adminRows.length, 6);
+    // L'administrateur voit toujours ses chantiers non travaillés.
+    assert.equal(getNumber(findRow(adminRows, 'site', 2), 'consumed_hours'), 0);
+    assert.equal(getNumber(findRow(adminRows, 'task', 2, 20), 'consumed_hours'), 0);
+    assert.equal(findRow(adminRows, 'task', 2, 20).budget_hours, null);
     assert.equal((await db.query('SELECT user_id FROM public.time_sessions')).rows.length, 6);
     await setActor(db, OUTSIDER);
     await assert.rejects(db.query(query), /Accès refusé/);

@@ -49,3 +49,11 @@ Les anciennes mentions user/leader et project_tasks.company_id dans les hypothè
 - Les heures collectives sont brutes, sans pauses déduites ni approbation administrative : ce sont des indicateurs de consommation provisoires, pas une paie.
 - Vérifier l'accès JWT du rôle employé/admin, les fonctions SECURITY DEFINER et Realtime avant tout déploiement.
 - Scénario visuel requis : 160 h prévues / 128 consommées / 32 restantes / 80 %, tâches 42/50, 60/80, 26/30.
+
+## Filtrage des chantiers pour les employés
+- Employé membre : uniquement les chantiers où une session **terminée et valide** lui appartient ; les tâches et budgets affichés demeurent **collectifs**.
+- Les chantiers sont classés par sa date de travail la plus récente (avec repli alphabétique).
+- Administrateur : tous les chantiers de son entreprise ; aucun changement aux écrans administrateurs.
+- Aucun employé ne reçoit les heures individuelles de ses collègues ; le serveur n'expose que les totaux agrégés et la date de son propre dernier pointage.
+- Une session encore ouverte ne rend pas le chantier visible dans le récapitulatif collectif avant d'être terminée.
+- Aucune migration, RLS, fusion ou publication n'est effectuée par ce correctif local.
