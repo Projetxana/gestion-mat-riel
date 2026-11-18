@@ -1,47 +1,86 @@
--- PROPOSITION UNIQUEMENT. Vérifier schema-inspection.sql avant application.
--- Identifiants comparés en texte pour supporter les variantes BIGINT/UUID.
--- Ne modifie aucune table, donnée ou politique existante.
+-- BuildTrack PR #6 — migration candidate: À APPLIQUER UNIQUEMENT APRÈS VALIDATION.
+-- Schéma vérifié le 17 novembre 2026: sites.id/project_tasks.id BIGINT,
+-- company_users.company_id UUID, time_sessions.user_id TEXT contient auth UUID.
+-- Cette migration ne modifie NI table, NI ligne, NI politique RLS.
+-- Important: le rapport compte des heures BRUTES de sessions terminées.
+-- Pas de déduction de pauses, pas de condition approved, ni de calcul de paie.
 BEGIN;
+
 CREATE OR REPLACE FUNCTION public.collective_hours_progress(requested_company text)
-RETURNS TABLE(kind text, site_id text, section_id text, name text, site_name text, budget_hours numeric, consumed_hours numeric)
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+RETURNS TABLE (
+  kind text,
+  site_id text,
+  section_id text,
+  name text,
+  site_name text,
+  budget_hours numeric,
+  consumed_hours numeric
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = ''
+AS $function$
 BEGIN
-  IF auth.uid() IS NULL OR NOT EXISTS (
-    SELECT 1 FROM public.company_users m
-    WHERE m.user_id::text = auth.uid()::text
-      AND m.company_id::text = requested_company AND m.role IN ('admin', 'member')
+  -- Autorisation côté serveur. Le company_id transmis par le client
+  -- ne suffit jamais pour accéder à une autre entreprise.
+  IF (SELECT auth.uid()) IS NULL OR NOT EXISTS (
+    SELECT 1
+      FROM public.company_users AS membership
+     WHERE membership.user_id = (SELECT auth.uid())
+       AND membership.company_id::text = requested_company
+       AND membership.role IN ('admin', 'member')
   ) THEN
     RAISE EXCEPTION 'Accès refusé' USING ERRCODE = '42501';
   END IF;
+
   RETURN QUERY
   WITH allowed_sites AS (
-    -- Modèle du dépôt : tous les chantiers de l'entreprise sont autorisés.
-    -- Si la production utilise des affectations, ajouter leur contrôle ici.
-    SELECT s.* FROM public.sites s WHERE s.company_id::text = requested_company
-  ), finished AS (
-    SELECT t.site_id::text AS sid, t.section_id::text AS tid,
-      CASE WHEN (to_jsonb(t)->>'duration_hours')::numeric > 0
-        THEN (to_jsonb(t)->>'duration_hours')::numeric
-        ELSE EXTRACT(epoch FROM (COALESCE(t.corrected_end_at,t.punch_end_at) - COALESCE(t.corrected_start_at,t.punch_start_at))) / 3600
-      END AS hours
-    FROM public.time_sessions t
-    JOIN allowed_sites s ON s.id = t.site_id
-    WHERE t.company_id::text = requested_company
-      AND t.punch_end_at IS NOT NULL
-      AND COALESCE(t.corrected_end_at,t.punch_end_at) >= COALESCE(t.corrected_start_at,t.punch_start_at)
+    SELECT s.id, s.name, s.planned_hours
+      FROM public.sites AS s
+     WHERE s.company_id::text = requested_company
+  ),
+  completed AS (
+    SELECT t.site_id,
+           t.section_id,
+           EXTRACT(EPOCH FROM (
+             COALESCE(t.corrected_end_at, t.punch_end_at) -
+             COALESCE(t.corrected_start_at, t.punch_start_at)
+           ))::numeric / 3600 AS total_hours
+      FROM public.time_sessions AS t
+      JOIN public.sites AS site
+        ON site.id = t.site_id
+       AND site.company_id = t.company_id
+     WHERE t.company_id::text = requested_company
+       AND t.punch_end_at IS NOT NULL
+       AND t.punch_start_at IS NOT NULL
+       AND COALESCE(t.corrected_end_at, t.punch_end_at) >=
+           COALESCE(t.corrected_start_at, t.punch_start_at)
   )
-  SELECT 'site'::text, s.id::text, NULL::text, s.name::text, s.name::text,
-    s.planned_hours::numeric, SUM(f.hours)::numeric
-    FROM allowed_sites s JOIN finished f ON f.sid = s.id::text
-    GROUP BY s.id, s.name, s.planned_hours
+  -- Toutes les fiches chantiers, y compris celles sans pointages.
+  SELECT 'site'::text, s.id::text, NULL::text,
+         s.name::text, s.name::text, s.planned_hours,
+         COALESCE(SUM(c.total_hours), 0)::numeric
+    FROM allowed_sites AS s
+    LEFT JOIN completed AS c ON c.site_id = s.id
+   GROUP BY s.id, s.name, s.planned_hours
+
   UNION ALL
-  SELECT 'task'::text, s.id::text, p.id::text, p.name::text, s.name::text,
-    p.planned_hours::numeric, SUM(f.hours)::numeric
-    FROM allowed_sites s JOIN public.project_tasks p ON p.project_id = s.id
-    JOIN finished f ON f.sid = s.id::text AND f.tid = p.id::text
-    GROUP BY s.id, s.name, p.id, p.name, p.planned_hours;
+
+  -- Toutes les tâches de ces chantiers, y compris 0 heure.
+  -- L'appartenance est déduite de project_tasks.project_id :
+  -- project_tasks.company_id N'EXISTE PAS dans la vraie base.
+  SELECT 'task'::text, s.id::text, p.id::text,
+         p.name::text, s.name::text, p.planned_hours,
+         COALESCE(SUM(c.total_hours), 0)::numeric
+    FROM allowed_sites AS s
+    JOIN public.project_tasks AS p ON p.project_id = s.id
+    LEFT JOIN completed AS c
+      ON c.site_id = s.id AND c.section_id = p.id
+   GROUP BY s.id, s.name, p.id, p.name, p.planned_hours;
 END;
-$$;
-REVOKE ALL ON FUNCTION public.collective_hours_progress(text) FROM PUBLIC, anon;
+$function$;
+
+-- Une fonction SECURITY DEFINER est privilégiée : son accès doit rester limité.
+REVOKE ALL ON FUNCTION public.collective_hours_progress(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.collective_hours_progress(text) FROM anon;
 GRANT EXECUTE ON FUNCTION public.collective_hours_progress(text) TO authenticated;
 COMMIT;

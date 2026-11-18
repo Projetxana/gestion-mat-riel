@@ -40,3 +40,12 @@ La vue est désormais hiérarchique : un chantier, son récapitulatif facultatif
 proposed-session-read-guard.sql ajoute une politique restrictive qui borne les anciennes politiques permissives : membre = ses sessions, administrateur = son entreprise, anonyme = refus. Elle ne crée aucun droit permissif et doit être testée avec le schéma réel avant adoption. Vérifier les écritures des tables d'appartenance et les éventuelles fonctions SECURITY DEFINER exposant time_sessions. Les chefs perdent volontairement l'accès aux sessions des collègues en tant que membres ; compatibilité des rapports chef à décider avant application. Pour Realtime, les événements INSERT/UPDATE doivent respecter le même SELECT ; examiner publication, replica identity, éventuels triggers Broadcast et suppression DELETE. Ne pas activer une publication exposant des détails de suppression sans test authentifié. La sécurité globale Realtime de production n'est pas certifiée.
 
 Les anciennes mentions user/leader et project_tasks.company_id dans les hypothèses ci-dessus sont remplacées par cette révision. La conformité visuelle navigateur iPhone/ordinateur et le scénario complet 128/160 restent à vérifier ; PR toujours en brouillon.
+
+## Révision de compatibilité avec la base réelle (17 novembre 2026)
+- 7 sessions existantes utilisent des UUID Auth en texte (0 id bigint).
+- time_sessions est déjà protégée par bt_stage2_time_select/insert/update/delete.
+- L'ancienne proposition proposed-session-read-guard.sql était incompatible avec les UUID Auth et a été RETIRÉE.
+- La nouvelle RPC ne modifie aucune politique RLS et inclut les chantiers/tâches à zéro heure.
+- Les heures collectives sont brutes, sans pauses déduites ni approbation administrative : ce sont des indicateurs de consommation provisoires, pas une paie.
+- Vérifier l'accès JWT du rôle employé/admin, les fonctions SECURITY DEFINER et Realtime avant tout déploiement.
+- Scénario visuel requis : 160 h prévues / 128 consommées / 32 restantes / 80 %, tâches 42/50, 60/80, 26/30.

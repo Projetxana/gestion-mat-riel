@@ -3,43 +3,135 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 
-test('SQL réel : calculs, corrections, clés, isolation et permissions', async () => {
- const db = new PGlite();
- await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA auth;
- CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('test.uid',true),'')::uuid $$;
- CREATE TABLE company_users(user_id uuid,company_id uuid,role text);
- CREATE TABLE users(id text,company_id uuid);
- CREATE TABLE sites(id bigint,name text,company_id uuid,planned_hours numeric);
- CREATE TABLE project_tasks(id bigint,project_id bigint,name text,planned_hours numeric);
- CREATE TABLE time_sessions(user_id text,company_id uuid,site_id bigint,section_id bigint,punch_start_at timestamptz,punch_end_at timestamptz,corrected_start_at timestamptz,corrected_end_at timestamptz,duration_hours numeric);
- INSERT INTO company_users VALUES ('00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','member');
- INSERT INTO users VALUES ('employee','10000000-0000-0000-0000-000000000001'),('colleague','10000000-0000-0000-0000-000000000001'),('foreign','20000000-0000-0000-0000-000000000001');
- INSERT INTO sites VALUES (1,'Chantier fictif','10000000-0000-0000-0000-000000000001',50),(2,'Chantier fictif','10000000-0000-0000-0000-000000000001',null),(3,'Autre entreprise','20000000-0000-0000-0000-000000000001',20);
- INSERT INTO project_tasks VALUES (10,1,'Démolition',50),(20,2,'Démolition',0);
- INSERT INTO time_sessions VALUES
- ('employee','10000000-0000-0000-0000-000000000001',1,10,'2026-11-16 08:00Z','2026-11-17 00:00Z',null,null,null),
- ('colleague','10000000-0000-0000-0000-000000000001',1,10,'2026-01-01 00:00Z','2026-01-02 00:00Z',null,'2026-01-02 02:00Z',null),
- ('colleague','10000000-0000-0000-0000-000000000001',2,20,'2026-01-01 00:00Z','2026-01-01 02:00Z',null,null,3),
- ('colleague','10000000-0000-0000-0000-000000000001',1,10,'2026-01-01 00:00Z',null,null,null,100),
- ('foreign','20000000-0000-0000-0000-000000000001',1,10,'2026-01-01 00:00Z','2026-01-02 00:00Z',null,null,100),
- ('colleague','10000000-0000-0000-0000-000000000001',1,10,'2026-01-02 00:00Z','2026-01-01 00:00Z',null,null,100);
- `);
- await db.exec(await readFile(new URL('../docs/collective-hours/proposed-migration.sql',import.meta.url),'utf8'));
- const call = `SELECT * FROM public.collective_hours_progress('10000000-0000-0000-0000-000000000001')`;
- await assert.rejects(db.query(call), /Accès refusé/);
- await db.exec(`SET ROLE authenticated; SET test.uid='00000000-0000-0000-0000-000000000001'`);
- const {rows} = await db.query(call);
- assert.equal(rows.length,4);
- assert.equal(Number(rows.find(r=>r.kind==='site'&&r.site_id==='1').consumed_hours),42);
- assert.equal(Number(rows.find(r=>r.kind==='task'&&r.section_id==='20').consumed_hours),3);
- assert.equal(rows.find(r=>r.site_id==='2').budget_hours,null);
- assert.deepEqual(Object.keys(rows[0]).sort(),['kind','site_id','section_id','name','site_name','budget_hours','consumed_hours'].sort());
- await assert.rejects(db.query(`SELECT * FROM public.collective_hours_progress('20000000-0000-0000-0000-000000000001')`), /Accès refusé/);
- await assert.rejects(db.query('SELECT * FROM public.time_sessions'), /permission denied/);
- await db.exec("RESET ROLE; UPDATE company_users SET role='admin'; SET ROLE authenticated");
- assert.equal((await db.query(call)).rows.length,4);
- await assert.rejects(db.query("SELECT * FROM public.collective_hours_progress('20000000-0000-0000-0000-000000000001')"), /Accès refusé/);
- await db.exec('RESET ROLE; SET ROLE anon');
- await assert.rejects(db.query(call), /permission denied/);
- await db.close();
+const COMPANY_A = '10000000-0000-0000-0000-000000000001';
+const COMPANY_B = '20000000-0000-0000-0000-000000000001';
+const MEMBER = '00000000-0000-0000-0000-000000000001';
+const ADMIN = '00000000-0000-0000-0000-000000000002';
+const COLLEAGUE = '00000000-0000-0000-0000-000000000003';
+const OUTSIDER = '00000000-0000-0000-0000-000000000004';
+const NOT_MEMBER = '00000000-0000-0000-0000-000000000005';
+
+const query = `SELECT * FROM public.collective_hours_progress('${COMPANY_A}')`;
+const getNumber = (row, key) => Number(row[key]);
+
+function findRow(rows, kind, site, task = null) {
+  return rows.find((r) => r.kind === kind && r.site_id === String(site) &&
+    (task === null || r.section_id === String(task)));
+}
+
+async function setActor(db, id, role = 'authenticated') {
+  await db.exec(`RESET ROLE; SET test.uid = '${id}'; SET ROLE ${role};`);
+}
+
+/** Fixtures entièrement fictives. Tests de la vraie proposition SQL + RLS simplifiée. */
+test('BuildTrack 128/160 h, 3 tâches, 16 h personnelles, sécurité admin/member/autre entreprise', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(`
+      CREATE ROLE anon;
+      CREATE ROLE authenticated;
+      CREATE SCHEMA auth;
+      CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE
+        AS $$ SELECT nullif(current_setting('test.uid', true), '')::uuid $$;
+      CREATE TABLE company_users(user_id uuid, company_id uuid, role text);
+      CREATE TABLE users(id bigint, auth_user_id uuid);
+      CREATE TABLE sites(id bigint, name text, company_id uuid, planned_hours numeric);
+      CREATE TABLE project_tasks(id bigint, project_id bigint, name text, planned_hours numeric);
+      CREATE TABLE time_sessions(
+        id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+        user_id text, company_id uuid, site_id bigint, section_id bigint,
+        punch_start_at timestamptz, punch_end_at timestamptz,
+        corrected_start_at timestamptz, corrected_end_at timestamptz
+      );
+      INSERT INTO company_users(user_id,company_id,role) VALUES
+        ('${MEMBER}','${COMPANY_A}','member'),
+        ('${ADMIN}','${COMPANY_A}','admin'),
+        ('${COLLEAGUE}','${COMPANY_A}','member'),
+        ('${OUTSIDER}','${COMPANY_B}','member');
+      INSERT INTO users(id, auth_user_id) VALUES
+        (1,'${MEMBER}'), (2,'${ADMIN}'), (3,'${COLLEAGUE}'), (4,'${OUTSIDER}');
+      INSERT INTO sites(id,name,company_id,planned_hours) VALUES
+        (1,'A1 Cash & Carry','${COMPANY_A}',160),
+        (2,'A1 Cash & Carry','${COMPANY_A}',null),
+        (3,'Chantier d’une autre entreprise','${COMPANY_B}',99);
+      INSERT INTO project_tasks(id,project_id,name,planned_hours) VALUES
+        (10,1,'Démolition',50),
+        (11,1,'Installation',80),
+        (12,1,'Finition',30),
+        (20,2,'Démolition',null);
+      -- 16 h de l'employé connecté sur la tâche Démolition.
+      INSERT INTO time_sessions(user_id,company_id,site_id,section_id,punch_start_at,punch_end_at)
+      VALUES ('${MEMBER}','${COMPANY_A}',1,10,'2026-11-16 08:00Z','2026-11-17 00:00Z');
+      -- 26 h de son collègue sur Démolition, donc 42 h pour la tâche.
+      INSERT INTO time_sessions(user_id,company_id,site_id,section_id,punch_start_at,punch_end_at)
+      VALUES ('${COLLEAGUE}','${COMPANY_A}',1,10,'2026-11-10 08:00Z','2026-11-11 10:00Z');
+      -- 60 h Installation et 26 h Finition => 128 h sur ce chantier.
+      INSERT INTO time_sessions(user_id,company_id,site_id,section_id,punch_start_at,punch_end_at)
+      VALUES
+        ('${COLLEAGUE}','${COMPANY_A}',1,11,'2026-11-01 00:00Z','2026-11-03 12:00Z'),
+        ('${COLLEAGUE}','${COMPANY_A}',1,12,'2026-11-03 12:00Z','2026-11-04 14:00Z');
+      -- Une session ouverte ne compte pas.
+      INSERT INTO time_sessions(user_id,company_id,site_id,section_id,punch_start_at,punch_end_at)
+      VALUES ('${COLLEAGUE}','${COMPANY_A}',1,10,'2026-11-17 08:00Z',null);
+      -- Une session incohérente ne compte pas.
+      INSERT INTO time_sessions(user_id,company_id,site_id,section_id,punch_start_at,punch_end_at)
+      VALUES ('${COLLEAGUE}','${COMPANY_A}',1,10,'2026-11-17 18:00Z','2026-11-17 08:00Z');
+      -- Autre entreprise avec tentative de site_id croisé : exclue.
+      INSERT INTO time_sessions(user_id,company_id,site_id,section_id,punch_start_at,punch_end_at)
+      VALUES ('${OUTSIDER}','${COMPANY_B}',1,10,'2026-11-11 00:00Z','2026-11-15 00:00Z');
+      -- Reproduction simplifiée de la RLS réelle de lecture BuildTrack.
+      CREATE FUNCTION public.bt_stage2_is_member(company_uuid uuid)
+      RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=''
+      AS $$ SELECT EXISTS (SELECT 1 FROM public.company_users m
+         WHERE m.company_id=company_uuid AND m.user_id=auth.uid()) $$;
+      CREATE FUNCTION public.bt_stage2_is_admin(company_uuid uuid)
+      RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=''
+      AS $$ SELECT EXISTS (SELECT 1 FROM public.company_users m
+         WHERE m.company_id=company_uuid AND m.user_id=auth.uid() AND m.role='admin') $$;
+      ALTER TABLE public.time_sessions ENABLE ROW LEVEL SECURITY;
+      CREATE POLICY bt_stage2_time_select ON public.time_sessions
+        FOR SELECT TO authenticated USING (
+          public.bt_stage2_is_member(company_id) AND
+          (user_id=auth.uid()::text OR public.bt_stage2_is_admin(company_id))
+        );
+      GRANT SELECT ON public.time_sessions TO authenticated;
+    `);
+
+    // Lire le fichier réellement proposé et non une version recopiée dans le test.
+    await db.exec(await readFile(new URL('../docs/collective-hours/proposed-migration.sql', import.meta.url), 'utf8'));
+
+    await assert.rejects(db.query(query), /Accès refusé/);
+    await setActor(db, MEMBER);
+    const result = (await db.query(query)).rows;
+    assert.equal(getNumber(findRow(result, 'site', 1), 'budget_hours'), 160);
+    assert.equal(getNumber(findRow(result, 'site', 1), 'consumed_hours'), 128);
+    assert.equal(getNumber(findRow(result, 'task', 1, 10), 'consumed_hours'), 42);
+    assert.equal(getNumber(findRow(result, 'task', 1, 11), 'consumed_hours'), 60);
+    assert.equal(getNumber(findRow(result, 'task', 1, 12), 'consumed_hours'), 26);
+    assert.equal(getNumber(findRow(result, 'site', 2), 'consumed_hours'), 0);
+    assert.equal(getNumber(findRow(result, 'task', 2, 20), 'consumed_hours'), 0);
+    assert.equal(findRow(result, 'task', 2, 20).budget_hours, null);
+    assert.equal(result.some(r => r.site_id === '3'), false);
+    assert.deepEqual(Object.keys(result[0]).sort(), [
+      'kind','site_id','section_id','name','site_name','budget_hours','consumed_hours',
+    ].sort());
+    assert.equal(result.filter(r => r.kind === 'site').length, 2);
+    // L'employé ne peut pas lire les heures individuelles du collègue.
+    const ownSessions = (await db.query('SELECT user_id FROM public.time_sessions')).rows;
+    assert.equal(ownSessions.length, 1);
+    assert.equal(ownSessions[0].user_id, MEMBER);
+    await assert.rejects(db.query(`SELECT * FROM public.collective_hours_progress('${COMPANY_B}')`), /Accès refusé/);
+
+    await setActor(db, ADMIN);
+    assert.equal((await db.query(query)).rows.length, 6);
+    assert.equal((await db.query('SELECT user_id FROM public.time_sessions')).rows.length, 6);
+    await setActor(db, OUTSIDER);
+    await assert.rejects(db.query(query), /Accès refusé/);
+    await setActor(db, NOT_MEMBER);
+    await assert.rejects(db.query(query), /Accès refusé/);
+    await setActor(db, MEMBER, 'anon');
+    await assert.rejects(db.query(query), /permission denied/);
+  } finally {
+    await db.close();
+  }
 });
