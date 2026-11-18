@@ -26,19 +26,41 @@ export default function ProjectHoursProgress({ companyId, userId, showSites, sho
     return <section className="space-y-4 mt-4" aria-label="Heures collectives">
         <h3 className="font-bold">HEURES COLLECTIVES — DEPUIS LE DÉMARRAGE</h3>
         {!current ? <p role="status">Chargement des heures collectives…</p> : current.error ? <div role="alert">Heures collectives indisponibles. <button onClick={() => setAttempt(n => n + 1)}>Réessayer</button></div> :
-            [['site', showSites, 'Par chantier'], ['task', showTasks, 'Par tâche et chantier']].filter(([, enabled]) => enabled).map(([kind, , title]) => <div key={kind} className="space-y-3">
-                <h4 className="font-semibold">{title}</h4>
-                {current.data.filter(row => row.kind === kind).length === 0 && <p>Aucune activité terminée.</p>}
-                {current.data.filter(row => row.kind === kind).map(row => {
-                    const consumed = Number(row.consumed_hours);
-                    const budget = Number(row.budget_hours);
-                    const percentage = budget > 0 ? consumed / budget * 100 : null;
-                    return <article key={`${row.site_id}:${row.section_id || ''}`} className="p-4 rounded-xl border border-slate-300 space-y-2 break-words">
-                        <h5 className="font-semibold">{row.name}{kind === 'task' && <span className="block text-sm font-normal">{row.site_name}</span>}</h5>
-                        <p>{hours(consumed)} h consommées{budget > 0 ? ` / ${hours(budget)} h prévues — ${hours(percentage)} %` : ' — Budget non défini'}</p>
-                        {percentage !== null && <><p>{consumed > budget ? `Dépassement : ${hours(consumed - budget)} h` : `Restantes : ${hours(budget - consumed)} h`}</p><progress className="w-full" aria-label={`Consommation du budget : ${row.name}`} max="100" value={Math.min(100, percentage)} /></>}
-                    </article>;
-                })}
-            </div>)}
+            <ProjectHoursCards rows={current.data} showSites={showSites} showTasks={showTasks} />}
     </section>;
+}
+
+function Metrics({ row }) {
+    const consumed = Number(row.consumed_hours);
+    const budget = Number(row.budget_hours);
+    const percent = budget > 0 ? consumed / budget * 100 : null;
+    return <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2 text-sm">
+            <div><p className="text-slate-500">Prévues</p><strong>{budget > 0 ? `${hours(budget)} h` : '—'}</strong></div>
+            <div><p className="text-slate-500">Consommées</p><strong>{hours(consumed)} h</strong></div>
+            <div><p className="text-slate-500">{consumed > budget && budget > 0 ? 'Dépassement' : 'Restantes'}</p><strong>{budget > 0 ? `${hours(Math.abs(budget - consumed))} h` : '—'}</strong></div>
+        </div>
+        {percent === null ? <p className="text-sm text-slate-500">Budget non défini</p> : <>
+            <div className="flex justify-between text-sm"><span>{consumed > budget ? 'Budget dépassé' : 'Consommation du budget'}</span><strong>{hours(percent)} %</strong></div>
+            <progress className={`w-full h-2 ${consumed > budget ? 'accent-amber-500' : 'accent-blue-500'}`} aria-label={`Consommation du budget : ${row.name}`} max="100" value={Math.min(100, percent)} />
+        </>}
+    </div>;
+}
+
+export function ProjectHoursCards({ rows, showSites, showTasks }) {
+    if (!showSites && !showTasks) return null;
+    const groups = new Map();
+    rows.forEach(row => {
+        if (!groups.has(row.site_id)) groups.set(row.site_id, { name: row.site_name, tasks: [] });
+        const group = groups.get(row.site_id);
+        if (row.kind === 'site') group.site = row;
+        else if (row.kind === 'task') group.tasks.push(row);
+    });
+    const visible = [...groups.entries()].filter(([, group]) => (showSites && group.site) || (showTasks && group.tasks.length));
+    return <div className="space-y-4">{!visible.length && <p>Aucune activité terminée.</p>}{visible.map(([id, group]) =>
+        <article key={id} className="rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-sm overflow-hidden min-w-0">
+            <div className="p-4 sm:p-5 space-y-4"><h4 className="font-bold break-words">{group.name}</h4>{showSites && group.site && <Metrics row={group.site} />}</div>
+            {showTasks && group.tasks.length > 0 && <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-5 divide-y divide-slate-200">{group.tasks.map(task => <div key={task.section_id} className="py-4 space-y-3"><h5 className="font-semibold break-words">{task.name}</h5><Metrics row={task} /></div>)}</div>}
+        </article>
+    )}</div>;
 }
