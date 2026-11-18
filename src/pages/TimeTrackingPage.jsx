@@ -3,6 +3,7 @@ import { useAppContext } from '../context/AppContext';
 import { Clock, Play, Square, RefreshCw, AlertCircle, ChevronRight, ArrowLeft, PenLine, AlertTriangle, Info } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import WeeklySummary from '../components/WeeklySummary';
+import ProjectHoursProgress from '../components/ProjectHoursProgress';
 import AdminHoursView from '../modules/hours_v2/AdminHoursView';
 import LeaderHoursView from '../modules/hours_v2/LeaderHoursView';
 
@@ -18,7 +19,8 @@ const TimeTracking = () => {
         endTimeSession,
         switchTask,
         addProjectTask,
-        projectTasks
+        projectTasks,
+        currentCompanyId
     } = useAppContext();
     const navigate = useNavigate();
     const location = useLocation();
@@ -313,9 +315,10 @@ const TimeTracking = () => {
 
                 <div className="pt-4 border-t border-slate-200 mt-4">
                     <h3 className="text-sm font-bold text-slate-500 mb-4 px-1">MES HEURES SEMAINE</h3>
-                    <WeeklySummary sessions={timeSessions} sites={sites} projectTasks={projectTasks} showProjectBreakdown={preferences.showHoursBySite} showTaskBreakdown={preferences.showHoursByTask} />
+                    <WeeklySummary sessions={timeSessions.filter(session => String(session.user_id) === String(currentUser?.id))} sites={sites} projectTasks={projectTasks} showProjectBreakdown={false} showTaskBreakdown={false} />
                 </div>
 
+                <ProjectHoursProgress companyId={currentCompanyId} userId={currentUser?.id} showSites={preferences.showHoursBySite} showTasks={preferences.showHoursByTask} refreshKey={timeSessions} />
                 {isLeader && <LeaderHoursView />}
             </div>
         );
@@ -667,6 +670,7 @@ const TimeTracking = () => {
                     </div>
                 )}
 
+                <ProjectHoursProgress companyId={currentCompanyId} userId={currentUser?.id} showSites={preferences.showHoursBySite} showTasks={preferences.showHoursByTask} refreshKey={timeSessions} />
                 {isLeader && <LeaderHoursView />}
             </div>
         );
