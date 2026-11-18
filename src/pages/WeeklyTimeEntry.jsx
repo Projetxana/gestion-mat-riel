@@ -517,8 +517,8 @@ const WeeklyTimeEntry = () => {
             </div>
 
             {/* Weekly total card - fixed at bottom */}
-            <div className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-white/10">
-                <div className="max-w-lg mx-auto px-4 py-3">
+            <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-t border-white/10">
+                <div className="max-w-lg mx-auto px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
                     {/* Total bar */}
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
