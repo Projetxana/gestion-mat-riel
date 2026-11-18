@@ -57,3 +57,6 @@ Les anciennes mentions user/leader et project_tasks.company_id dans les hypothè
 - Aucun employé ne reçoit les heures individuelles de ses collègues ; le serveur n'expose que les totaux agrégés et la date de son propre dernier pointage.
 - Une session encore ouverte ne rend pas le chantier visible dans le récapitulatif collectif avant d'être terminée.
 - Aucune migration, RLS, fusion ou publication n'est effectuée par ce correctif local.
+
+## Affichage administrateur (correctif de raccordement)
+L'interface de rapports hebdomadaires de l'administrateur est conservée. Le panneau collectif facultatif est également rendu dans AdminHoursView ; les réglages par utilisateur contrôlent son affichage. L'admin voit tous les chantiers de son entreprise via la RPC, contrairement au membre limité à ses chantiers travaillés.
