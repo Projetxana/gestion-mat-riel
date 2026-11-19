@@ -4,6 +4,7 @@ import { useAppContext } from '../context/AppContext';
 import { X, MapPin, Hammer, ExternalLink } from 'lucide-react';
 import MaterialDetailsModal from './MaterialDetailsModal';
 import SiteFormModal from './SiteFormModal';
+import SitePerformancePanel from './SitePerformancePanel';
 
 const SiteDetailsModal = ({ site: initialSite, onClose }) => {
     const { materials, sites, currentUser, saasSession, currentCompanyId, deleteSite } = useAppContext();
@@ -128,6 +129,8 @@ const SiteDetailsModal = ({ site: initialSite, onClose }) => {
                             <p className="text-xs text-slate-500 uppercase font-medium">En Utilisation</p>
                         </div>
                     </div>
+
+                    <SitePerformancePanel site={site} />
 
                     <h3 className="text-lg font-bold mb-4">Liste du Matériel</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

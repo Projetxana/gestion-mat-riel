@@ -6,6 +6,7 @@ import { importProjectProgress } from '../utils/excelParser';
 import { ArrowLeft, MapPin, Hammer, ExternalLink, Clock, BarChart3, Trash2 } from 'lucide-react';
 import MaterialDetailsModal from '../components/MaterialDetailsModal';
 import SiteFormModal from '../components/SiteFormModal';
+import SitePerformancePanel from '../components/SitePerformancePanel';
 
 const SiteDetails = () => {
     const { id } = useParams();
@@ -129,6 +130,8 @@ const SiteDetails = () => {
                 </div>
             </div>
 
+
+            <SitePerformancePanel site={site} />
 
             {/* SUIVI DES HEURES (GLOBAL) */}
             <div className="glass-panel p-8 mb-8 relative overflow-hidden">
