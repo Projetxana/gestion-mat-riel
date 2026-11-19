@@ -13,6 +13,15 @@ SOURCE = PUBLIC / "buildtrack-logo.png"
 
 with Image.open(SOURCE) as source:
     logo = ImageOps.exif_transpose(source).convert("RGBA")
+    # The source logo was exported from a checkerboard preview: these neutral,
+    # light-gray squares are baked into the JPEG, not real transparency.
+    # Normalize only light, nearly neutral pixels; preserve the colored B/text.
+    cleaned = logo.load()
+    for y in range(logo.height):
+        for x in range(logo.width):
+            red, green, blue, _alpha = cleaned[x, y]
+            if min(red, green, blue) > 178 and max(red, green, blue) - min(red, green, blue) < 25:
+                cleaned[x, y] = (255, 255, 255, 255)
     # Keep the entire BuildTrack mark and text visible; never crop the logo.
     for filename, size in (
         ("apple-touch-icon.png", 180),
