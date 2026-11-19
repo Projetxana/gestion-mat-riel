@@ -49,6 +49,7 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
         } else {
             // Default sections for new site
             setSections([
+                { id: 't0', name: 'Travaux généraux', planned_hours: 0, completed_hours: 0 },
                 { id: 't1', name: 'Lot 1: Préparation', planned_hours: 0, completed_hours: 0 },
                 { id: 't2', name: 'Lot 2: Exécution', planned_hours: 0, completed_hours: 0 },
                 { id: 't3', name: 'Lot 3: Finitions', planned_hours: 0, completed_hours: 0 }
