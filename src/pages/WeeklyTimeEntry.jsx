@@ -3,7 +3,7 @@ import { useAppContext } from '../context/AppContext';
 import { supabase } from '../supabaseClient';
 import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Trash2, Copy, Clock, CheckCircle, Info } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { parseLocalizedHours, isValidQuarterHour, formatDecimalHours, stepQuarterHour } from '../utils/quarterHours';
+import { parseLocalizedHours, isValidQuarterHour, formatHoursHHMM, normalizeHoursInput, stepQuarterHour } from '../utils/quarterHours';
 
 const DAYS_FR = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -98,7 +98,7 @@ const WeeklyTimeEntry = () => {
                     return {
                         id: `db-${session.id}`,
                         dbId: session.id,
-                        hours: formatDecimalHours(Math.round(hours * 100) / 100),
+                        hours: formatHoursHHMM(hours),
                         siteId: String(session.site_id || ''),
                         taskId: String(session.section_id || ''),
                         saved: true,
@@ -365,7 +365,7 @@ const WeeklyTimeEntry = () => {
                     <CheckCircle size={48} className="text-emerald-400" />
                 </div>
                 <h2 className="text-2xl font-bold text-white mb-2">Heures enregistrées !</h2>
-                <p className="text-slate-400">{getValidEntries().length} entrées • {formatDecimalHours(weekTotal)} h</p>
+                <p className="text-slate-400">{getValidEntries().length} entrées • {formatHoursHHMM(weekTotal)} h</p>
             </div>
         );
     }
@@ -399,7 +399,7 @@ const WeeklyTimeEntry = () => {
             {/* Info banner */}
             <div className="flex items-start gap-2 px-3 py-2 mb-5 rounded-lg bg-blue-500/10 border border-blue-500/20">
                 <Info size={16} className="text-blue-400 mt-0.5 shrink-0" />
-                <p className="text-xs text-blue-300">Saisissez les heures par quarts d'heure : 7,25 = 7 h 15, 8,5 = 8 h 30. Les boutons + et − ajoutent ou retirent 15 minutes.</p>
+
             </div>
 
             {/* Day cards */}
@@ -424,7 +424,7 @@ const WeeklyTimeEntry = () => {
                                 <div className="flex items-center gap-2">
                                     {dayTotal > 0 && (
                                         <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                            {formatDecimalHours(dayTotal)} h
+                                            {formatHoursHHMM(dayTotal)} h
                                         </span>
                                     )}
                                     {prevDateKey && getDayTotal(prevDateKey) > 0 && (
@@ -464,17 +464,17 @@ const WeeklyTimeEntry = () => {
                                                     inputMode="decimal"
                                                     autoComplete="off"
                                                     value={entry.hours}
-                                                    onChange={(e) => updateEntry(dateKey, entry.id, 'hours', e.target.value)}
+                                                    onChange={(e) => updateEntry(dateKey, entry.id, 'hours', normalizeHoursInput(e.target.value))}
                                                     onBlur={() => {
                                                         const hours = parseLocalizedHours(entry.hours);
                                                         if (hours === 0 || isValidQuarterHour(hours)) {
                                                             updateEntry(dateKey, entry.id, 'hours',
-                                                                hours === 0 ? '' : formatDecimalHours(hours));
+                                                                hours === 0 ? '' : formatHoursHHMM(hours));
                                                         }
                                                     }}
-                                                    aria-label="Heures décimales par tranches de 15 minutes, par exemple 7,25"
+                                                    aria-label="Durée en heures et minutes"
                                                     aria-invalid={hasInvalidHours}
-                                                    title="Exemple : 7,25 = 7 h 15 ; 8,5 = 8 h 30"
+                                                    title="Durée en heures et minutes"
                                                     placeholder="0"
                                                     className="w-12 text-center bg-transparent border-none text-sm font-bold text-white py-2 px-0 focus:outline-none"
                                                 />
@@ -566,13 +566,13 @@ const WeeklyTimeEntry = () => {
                             </div>
                             <div>
                                 <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">Total semaine</p>
-                                <p className="text-xl font-black text-white">{formatDecimalHours(weekTotal)} h</p>
+                                <p className="text-xl font-black text-white">{formatHoursHHMM(weekTotal)} h</p>
                             </div>
                         </div>
                         <div className="text-right text-xs space-y-0.5">
-                            <p className="text-slate-400">Normales: <span className="text-white font-bold">{formatDecimalHours(normalHours)} h</span></p>
+                            <p className="text-slate-400">Normales: <span className="text-white font-bold">{formatHoursHHMM(normalHours)} h</span></p>
                             {overtimeHours > 0 && (
-                                <p className="text-amber-400">Supp: <span className="font-bold">{formatDecimalHours(overtimeHours)} h</span></p>
+                                <p className="text-amber-400">Supp: <span className="font-bold">{formatHoursHHMM(overtimeHours)} h</span></p>
                             )}
                         </div>
                     </div>
@@ -607,7 +607,7 @@ const WeeklyTimeEntry = () => {
                             <>Enregistrement...</>
                         ) : (
                             <>
-                                Enregistrer les heures ({formatDecimalHours(weekTotal)} h)
+                                Enregistrer les heures ({formatHoursHHMM(weekTotal)} h)
                                 <CheckCircle size={18} />
                             </>
                         )}
