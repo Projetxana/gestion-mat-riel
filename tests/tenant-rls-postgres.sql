@@ -16,8 +16,8 @@ GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT USAGE ON SCHEMA auth TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated;
 
-CREATE TABLE public.company_users(user_id uuid, company_id uuid, role text);
-CREATE TABLE public.companies(id uuid PRIMARY KEY, name text, owner_user_id uuid, created_at timestamp);
+CREATE TABLE public.company_users(user_id uuid, company_id uuid, role text, created_at timestamp DEFAULT now());
+CREATE TABLE public.companies(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text, owner_user_id uuid, created_at timestamp);
 CREATE TABLE public.sites(id bigint PRIMARY KEY, name text, company_id uuid);
 CREATE TABLE public.tasks(id bigint PRIMARY KEY, name text NOT NULL, site_id bigint, company_id uuid, is_active boolean, created_at timestamptz);
 CREATE TABLE public.company_info(id bigint PRIMARY KEY, name text, address text);
@@ -51,6 +51,31 @@ CREATE POLICY "Acces Total Public" ON public.company_info FOR ALL TO public USIN
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all for authenticated users" ON public.tasks FOR ALL TO public USING (auth.uid() IS NOT NULL);
 CREATE POLICY "multi-tenant-safe" ON public.tasks FOR ALL TO public USING (true);
+
+-- Actual production RPC contract: creation is SECURITY DEFINER and adds admin
+-- membership after inserting a company, within the same transaction.
+CREATE OR REPLACE FUNCTION public.create_company(company_name text)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $
+DECLARE
+  new_company_id uuid;
+  current_auth_user uuid;
+BEGIN
+  current_auth_user := auth.uid();
+  IF current_auth_user IS NULL THEN
+    RAISE EXCEPTION 'Utilisateur non authentifié';
+  END IF;
+  INSERT INTO public.companies (name, owner_user_id, created_at)
+  VALUES (company_name, current_auth_user, now())
+  RETURNING id INTO new_company_id;
+  INSERT INTO public.company_users (company_id, user_id, role, created_at)
+  VALUES (new_company_id, current_auth_user, 'admin', now());
+  RETURN new_company_id;
+END;
+$;
+REVOKE EXECUTE ON FUNCTION public.create_company(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.create_company(text) TO authenticated;
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon,authenticated;
 
 \ir ../docs/collective-hours/proposed-tenant-rls-hardening.sql
@@ -133,3 +158,26 @@ BEGIN
 END $$;
 RESET ROLE;
 SELECT 'Email-bound invite acceptance and replay checks passed' AS result;
+
+-- Tenant onboarding regression against production-like create_company RPC.
+-- This is a fabricated JWT subject inside the disposable PostgreSQL service.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000006';
+SET ROLE authenticated;
+SELECT public.create_company('Fictitious newly created tenant');
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM public.companies WHERE name='Fictitious newly created tenant') <> 1 THEN
+    RAISE EXCEPTION 'New tenant not visible to its creator';
+  END IF;
+  IF (SELECT count(*) FROM public.company_users cu
+      JOIN public.companies c ON c.id=cu.company_id
+      WHERE cu.user_id='00000000-0000-0000-0000-000000000006'
+      AND cu.role='admin' AND c.name='Fictitious newly created tenant') <> 1 THEN
+    RAISE EXCEPTION 'New tenant creator not admin';
+  END IF;
+  IF (SELECT count(*) FROM public.companies) <> 1 THEN
+    RAISE EXCEPTION 'Creator gained access to other tenants';
+  END IF;
+END $$;
+RESET ROLE;
+SELECT 'New company onboarding (fabricated identity) passed' AS result;
