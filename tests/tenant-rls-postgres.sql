@@ -3,6 +3,13 @@
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
 CREATE SCHEMA auth;
+CREATE TABLE auth.users(id uuid PRIMARY KEY, email text NOT NULL, email_confirmed_at timestamptz);
+INSERT INTO auth.users VALUES
+('00000000-0000-0000-0000-000000000001','member-a@example.test',now()),
+('00000000-0000-0000-0000-000000000002','a@example.test',now()),
+('00000000-0000-0000-0000-000000000003','b@example.test',now()),
+('00000000-0000-0000-0000-000000000004','unrelated@example.test',now()),
+('00000000-0000-0000-0000-000000000005','newhire@example.test',now());
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE
 AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true),'')::uuid $$;
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
@@ -33,6 +40,8 @@ INSERT INTO company_info(id,name) VALUES (1,'Legacy global');
 INSERT INTO invites(id,company_id,email) VALUES
 ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','10000000-0000-0000-0000-000000000001','a@example.test'),
 ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','20000000-0000-0000-0000-000000000001','b@example.test');
+INSERT INTO invites(id,company_id,email,token) VALUES
+('ffffffff-ffff-ffff-ffff-ffffffffffff','10000000-0000-0000-0000-000000000001','newhire@example.test','test-token-newhire-123456789');
 INSERT INTO company_modules(id,company_id,module_name) VALUES
 ('cccccccc-cccc-cccc-cccc-cccccccccccc','10000000-0000-0000-0000-000000000001','hours'),
 ('dddddddd-dddd-dddd-dddd-dddddddddddd','20000000-0000-0000-0000-000000000001','hours');
@@ -45,6 +54,7 @@ CREATE POLICY "multi-tenant-safe" ON public.tasks FOR ALL TO public USING (true)
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon,authenticated;
 
 \ir ../docs/collective-hours/proposed-tenant-rls-hardening.sql
+\ir ../docs/collective-hours/proposed-secure-invite.sql
 
 -- Check the real PostgreSQL role/RLS implementation.
 SET ROLE anon;
@@ -90,3 +100,36 @@ BEGIN
 END $$;
 RESET ROLE;
 SELECT 'PostgreSQL 17 tenant RLS checks passed' AS result;
+
+-- Secure invite access: an unrelated authenticated user cannot consume another user's token.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000004';
+SET ROLE authenticated;
+DO $$
+BEGIN
+  BEGIN
+    PERFORM public.bt_accept_invite_secure('test-token-newhire-123456789');
+    RAISE EXCEPTION 'Unrelated user accepted invitation';
+  EXCEPTION WHEN invalid_authorization_specification THEN
+    NULL; -- Expected permission denial.
+  END;
+END $$;
+RESET ROLE;
+-- Exact addressed, email-verified user may consume once, with member role.
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000005';
+SET ROLE authenticated;
+SELECT public.bt_accept_invite_secure('test-token-newhire-123456789');
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM public.company_users
+      WHERE user_id='00000000-0000-0000-0000-000000000005' AND role='member') <> 1 THEN
+    RAISE EXCEPTION 'Invite did not add precisely one member';
+  END IF;
+  BEGIN
+    PERFORM public.bt_accept_invite_secure('test-token-newhire-123456789');
+    RAISE EXCEPTION 'Replayed invitation accepted';
+  EXCEPTION WHEN invalid_authorization_specification THEN
+    NULL;
+  END;
+END $$;
+RESET ROLE;
+SELECT 'Email-bound invite acceptance and replay checks passed' AS result;
