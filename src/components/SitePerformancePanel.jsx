@@ -179,7 +179,7 @@ const SitePerformancePanel = ({ site }) => {
                     <div>
                         <h4 className="font-semibold mb-1">Validation de l'avancement des tâches</h4>
                         <p className="text-xs text-slate-400 mb-3">
-                            Une seule mise à jour hebdomadaire suffit. Indiquez les travaux exécutés, sans utiliser le pourcentage d'heures consommées.
+                            Une seule validation hebdomadaire suffit. Déplacez le curseur selon les travaux réellement exécutés, indépendamment des heures consommées.
                         </p>
                         {siteTasks.length === 0 ? (
                             <p role="alert" className="text-amber-300">Aucune tâche avec budget d'heures. Ajoutez les budgets avant de valider.</p>
@@ -187,24 +187,39 @@ const SitePerformancePanel = ({ site }) => {
                             <div className="space-y-3">
                                 {siteTasks.map(task => {
                                     const key = String(task.id);
-                                    const value = percentages[key] ?? '0';
+                                    const value = Number(percentages[key] ?? 0);
                                     return (
-                                        <label key={task.id} className="flex flex-col sm:flex-row sm:items-center gap-2 bg-slate-800/60 p-3 rounded-xl">
-                                            <span className="flex-1 min-w-0">
-                                                <span className="block text-sm font-semibold">{task.name}</span>
-                                                <span className="text-xs text-slate-400">{number(task.planned_hours)} h prévues</span>
-                                            </span>
-                                            <span className="flex gap-2 items-center">
-                                                <input
-                                                    aria-label={`Avancement physique de ${task.name} en pourcentage`}
-                                                    type="number" min="0" max="100" step="1" inputMode="numeric"
-                                                    value={value}
-                                                    onChange={event => setPercentages(prev => ({ ...prev, [key]: event.target.value }))}
-                                                    className="w-24 min-h-11 rounded-lg border border-slate-600 bg-slate-950 text-white text-center font-bold p-2"
-                                                />
-                                                <span className="text-sm text-slate-300">%</span>
-                                            </span>
-                                        </label>
+                                        <div key={task.id} className="bg-slate-800/60 p-4 sm:p-5 rounded-xl space-y-2">
+                                            <div className="flex items-center justify-between gap-4">
+                                                <label htmlFor={`bt-performance-slider-${task.id}`} className="min-w-0 cursor-pointer">
+                                                    <span className="block text-sm font-semibold text-slate-100">{task.name}</span>
+                                                    <span className="block text-xs text-slate-400 mt-1">{number(task.planned_hours)} h prévues</span>
+                                                </label>
+                                                <span aria-hidden="true" className="shrink-0 font-bold text-xl tabular-nums text-blue-300">
+                                                    {value} %
+                                                </span>
+                                            </div>
+                                            <input
+                                                id={`bt-performance-slider-${task.id}`}
+                                                className="bt-performance-slider"
+                                                type="range"
+                                                min="0"
+                                                max="100"
+                                                step="1"
+                                                value={value}
+                                                aria-label={`Avancement physique de ${task.name}`}
+                                                aria-valuetext={`${value} pour cent`}
+                                                style={{ '--progress': `${value}%` }}
+                                                onChange={event => setPercentages(prev => ({
+                                                    ...prev,
+                                                    [key]: event.target.value
+                                                }))}
+                                            />
+                                            <div aria-hidden="true" className="flex justify-between text-xs text-slate-400">
+                                                <span>0 %</span>
+                                                <span>100 %</span>
+                                            </div>
+                                        </div>
                                     );
                                 })}
                             </div>
