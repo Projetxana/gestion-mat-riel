@@ -106,7 +106,11 @@ export const AppProvider = ({ children }) => {
             }).subscribe(),
 
             supabase.channel('public:time_sessions').on('postgres_changes', { event: '*', schema: 'public', table: 'time_sessions' }, payload => {
-                if (payload.eventType === 'INSERT') setTimeSessions(prev => [payload.new, ...prev]);
+                if (payload.eventType === 'INSERT') setTimeSessions(prev =>
+                    prev.some(item => String(item.id) === String(payload.new.id))
+                        ? prev.map(item => String(item.id) === String(payload.new.id) ? payload.new : item)
+                        : [payload.new, ...prev]
+                );
                 if (payload.eventType === 'UPDATE') setTimeSessions(prev => prev.map(item => item.id === payload.new.id ? payload.new : item));
                 if (payload.eventType === 'DELETE') setTimeSessions(prev => prev.filter(item => item.id !== payload.old.id));
             }).subscribe()
@@ -1050,39 +1054,50 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    // Add server-confirmed sessions immediately, without waiting for Realtime or a refresh.
+    // De-duplicate IDs because Supabase Realtime may deliver the same INSERT afterward.
+    const mergeTimeSessions = (rows) => {
+        if (!Array.isArray(rows) || rows.length === 0) return;
+        setTimeSessions(prev => {
+            const byId = new Map(prev.map(row => [String(row.id), row]));
+            for (const row of rows) byId.set(String(row.id), row);
+            return [...byId.values()].sort((a, b) =>
+                new Date(b.punch_start_at).getTime() - new Date(a.punch_start_at).getTime()
+            );
+        });
+    };
+
     const updateTimeSession = async (sessionId, updates) => {
-        // Optimistic
-        setTimeSessions(prev => prev.map(s => s.id === sessionId ? { ...s, ...updates } : s));
-
-        // DB Update
-        const { error } = await supabase.from('time_sessions').update(updates).eq('id', sessionId);
-
+        // A successful HTTP status alone does not guarantee that RLS updated a row.
+        const { data, error } = await supabase.from('time_sessions')
+            .update(updates).eq('id', sessionId).select('*');
         if (error) {
             console.error("Error updating session:", error);
-            // Rollback? (Need old state)
             return { error: error.message };
-        } else {
-            addLog(`UPDATED SESSION: ${sessionId}`);
-            return { success: true };
         }
+        if (!data || data.length !== 1) {
+            return { error: "Modification non enregistrée : aucune entrée autorisée n'a été modifiée." };
+        }
+        mergeTimeSessions(data);
+        addLog(`UPDATED SESSION: ${sessionId}`);
+        return { success: true };
     };
 
     const deleteTimeSession = async (sessionId) => {
-        // Optimistic
-        const oldSessions = [...timeSessions];
-        setTimeSessions(prev => prev.filter(s => s.id !== sessionId));
-
-        // DB Update
-        const { error } = await supabase.from('time_sessions').delete().eq('id', sessionId);
-
+        // Only update the screen after Supabase confirms exactly one row was deleted.
+        // A zero-row DELETE (for example, denied by RLS) must NEVER look successful.
+        const { data, error } = await supabase.from('time_sessions')
+            .delete().eq('id', sessionId).select('id');
         if (error) {
             console.error("Error deleting session:", error);
-            setTimeSessions(oldSessions); // Rollback
             return { error: error.message };
-        } else {
-            addLog(`DELETED SESSION: ${sessionId}`);
-            return { success: true };
         }
+        if (!data || data.length !== 1) {
+            return { error: "Suppression non effectuée : vérifiez les autorisations et rechargez vos heures." };
+        }
+        setTimeSessions(prev => prev.filter(row => String(row.id) !== String(sessionId)));
+        addLog(`DELETED SESSION: ${sessionId}`);
+        return { success: true };
     };
 
     const switchTask = async (sessionId, siteId, newSectionId) => {
@@ -1131,7 +1146,7 @@ export const AppProvider = ({ children }) => {
 
         const { data, error } = await supabase.from('time_sessions').insert([payload]).select().single();
         if (!error && data) {
-            setTimeSessions(prev => [data, ...prev]);
+            mergeTimeSessions([data]);
             addLog(`MANUAL TIME: ${currentUser?.name} added ${Math.round((new Date(endAt) - new Date(startAt)) / 3600000 * 10) / 10}h`);
             return { success: true };
         }
@@ -1191,6 +1206,7 @@ export const AppProvider = ({ children }) => {
         currentGeofenceSiteId,
         updateTimeSession,
         deleteTimeSession,
+        mergeTimeSessions,
 
         currentCompanyId,
         companySetupComplete,
