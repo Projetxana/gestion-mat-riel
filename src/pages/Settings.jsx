@@ -5,6 +5,7 @@ import { Save, UserPlus, Shield, Users, LogOut, Utensils, Coffee, MapPin, BarCha
 import { supabase } from '../supabaseClient';
 import UserModal from '../components/UserModal';
 import { useUserPreferences } from '../hooks/useUserPreferences';
+import CompanyPerformanceSettings from '../components/CompanyPerformanceSettings';
 
 import pkg from '../../package.json';
 
@@ -255,6 +256,7 @@ const Settings = () => {
                 </div>
 
                 {/* Preferences Panel */}
+                <CompanyPerformanceSettings />
                 <PreferencesPanel userId={currentUser?.id} />
 
                 {/* Logout Button */}
@@ -510,6 +512,7 @@ const Settings = () => {
                 </button>
             </div>
 
+            <CompanyPerformanceSettings />
             {/* Admin Preferences */}
             <PreferencesPanel userId={currentUser?.id} />
 
