@@ -114,14 +114,14 @@ const PreferencesPanel = ({ userId }) => {
                         checked={preferences.showHoursByTask}
                         onChange={(v) => updatePreference('showHoursByTask', v)}
                         label="Voir les heures par tâche"
-                        description="Afficher le détail du temps par tâche"
+                        description="Afficher les heures collectives cumulées par tâche et chantier"
                         icon={BarChart3}
                     />
                     <ToggleSwitch
                         checked={preferences.showHoursBySite}
                         onChange={(v) => updatePreference('showHoursBySite', v)}
                         label="Voir les heures par chantier"
-                        description="Afficher le temps total par chantier"
+                        description="Afficher les heures collectives cumulées depuis le démarrage"
                         icon={Briefcase}
                     />
                 </div>
