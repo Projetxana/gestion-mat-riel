@@ -44,13 +44,14 @@ const TASK_COLORS = [
 ];
 
 const WeeklyTimeEntry = () => {
-    const { sites, projectTasks, currentUser, currentCompanyId, timeSessions } = useAppContext();
+    const { sites, projectTasks, currentUser, currentCompanyId, timeSessions, mergeTimeSessions, deleteTimeSession } = useAppContext();
     const navigate = useNavigate();
 
     const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
     const [entries, setEntries] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [deletingEntryId, setDeletingEntryId] = useState(null);
 
     // Cache: preserve unsaved entries when navigating between weeks
     const entriesCache = React.useRef({});
@@ -71,79 +72,61 @@ const WeeklyTimeEntry = () => {
         return result;
     }
 
-    // Load entries from DB for a given week, merge with cache
+    // DB rows always win for saved entries; keep only unsaved drafts in the cache.
+    // This prevents an old cached row from reappearing after a confirmed DELETE.
     const loadWeekEntries = React.useCallback((start) => {
         const weekKey = formatDateISO(start);
-
-        // 1. Check cache first (unsaved user input)
-        if (entriesCache.current[weekKey]) {
-            setEntries(entriesCache.current[weekKey]);
-            return;
-        }
-
-        // 2. Load from existing timeSessions
+        const drafts = entriesCache.current[weekKey] || {};
         const days = getWeekDays(start);
         const weekEnd = new Date(start);
         weekEnd.setDate(weekEnd.getDate() + 7);
-
-        const weekSessions = (timeSessions || []).filter(s => {
-            if (!s.punch_start_at || !s.manual_entry) return false;
-            if (currentUser && String(s.user_id) !== String(currentUser.id)) return false;
-            const d = new Date(s.punch_start_at);
-            return d >= start && d < weekEnd;
+        const weekSessions = (timeSessions || []).filter(session => {
+            if (!session.punch_start_at || !session.manual_entry) return false;
+            if (currentUser && String(session.user_id) !== String(currentUser.id)) return false;
+            const date = new Date(session.punch_start_at);
+            return date >= start && date < weekEnd;
         });
 
-        if (weekSessions.length > 0) {
-            // Build entries from existing sessions
-            const result = {};
-            days.forEach(d => {
-                const dateKey = formatDateISO(d);
-                const daySessions = weekSessions.filter(s => {
-                    const sd = new Date(s.punch_start_at);
-                    return formatDateISO(sd) === dateKey;
+        const result = {};
+        for (const day of days) {
+            const dateKey = formatDateISO(day);
+            const savedEntries = weekSessions
+                .filter(session => formatDateISO(new Date(session.punch_start_at)) === dateKey)
+                .map(session => {
+                    const hours = (new Date(session.punch_end_at) - new Date(session.punch_start_at)) / 3600000;
+                    return {
+                        id: `db-${session.id}`,
+                        dbId: session.id,
+                        hours: (Math.round(hours * 2) / 2).toString(),
+                        siteId: String(session.site_id || ''),
+                        taskId: String(session.section_id || ''),
+                        saved: true,
+                    };
                 });
-
-                if (daySessions.length > 0) {
-                    result[dateKey] = daySessions.map(s => {
-                        const startMs = new Date(s.punch_start_at).getTime();
-                        const endMs = new Date(s.punch_end_at).getTime();
-                        const hours = Math.round((endMs - startMs) / 3600000 * 2) / 2;
-                        return {
-                            id: `db-${s.id}`,
-                            dbId: s.id,
-                            hours: hours.toString(),
-                            siteId: String(s.site_id || ''),
-                            taskId: String(s.section_id || ''),
-                            saved: true
-                        };
-                    });
-                } else {
-                    result[dateKey] = [{ id: crypto.randomUUID(), hours: '', siteId: '', taskId: '' }];
-                }
-            });
-            setEntries(result);
-        } else {
-            // 3. Empty week
-            setEntries(initWeekEntries(start));
+            const dayDrafts = (drafts[dateKey] || []).filter(entry => !entry.saved);
+            result[dateKey] = savedEntries.length || dayDrafts.length
+                ? [...savedEntries, ...dayDrafts]
+                : [{ id: crypto.randomUUID(), hours: '', siteId: '', taskId: '' }];
         }
-    }, [timeSessions, currentUser]);
+        setEntries(result);
+    }, [timeSessions, currentUser?.id]);
 
-    // Load entries when week changes or timeSessions update
     React.useEffect(() => {
         loadWeekEntries(weekStart);
     }, [weekStart, loadWeekEntries]);
 
-    // Save to cache whenever entries change
+    // Never cache saved records: the canonical source is the Supabase time_sessions table.
     React.useEffect(() => {
-        if (Object.keys(entries).length > 0) {
-            // Only cache if there's actual user input (not all empty)
-            const hasInput = Object.values(entries).some(dayEntries =>
-                dayEntries.some(e => e.hours || e.siteId || e.taskId)
+        const drafts = {};
+        for (const [dateKey, dayEntries] of Object.entries(entries)) {
+            const unsaved = dayEntries.filter(entry =>
+                !entry.saved && (entry.hours || entry.siteId || entry.taskId)
             );
-            if (hasInput) {
-                entriesCache.current[formatDateISO(weekStart)] = entries;
-            }
+            if (unsaved.length) drafts[dateKey] = unsaved;
         }
+        const weekKey = formatDateISO(weekStart);
+        if (Object.keys(drafts).length) entriesCache.current[weekKey] = drafts;
+        else delete entriesCache.current[weekKey];
     }, [entries, weekStart]);
 
     // Week navigation — save current to cache, then switch
@@ -193,13 +176,30 @@ const WeeklyTimeEntry = () => {
         }));
     };
 
-    const removeEntry = (dateKey, entryId) => {
-        setEntries(prev => {
-            const filtered = prev[dateKey].filter(e => e.id !== entryId);
-            if (filtered.length === 0) {
-                return { ...prev, [dateKey]: [{ id: crypto.randomUUID(), hours: '', siteId: '', taskId: '' }] };
+    const removeEntry = async (dateKey, entryId) => {
+        const entry = (entries[dateKey] || []).find(item => item.id === entryId);
+        if (!entry || deletingEntryId) return;
+        if (entry.saved && entry.dbId != null) {
+            if (!window.confirm('Supprimer définitivement ces heures enregistrées ?')) return;
+            setDeletingEntryId(entryId);
+            try {
+                const result = await deleteTimeSession(entry.dbId);
+                if (!result?.success) {
+                    alert(result?.error || 'La suppression n’a pas été confirmée.');
+                    return;
+                }
+            } finally {
+                setDeletingEntryId(null);
             }
-            return { ...prev, [dateKey]: filtered };
+        }
+        setEntries(prev => {
+            const filtered = (prev[dateKey] || []).filter(item => item.id !== entryId);
+            return {
+                ...prev,
+                [dateKey]: filtered.length
+                    ? filtered
+                    : [{ id: crypto.randomUUID(), hours: '', siteId: '', taskId: '' }]
+            };
         });
     };
 
@@ -306,9 +306,13 @@ const WeeklyTimeEntry = () => {
                 return;
             }
 
-            setShowSuccess(true);
-            // Clear cache for this week so it reloads from DB next time
+            if (!data || data.length !== valid.length) {
+                throw new Error('La sauvegarde n’a pas retourné toutes les heures attendues. Rechargez avant de réessayer.');
+            }
+            // Reflect saved sessions immediately in the home page without a browser refresh.
+            mergeTimeSessions(data);
             delete entriesCache.current[formatDateISO(weekStart)];
+            setShowSuccess(true);
             setTimeout(() => {
                 navigate('/timetracking');
             }, 1500);
@@ -485,6 +489,7 @@ const WeeklyTimeEntry = () => {
                                             {dayEntries.length > 1 ? (
                                                 <button
                                                     onClick={() => removeEntry(dateKey, entry.id)}
+                                                    disabled={!!deletingEntryId}
                                                     className="p-1.5 text-red-400/60 hover:text-red-400 transition-colors shrink-0"
                                                 >
                                                     <Trash2 size={14} />
