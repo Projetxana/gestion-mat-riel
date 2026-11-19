@@ -21,7 +21,7 @@ fi
 umask 077
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "$temp_dir"' EXIT
-source_counts="$(psql "${args[@]}" -d "$source_db" -XAtqc 'SELECT (SELECT count(*) FROM public.companies)::text || \'/\' || (SELECT count(*) FROM public.tasks)::text || \'/\' || (SELECT count(*) FROM public.invites)::text || \'/\' || (SELECT count(*) FROM public.company_users)::text;')"
+source_counts="$(psql "${args[@]}" -d "$source_db" -XAtqc "SELECT concat_ws('/',(SELECT count(*) FROM public.companies),(SELECT count(*) FROM public.tasks),(SELECT count(*) FROM public.invites),(SELECT count(*) FROM public.company_users));")"
 pg_dump "${args[@]}" -d "$source_db" --format=custom --no-owner --no-acl --schema=public --schema=auth --file="$temp_dir/fixture.dump"
 pg_restore --list "$temp_dir/fixture.dump" >"$temp_dir/manifest.txt"
 test -s "$temp_dir/manifest.txt"
@@ -32,7 +32,7 @@ fi
 createdb "${args[@]}" "$target_db"
 # Restore always targets a separate local database, never the source.
 pg_restore "${args[@]}" -d "$target_db" --exit-on-error --no-owner --no-acl "$temp_dir/fixture.dump"
-restored_counts="$(psql "${args[@]}" -d "$target_db" -XAtqc 'SELECT (SELECT count(*) FROM public.companies)::text || \'/\' || (SELECT count(*) FROM public.tasks)::text || \'/\' || (SELECT count(*) FROM public.invites)::text || \'/\' || (SELECT count(*) FROM public.company_users)::text;')"
+restored_counts="$(psql "${args[@]}" -d "$target_db" -XAtqc "SELECT concat_ws('/',(SELECT count(*) FROM public.companies),(SELECT count(*) FROM public.tasks),(SELECT count(*) FROM public.invites),(SELECT count(*) FROM public.company_users));")"
 if [[ "$source_counts" != "$restored_counts" ]]; then
   echo "FAIL: fixture row counts do not match" >&2
   exit 1
