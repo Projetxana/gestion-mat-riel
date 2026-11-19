@@ -21,7 +21,7 @@ CREATE TABLE public.companies(id uuid PRIMARY KEY, name text, owner_user_id uuid
 CREATE TABLE public.sites(id bigint PRIMARY KEY, name text, company_id uuid);
 CREATE TABLE public.tasks(id bigint PRIMARY KEY, name text NOT NULL, site_id bigint, company_id uuid, is_active boolean, created_at timestamptz);
 CREATE TABLE public.company_info(id bigint PRIMARY KEY, name text, address text);
-CREATE TABLE public.invites(id uuid PRIMARY KEY, company_id uuid, email text, token text, status text, created_at timestamp);
+CREATE TABLE public.invites(id uuid PRIMARY KEY, company_id uuid, email text, token text, status text DEFAULT 'pending', created_at timestamp);
 CREATE TABLE public.company_modules(id uuid PRIMARY KEY, company_id uuid, module_name text, is_active boolean);
 CREATE TABLE public.bookings(id uuid PRIMARY KEY, source text, guest text);
 
