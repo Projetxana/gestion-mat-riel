@@ -42,18 +42,18 @@ const SitesList = () => {
 
     return (
         <div>
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8">
                 <div>
                     <h1 className="page-title">Chantiers</h1>
                     <p className="text-slate-400">Gérez les projets actifs et l'équipement assigné</p>
                 </div>
-                <div className="flex gap-4">
+                <div className="flex flex-wrap items-center gap-2">
                     {/* Toggle visibility without deleting historical hours or equipment. */}
                     <button
                         type="button"
                         onClick={() => setShowArchived(value => !value)}
                         aria-pressed={showArchived}
-                        className={`px-3 py-2 text-sm rounded-lg border ${showArchived ? 'bg-blue-900/30 border-blue-600 text-blue-200' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
+                        className={`shrink-0 px-3 py-2 text-sm rounded-lg border ${showArchived ? 'bg-blue-900/30 border-blue-600 text-blue-200' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
                     >
                         {showArchived ? 'Chantiers actifs' : `Archivés (${archivedCount})`}
                     </button>
