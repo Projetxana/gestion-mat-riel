@@ -25,7 +25,7 @@ CREATE TABLE public.invites(id uuid PRIMARY KEY, company_id uuid, email text, to
 CREATE TABLE public.company_modules(id uuid PRIMARY KEY, company_id uuid, module_name text, is_active boolean);
 CREATE TABLE public.bookings(id uuid PRIMARY KEY, source text, guest text);
 
-INSERT INTO company_users VALUES
+INSERT INTO company_users(user_id,company_id,role) VALUES
 ('00000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','member'),
 ('00000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000001','admin'),
 ('00000000-0000-0000-0000-000000000003','20000000-0000-0000-0000-000000000001','member');
@@ -56,7 +56,7 @@ CREATE POLICY "multi-tenant-safe" ON public.tasks FOR ALL TO public USING (true)
 -- membership after inserting a company, within the same transaction.
 CREATE OR REPLACE FUNCTION public.create_company(company_name text)
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
-AS $
+AS $function$
 DECLARE
   new_company_id uuid;
   current_auth_user uuid;
@@ -72,7 +72,7 @@ BEGIN
   VALUES (new_company_id, current_auth_user, 'admin', now());
   RETURN new_company_id;
 END;
-$;
+$function$;
 REVOKE EXECUTE ON FUNCTION public.create_company(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_company(text) TO authenticated;
 
