@@ -822,17 +822,36 @@ export const AppProvider = ({ children }) => {
     }
 
 
-    const deleteSite = async (id) => {
-        const oldSites = [...sites];
-        const site = sites.find(s => s.id === id);
-        setSites(prev => prev.filter(s => s.id !== id));
-
-        const { error } = await supabase.from('sites').delete().eq('id', id);
+    const deleteSite = async (id, action = 'remove') => {
+        // Supabase decides atomically whether the site can be deleted or
+        // must be archived to preserve hours, equipment, and work history.
+        // Never optimistically remove the site: FK/RLS failures used to
+        // make it disappear until the next browser refresh.
+        const { data, error } = await supabase.rpc('bt_manage_site', {
+            p_site_id: Number(id),
+            p_action: action
+        });
         if (error) {
-            setSites(oldSites);
-        } else {
-            addLog(`Deleted site: ${site?.name}`);
+            console.error('Site management failed:', error);
+            return { success: false, error: error.message };
         }
+        const actualAction = data?.action;
+        if (!['deleted', 'archived', 'restored', 'unchanged'].includes(actualAction)) {
+            return { success: false, error: 'Changement non confirmé par le serveur.' };
+        }
+        if (actualAction === 'deleted') {
+            setSites(prev => prev.filter(site => String(site.id) !== String(id)));
+            setProjectTasks(prev => prev.filter(task => String(task.project_id) !== String(id)));
+        } else if (actualAction === 'archived' || actualAction === 'restored') {
+            setSites(prev => prev.map(site =>
+                String(site.id) === String(id)
+                    ? { ...site, status: actualAction === 'archived' ? 'archived' : 'active' }
+                    : site
+            ));
+        }
+        // Logging is best-effort and cannot change the confirmed result.
+        void addLog(`${actualAction.toUpperCase()} site: ${id}`);
+        return { success: true, action: actualAction, details: data };
     };
 
     // --- TASK ACTIONS ---
