@@ -3,6 +3,7 @@ import { useAppContext } from '../context/AppContext';
 import { supabase } from '../supabaseClient';
 import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Trash2, Copy, Clock, CheckCircle, Info } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { parseLocalizedHours, isValidQuarterHour, formatDecimalHours, stepQuarterHour } from '../utils/quarterHours';
 
 const DAYS_FR = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -97,7 +98,7 @@ const WeeklyTimeEntry = () => {
                     return {
                         id: `db-${session.id}`,
                         dbId: session.id,
-                        hours: (Math.round(hours * 2) / 2).toString(),
+                        hours: formatDecimalHours(Math.round(hours * 100) / 100),
                         siteId: String(session.site_id || ''),
                         taskId: String(session.section_id || ''),
                         saved: true,
@@ -230,9 +231,16 @@ const WeeklyTimeEntry = () => {
     };
 
     // Calculations
-    const getDayTotal = (dateKey) => {
-        return (entries[dateKey] || []).reduce((sum, e) => sum + (parseFloat(e.hours) || 0), 0);
-    };
+    const getDayTotal = (dateKey) =>
+        (entries[dateKey] || []).reduce((sum, entry) => {
+            const hours = parseLocalizedHours(entry.hours);
+            // Preserve the totals of older, already-saved records as stored.
+            // New entries must be in exact 15-minute increments.
+            const valid = entry.saved
+                ? hours != null && hours > 0 && hours <= 24
+                : isValidQuarterHour(hours);
+            return sum + (valid ? hours : 0);
+        }, 0);
 
     const weekTotal = useMemo(() => {
         return Object.keys(entries).reduce((sum, key) => sum + getDayTotal(key), 0);
@@ -241,14 +249,24 @@ const WeeklyTimeEntry = () => {
     const normalHours = Math.min(weekTotal, 40);
     const overtimeHours = Math.max(0, weekTotal - 40);
 
-    // Get all valid NEW entries for submission (exclude already saved)
+    // Count invalid draft durations so that typing 7,3 or 7:15 never silently
+    // saves a truncated value or discards a row without warning.
+    const getInvalidHoursCount = () =>
+        Object.values(entries).flat().filter(entry =>
+            !entry.saved &&
+            String(entry.hours ?? '').trim() !== '' &&
+            parseLocalizedHours(entry.hours) !== 0 &&
+            !isValidQuarterHour(parseLocalizedHours(entry.hours))
+        ).length;
+
+    // Get all valid NEW entries for submission (exclude already saved).
     const getValidEntries = () => {
         const valid = [];
         Object.entries(entries).forEach(([dateKey, dayEntries]) => {
-            dayEntries.forEach(e => {
-                const h = parseFloat(e.hours);
-                if (h > 0 && e.siteId && e.taskId && !e.saved) {
-                    valid.push({ date: dateKey, hours: h, siteId: e.siteId, taskId: e.taskId });
+            dayEntries.forEach(entry => {
+                const hours = parseLocalizedHours(entry.hours);
+                if (!entry.saved && isValidQuarterHour(hours) && entry.siteId && entry.taskId) {
+                    valid.push({ date: dateKey, hours, siteId: entry.siteId, taskId: entry.taskId });
                 }
             });
         });
@@ -260,7 +278,8 @@ const WeeklyTimeEntry = () => {
         let count = 0;
         Object.values(entries).forEach(dayEntries => {
             dayEntries.forEach(e => {
-                if (parseFloat(e.hours) > 0 && (!e.siteId || !e.taskId) && !e.saved) count++;
+                const hours = parseLocalizedHours(e.hours);
+                if (!e.saved && isValidQuarterHour(hours) && (!e.siteId || !e.taskId)) count++;
             });
         });
         return count;
@@ -273,6 +292,10 @@ const WeeklyTimeEntry = () => {
             return;
         }
         if (isSubmitting) return;
+        if (getInvalidHoursCount() > 0) {
+            alert('Les heures doivent être saisies par tranches de 15 minutes : 7,25 ; 7,5 ; 7,75, etc. (maximum 24 h par entrée).');
+            return;
+        }
         const valid = getValidEntries();
         if (valid.length === 0) {
             alert('Aucune entrée valide à enregistrer.');
@@ -323,16 +346,15 @@ const WeeklyTimeEntry = () => {
         setIsSubmitting(false);
     };
 
-    // Stepper for hours
-    const adjustHours = (dateKey, entryId, delta) => {
+    // Each press adjusts by exactly one quarter hour (15 minutes).
+    const adjustHours = (dateKey, entryId, deltaQuarters) => {
         setEntries(prev => ({
             ...prev,
-            [dateKey]: prev[dateKey].map(e => {
-                if (e.id !== entryId) return e;
-                const current = parseFloat(e.hours) || 0;
-                const next = Math.max(0, Math.round((current + delta) * 2) / 2); // 0.5 increments
-                return { ...e, hours: next > 0 ? next.toString() : '' };
-            })
+            [dateKey]: prev[dateKey].map(entry =>
+                entry.id === entryId
+                    ? { ...entry, hours: stepQuarterHour(entry.hours, deltaQuarters) }
+                    : entry
+            )
         }));
     };
 
@@ -343,7 +365,7 @@ const WeeklyTimeEntry = () => {
                     <CheckCircle size={48} className="text-emerald-400" />
                 </div>
                 <h2 className="text-2xl font-bold text-white mb-2">Heures enregistrées !</h2>
-                <p className="text-slate-400">{getValidEntries().length} entrées • {weekTotal.toFixed(1)} h</p>
+                <p className="text-slate-400">{getValidEntries().length} entrées • {formatDecimalHours(weekTotal)} h</p>
             </div>
         );
     }
@@ -377,7 +399,7 @@ const WeeklyTimeEntry = () => {
             {/* Info banner */}
             <div className="flex items-start gap-2 px-3 py-2 mb-5 rounded-lg bg-blue-500/10 border border-blue-500/20">
                 <Info size={16} className="text-blue-400 mt-0.5 shrink-0" />
-                <p className="text-xs text-blue-300">Saisissez le nombre d'heures par tâche et par chantier pour chaque jour.</p>
+                <p className="text-xs text-blue-300">Saisissez les heures par quarts d'heure : 7,25 = 7 h 15, 8,5 = 8 h 30. Les boutons + et − ajoutent ou retirent 15 minutes.</p>
             </div>
 
             {/* Day cards */}
@@ -402,7 +424,7 @@ const WeeklyTimeEntry = () => {
                                 <div className="flex items-center gap-2">
                                     {dayTotal > 0 && (
                                         <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                            {dayTotal.toFixed(1)} h
+                                            {formatDecimalHours(dayTotal)} h
                                         </span>
                                     )}
                                     {prevDateKey && getDayTotal(prevDateKey) > 0 && (
@@ -421,33 +443,45 @@ const WeeklyTimeEntry = () => {
                             <div className="px-3 py-2 space-y-2">
                                 {dayEntries.map((entry) => {
                                     const tasks = getTasksForSite(entry.siteId);
-                                    const hasHours = parseFloat(entry.hours) > 0;
-                                    const isIncomplete = hasHours && (!entry.siteId || !entry.taskId);
+                                    const parsedHours = parseLocalizedHours(entry.hours);
+                                    const hasHours = parsedHours != null && parsedHours > 0;
                                     const isSaved = entry.saved;
+                                    const hasInvalidHours = !isSaved &&
+                                        String(entry.hours ?? '').trim() !== '' &&
+                                        parsedHours !== 0 && !isValidQuarterHour(parsedHours);
+                                    const isIncomplete = hasHours && (!entry.siteId || !entry.taskId);
                                     return (
-                                        <div key={entry.id} className={`flex items-center gap-1.5 rounded-lg px-1 py-0.5 transition-colors ${isIncomplete ? 'bg-amber-500/10 ring-1 ring-amber-500/40' : ''} ${isSaved ? 'opacity-60' : ''}`}>
+                                        <div key={entry.id} className={`flex items-center gap-1.5 rounded-lg px-1 py-0.5 transition-colors ${hasInvalidHours ? 'bg-red-500/10 ring-1 ring-red-500/60' : isIncomplete ? 'bg-amber-500/10 ring-1 ring-amber-500/40' : ''} ${isSaved ? 'opacity-60' : ''}`}>
                                             {/* Hours stepper */}
                                             <div className="flex items-center bg-slate-800/60 rounded-lg border border-slate-700/50 shrink-0">
                                                 <button
                                                     type="button"
-                                                    onClick={() => adjustHours(dateKey, entry.id, -0.5)}
+                                                    onClick={() => adjustHours(dateKey, entry.id, -1)}
                                                     className="px-2 py-2 text-slate-400 hover:text-white text-sm font-bold"
                                                 >−</button>
                                                 <input
-                                                    type="number"
+                                                    type="text"
                                                     inputMode="decimal"
-                                                    step="0.5"
-                                                    min="0"
-                                                    max="24"
+                                                    autoComplete="off"
                                                     value={entry.hours}
                                                     onChange={(e) => updateEntry(dateKey, entry.id, 'hours', e.target.value)}
+                                                    onBlur={() => {
+                                                        const hours = parseLocalizedHours(entry.hours);
+                                                        if (hours === 0 || isValidQuarterHour(hours)) {
+                                                            updateEntry(dateKey, entry.id, 'hours',
+                                                                hours === 0 ? '' : formatDecimalHours(hours));
+                                                        }
+                                                    }}
+                                                    aria-label="Heures décimales par tranches de 15 minutes, par exemple 7,25"
+                                                    aria-invalid={hasInvalidHours}
+                                                    title="Exemple : 7,25 = 7 h 15 ; 8,5 = 8 h 30"
                                                     placeholder="0"
-                                                    className="w-10 text-center bg-transparent border-none text-sm font-bold text-white py-2 px-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                    className="w-12 text-center bg-transparent border-none text-sm font-bold text-white py-2 px-0 focus:outline-none"
                                                 />
                                                 <span className="text-xs text-slate-500 -ml-1 mr-1">h</span>
                                                 <button
                                                     type="button"
-                                                    onClick={() => adjustHours(dateKey, entry.id, 0.5)}
+                                                    onClick={() => adjustHours(dateKey, entry.id, 1)}
                                                     className="px-2 py-2 text-slate-400 hover:text-white text-sm font-bold"
                                                 >+</button>
                                             </div>
@@ -532,16 +566,24 @@ const WeeklyTimeEntry = () => {
                             </div>
                             <div>
                                 <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">Total semaine</p>
-                                <p className="text-xl font-black text-white">{weekTotal.toFixed(1)} h</p>
+                                <p className="text-xl font-black text-white">{formatDecimalHours(weekTotal)} h</p>
                             </div>
                         </div>
                         <div className="text-right text-xs space-y-0.5">
-                            <p className="text-slate-400">Normales: <span className="text-white font-bold">{normalHours.toFixed(1)} h</span></p>
+                            <p className="text-slate-400">Normales: <span className="text-white font-bold">{formatDecimalHours(normalHours)} h</span></p>
                             {overtimeHours > 0 && (
-                                <p className="text-amber-400">Supp: <span className="font-bold">{overtimeHours.toFixed(1)} h</span></p>
+                                <p className="text-amber-400">Supp: <span className="font-bold">{formatDecimalHours(overtimeHours)} h</span></p>
                             )}
                         </div>
                     </div>
+
+                    {/* Invalid values must never be silently truncated or submitted. */}
+                    {getInvalidHoursCount() > 0 && (
+                        <p role="alert" className="text-xs text-red-300 mb-2 flex items-center gap-1">
+                            <Info size={12} />
+                            Durée invalide : utilisez 0,25 h, 0,5 h, 0,75 h ou des heures entières (maximum 24 h).
+                        </p>
+                    )}
 
                     {/* Warning for incomplete entries */}
                     {getIncompleteCount() > 0 && (
@@ -554,9 +596,9 @@ const WeeklyTimeEntry = () => {
                     {/* Submit button */}
                     <button
                         onClick={handleSubmit}
-                        disabled={isSubmitting || getValidEntries().length === 0}
+                        disabled={isSubmitting || getValidEntries().length === 0 || getInvalidHoursCount() > 0}
                         className={`w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-                            getValidEntries().length > 0
+                            getValidEntries().length > 0 && getInvalidHoursCount() === 0
                                 ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30'
                                 : 'bg-slate-800 text-slate-500 cursor-not-allowed'
                         }`}
@@ -565,7 +607,7 @@ const WeeklyTimeEntry = () => {
                             <>Enregistrement...</>
                         ) : (
                             <>
-                                Enregistrer les heures ({weekTotal.toFixed(1)} h)
+                                Enregistrer les heures ({formatDecimalHours(weekTotal)} h)
                                 <CheckCircle size={18} />
                             </>
                         )}
