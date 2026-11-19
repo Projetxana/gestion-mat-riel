@@ -1,21 +1,63 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { X, MapPin, Hammer, ExternalLink } from 'lucide-react';
 import MaterialDetailsModal from './MaterialDetailsModal';
 import SiteFormModal from './SiteFormModal';
 
 const SiteDetailsModal = ({ site: initialSite, onClose }) => {
-    const { materials, sites, currentUser, deleteSite } = useAppContext();
+    const { materials, sites, currentUser, saasSession, currentCompanyId, deleteSite } = useAppContext();
     const [selectedTool, setSelectedTool] = useState(null);
     const [showEditForm, setShowEditForm] = useState(false);
+    const [isCompanyAdmin, setIsCompanyAdmin] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [actionError, setActionError] = useState('');
+
+    // SaaS Auth users carry role="authenticated", not their company role.
+    // Show management controls only for a verified tenant administrator.
+    useEffect(() => {
+        let active = true;
+        const userId = saasSession?.user?.id || currentUser?.id;
+        if (!userId || !currentCompanyId) {
+            setIsCompanyAdmin(false);
+            return;
+        }
+        supabase.from('company_users')
+            .select('role')
+            .eq('user_id', userId)
+            .eq('company_id', currentCompanyId)
+            .maybeSingle()
+            .then(({ data, error }) => {
+                if (active) setIsCompanyAdmin(!error && data?.role === 'admin');
+            });
+        return () => { active = false; };
+    }, [saasSession?.user?.id, currentUser?.id, currentCompanyId]);
 
     // Get reactive site data from context, fallback to initialSite prop
     const site = sites.find(s => s.id === initialSite.id) || initialSite;
 
-    const handleDelete = () => {
-        if (confirm('Êtes-vous sûr de vouloir supprimer ce chantier ?')) {
-            deleteSite(site.id);
+    const handleManage = async (action) => {
+        if (isDeleting || !isCompanyAdmin) return;
+        setActionError('');
+        const message = action === 'restore'
+            ? `Restaurer le chantier « ${site.name} » ?`
+            : `Retirer le chantier « ${site.name} » ?\n\nS'il contient des heures, du matériel ou un historique réalisé, il sera archivé et ses données conservées. Sinon il sera supprimé définitivement avec ses tâches.`;
+        if (!window.confirm(message)) return;
+        setIsDeleting(true);
+        try {
+            const result = await deleteSite(site.id, action);
+            if (!result?.success) {
+                setActionError(result?.error || 'Opération non confirmée par le serveur.');
+                return;
+            }
             onClose();
+            if (result.action === 'archived') {
+                window.alert('Chantier archivé : il a été retiré de la liste normale, mais ses heures, son matériel et son historique sont conservés.');
+            }
+        } catch (error) {
+            setActionError(error?.message || 'Erreur réseau. Aucune suppression confirmée.');
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -33,10 +75,18 @@ const SiteDetailsModal = ({ site: initialSite, onClose }) => {
                                 }`}>
                                 {site.status === 'active' ? 'Actif' : site.status}
                             </span>
-                            {currentUser?.role === 'admin' && (
+                            {isCompanyAdmin && (
                                 <div className="flex gap-2 ml-4">
-                                    <button onClick={() => setShowEditForm(true)} className="text-xs text-slate-500 hover:text-blue-400">Modifier</button>
-                                    <button onClick={handleDelete} className="text-xs text-slate-500 hover:text-red-500">Supprimer</button>
+                                    <button disabled={isDeleting} onClick={() => setShowEditForm(true)} className="text-xs text-slate-400 hover:text-blue-400 disabled:opacity-50">Modifier</button>
+                                    {site.status === 'archived' ? (
+                                        <button disabled={isDeleting} onClick={() => handleManage('restore')} className="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-50">
+                                            {isDeleting ? 'Restauration…' : 'Restaurer'}
+                                        </button>
+                                    ) : (
+                                        <button disabled={isDeleting} onClick={() => handleManage('remove')} className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
+                                            {isDeleting ? 'Traitement…' : 'Supprimer'}
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -59,6 +109,8 @@ const SiteDetailsModal = ({ site: initialSite, onClose }) => {
                         <X size={24} />
                     </button>
                 </div>
+
+                {actionError && <p role="alert" className="px-6 py-3 text-sm text-red-300 bg-red-950/40 border-b border-red-900/50">{actionError}</p>}
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6">
