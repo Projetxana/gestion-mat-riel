@@ -5,6 +5,7 @@ import { Save, UserPlus, Shield, Users, LogOut, Utensils, Coffee, MapPin, BarCha
 import { supabase } from '../supabaseClient';
 import UserModal from '../components/UserModal';
 import { useUserPreferences } from '../hooks/useUserPreferences';
+import CompanyPerformanceSettings from '../components/CompanyPerformanceSettings';
 
 import pkg from '../../package.json';
 
@@ -183,6 +184,8 @@ const Settings = () => {
                     </div>
                 </div>
 
+                {/* Company-level feature opt-in, visible only to verified company admins. */}
+                <CompanyPerformanceSettings />
                 {/* Preferences Panel */}
                 <PreferencesPanel userId={currentUser?.id} />
 
@@ -440,6 +443,8 @@ const Settings = () => {
                 </button>
             </div>
 
+            {/* Company-level feature opt-in, separate from personal display preferences. */}
+            <CompanyPerformanceSettings />
             {/* Admin Preferences */}
             <PreferencesPanel userId={currentUser?.id} />
 
