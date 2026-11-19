@@ -6,7 +6,7 @@
  */
 export const parseLocalizedHours = (raw) => {
     const text = String(raw ?? '').trim().replace(',', '.');
-    if (!/^\\d+(?:\\.\\d{1,2})?$/.test(text)) return null;
+    if (!/^\d+(?:\.\d{1,2})?$/.test(text)) return null;
     const hours = Number(text);
     return Number.isFinite(hours) ? hours : null;
 };
