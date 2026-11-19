@@ -400,7 +400,7 @@ export const AppProvider = ({ children }) => {
     }
 
     const joinCompanySaaS = async (token) => {
-        const { error } = await supabase.rpc('accept_invite', { p_token: token, p_user_id: saasSession?.user?.id });
+        const { error } = await supabase.rpc('bt_accept_invite_secure', { invite_token: token });
         if (error) return error.message;
         // Refresh company ID after joining
         await fetchCompanyId();
