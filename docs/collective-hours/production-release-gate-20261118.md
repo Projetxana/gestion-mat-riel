@@ -35,3 +35,10 @@ Supabase production: `hxjkhkpgacaioghcanhp`. **Never deploy this SQL to a differ
 - Prepare least-privilege forward fixes to correct blocked flows instead. Database rollback needs dedicated security approval.
 
 **Status: HOLD / not released.** CI unit tests passing alone are not a production approval.
+
+## Invitation flow validation (2026-11-18)
+- Live Edge Function `buildtrack-invite-user` v5 was inspected read-only. `src/pages/Settings.jsx` invokes it. Its backend validates the authenticated caller and membership `admin` in the requested company, then uses Supabase Admin Auth invitation plus service-role profile and membership writes. This path does **not** use `public.invites` or `public.accept_invite`.
+- Legacy `joinCompanySaaS` previously called `accept_invite` with parameter names not matching its SQL signature. The new branch calls `bt_accept_invite_secure(invite_token)`; staged migration `docs/collective-hours/proposed-secure-invite.sql` adds verified-email, pending token and single-use checks. It is **not yet applied to production**.
+- PostgreSQL 17 test fixture verifies mismatched-email rejection, exact recipient acceptance, and replay rejection with fictitious users. Passing this fixture is not evidence of a real email delivery/activation E2E test.
+- Security issue [#9](https://github.com/Projetxana/gestion-mat-riel/issues/9) tracks legacy `create_company_user` which writes and returns password fields. Do not publish broad onboarding features until remediated.
+- **Deployment order:** validate Edge Function invite and existing login; apply vetted DB functions and RLS changes with a verified backup first; then publish frontend from `main`. Changing frontend before the secure RPC is installed breaks legacy token joining.
