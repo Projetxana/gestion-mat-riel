@@ -31,7 +31,7 @@ if psql "${args[@]}" -d postgres -XAtqc "SELECT 1 FROM pg_database WHERE datname
 fi
 createdb "${args[@]}" "$target_db"
 # Restore always targets a separate local database, never the source.
-pg_restore "${args[@]}" -d "$target_db" --exit-on-error --no-owner --no-acl "$temp_dir/fixture.dump"
+pg_restore "${args[@]}" -d "$target_db" --exit-on-error --clean --if-exists --no-owner --no-acl "$temp_dir/fixture.dump"
 restored_counts="$(psql "${args[@]}" -d "$target_db" -XAtqc "SELECT concat_ws('/',(SELECT count(*) FROM public.companies),(SELECT count(*) FROM public.tasks),(SELECT count(*) FROM public.invites),(SELECT count(*) FROM public.company_users));")"
 if [[ "$source_counts" != "$restored_counts" ]]; then
   echo "FAIL: fixture row counts do not match" >&2
