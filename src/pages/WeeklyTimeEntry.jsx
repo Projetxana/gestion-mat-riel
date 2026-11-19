@@ -396,12 +396,6 @@ const WeeklyTimeEntry = () => {
                 </button>
             </div>
 
-            {/* Info banner */}
-            <div className="flex items-start gap-2 px-3 py-2 mb-5 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                <Info size={16} className="text-blue-400 mt-0.5 shrink-0" />
-
-            </div>
-
             {/* Day cards */}
             <div className="space-y-3">
                 {weekDays.map((day, dayIdx) => {
@@ -478,7 +472,7 @@ const WeeklyTimeEntry = () => {
                                                     placeholder="0"
                                                     className="w-12 text-center bg-transparent border-none text-sm font-bold text-white py-2 px-0 focus:outline-none"
                                                 />
-                                                <span className="text-xs text-slate-500 -ml-1 mr-1">h</span>
+
                                                 <button
                                                     type="button"
                                                     onClick={() => adjustHours(dateKey, entry.id, 1)}
