@@ -40,6 +40,8 @@ jobs:
         env:
           PGPASSWORD: fixture-only
         run: psql -h 127.0.0.1 -U postgres -d buildtrack_test -v ON_ERROR_STOP=1 -f tests/tenant-rls-postgres.sql
+      - name: Validate operator backup script syntax
+        run: bash -n scripts/backup-buildtrack-prod.sh
       - name: Recovery drill (local fabricated database only)
         env:
           PGPASSWORD: fixture-only
