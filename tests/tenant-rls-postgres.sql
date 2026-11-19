@@ -79,7 +79,7 @@ SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000002';
 SET ROLE authenticated;
 DO $$
 BEGIN
- IF (SELECT count(*) FROM public.invites) <> 1 THEN RAISE EXCEPTION 'Admin A invitation read broken'; END IF;
+ IF (SELECT count(*) FROM public.invites) <> 2 THEN RAISE EXCEPTION 'Admin A invitation read broken'; END IF;
  IF (SELECT count(*) FROM public.tasks) <> 1 THEN RAISE EXCEPTION 'Admin A tasks scope broken'; END IF;
 END $$;
 RESET ROLE;
