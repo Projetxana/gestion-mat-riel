@@ -68,28 +68,32 @@ const SiteDetailsModal = ({ site: initialSite, onClose }) => {
             <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl overflow-hidden flex flex-col">
                 {/* Header */}
                 <div className="flex items-start justify-between p-6 border-b border-slate-800 bg-slate-900/50">
-                    <div>
-                        <div className="flex items-center gap-3 mb-2">
-                            <h2 className="text-2xl font-bold text-white max-w-md truncate">{site.name}</h2>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${site.status === 'active' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-slate-500/10 text-slate-400'
-                                }`}>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <h2 className="text-xl sm:text-2xl font-bold text-white break-words min-w-0">{site.name}</h2>
+                            <span className={`shrink-0 px-2 py-1 rounded-full text-xs font-medium border ${site.status === 'active' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-slate-500/10 text-slate-400 border-slate-500/20'}`}>
                                 {site.status === 'active' ? 'Actif' : site.status}
                             </span>
-                            {isCompanyAdmin && (
-                                <div className="flex gap-2 ml-4">
-                                    <button disabled={isDeleting} onClick={() => setShowEditForm(true)} className="text-xs text-slate-400 hover:text-blue-400 disabled:opacity-50">Modifier</button>
-                                    {site.status === 'archived' ? (
-                                        <button disabled={isDeleting} onClick={() => handleManage('restore')} className="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-50">
-                                            {isDeleting ? 'Restauration…' : 'Restaurer'}
-                                        </button>
-                                    ) : (
-                                        <button disabled={isDeleting} onClick={() => handleManage('remove')} className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">
-                                            {isDeleting ? 'Traitement…' : 'Supprimer'}
-                                        </button>
-                                    )}
-                                </div>
-                            )}
                         </div>
+                        {isCompanyAdmin && (
+                            <div className="flex flex-wrap gap-2 my-3" aria-label="Actions sur le chantier">
+                                <button type="button" disabled={isDeleting} onClick={() => setShowEditForm(true)}
+                                    className="min-h-10 px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm font-semibold disabled:opacity-50">
+                                    Modifier
+                                </button>
+                                {site.status === 'archived' ? (
+                                    <button type="button" disabled={isDeleting} onClick={() => handleManage('restore')}
+                                        className="min-h-10 px-3 py-2 rounded-lg border border-emerald-800 bg-emerald-950/40 text-emerald-300 text-sm font-semibold disabled:opacity-50">
+                                        {isDeleting ? 'Restauration…' : 'Restaurer'}
+                                    </button>
+                                ) : (
+                                    <button type="button" disabled={isDeleting} onClick={() => handleManage('remove')}
+                                        className="min-h-10 px-3 py-2 rounded-lg border border-red-800 bg-red-950/40 text-red-300 text-sm font-semibold disabled:opacity-50">
+                                        {isDeleting ? 'Traitement…' : 'Supprimer'}
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
                         <div className="flex items-center gap-2 text-slate-400">
                             <MapPin size={16} />
@@ -104,7 +108,7 @@ const SiteDetailsModal = ({ site: initialSite, onClose }) => {
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                        className="shrink-0 p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
                     >
                         <X size={24} />
                     </button>
