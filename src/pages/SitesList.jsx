@@ -9,6 +9,7 @@ const SitesList = () => {
     const [viewMode, setViewMode] = useState('grid');
     const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
     const [showAddModal, setShowAddModal] = useState(false);
+    const [showArchived, setShowArchived] = useState(false);
     const [selectedSite, setSelectedSite] = useState(null);
 
     const getToolCount = (siteId) => {
@@ -22,7 +23,11 @@ const SitesList = () => {
         }));
     };
 
-    const sortedSites = [...sites].sort((a, b) => {
+    const archivedCount = sites.filter(site => site.status === 'archived').length;
+    const visibleSites = sites.filter(site => showArchived
+        ? site.status === 'archived'
+        : site.status !== 'archived');
+    const sortedSites = [...visibleSites].sort((a, b) => {
         const direction = sortConfig.direction === 'asc' ? 1 : -1;
 
         if (sortConfig.key === 'count') {
@@ -43,6 +48,15 @@ const SitesList = () => {
                     <p className="text-slate-400">Gérez les projets actifs et l'équipement assigné</p>
                 </div>
                 <div className="flex gap-4">
+                    {/* Toggle visibility without deleting historical hours or equipment. */}
+                    <button
+                        type="button"
+                        onClick={() => setShowArchived(value => !value)}
+                        aria-pressed={showArchived}
+                        className={`px-3 py-2 text-sm rounded-lg border ${showArchived ? 'bg-blue-900/30 border-blue-600 text-blue-200' : 'bg-slate-800 border-slate-700 text-slate-300'}`}
+                    >
+                        {showArchived ? 'Chantiers actifs' : `Archivés (${archivedCount})`}
+                    </button>
                     {/* View Toggle */}
                     <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 h-fit">
                         <button
@@ -71,6 +85,11 @@ const SitesList = () => {
                 </div>
             </div>
 
+            {sortedSites.length === 0 && (
+                <p role="status" className="p-6 text-slate-400 text-sm">
+                    {showArchived ? 'Aucun chantier archivé.' : 'Aucun chantier à afficher.'}
+                </p>
+            )}
             {viewMode === 'grid' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {sortedSites.map((site) => (
