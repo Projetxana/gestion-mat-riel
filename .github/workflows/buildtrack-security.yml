@@ -40,5 +40,9 @@ jobs:
         env:
           PGPASSWORD: fixture-only
         run: psql -h 127.0.0.1 -U postgres -d buildtrack_test -v ON_ERROR_STOP=1 -f tests/tenant-rls-postgres.sql
+      - name: Recovery drill (local fabricated database only)
+        env:
+          PGPASSWORD: fixture-only
+        run: bash tests/tenant-recovery-fixture.sh
       - run: node --test tests/collective-hours.test.mjs tests/tenant-rls.test.mjs
       - run: npm run build
