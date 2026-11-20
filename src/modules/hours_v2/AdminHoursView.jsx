@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import ProjectHoursProgress from '../../components/ProjectHoursProgress';
 import { useUserPreferences } from '../../hooks/useUserPreferences';
+import { Link } from 'react-router-dom';
 
 const localDate = (date) => {
     const d = new Date(date);
@@ -40,12 +41,12 @@ export default function AdminHoursView() {
             // Fail closed: never display sessions without an explicit company match.
             if (String(s.company_id || '') !== String(currentCompanyId)) continue;
             if (!s.punch_start_at || !s.punch_end_at) continue;
-            const t = new Date(s.punch_start_at);
+            const t = new Date(s.corrected_start_at || s.punch_start_at);
             if (t < week || t >= end) continue;
             const employeeKey = String(s.user_id);
             if (!employees.has(employeeKey)) continue;
             const item = totals.get(employeeKey) || { name: employees.get(employeeKey), hours: 0, sessions: 0, bySite: {} };
-            const h = hoursBetween(s.punch_start_at, s.punch_end_at);
+            const h = hoursBetween(s.corrected_start_at || s.punch_start_at, s.corrected_end_at || s.punch_end_at);
             item.hours += h;
             item.sessions += 1;
             const site = siteNames.get(String(s.site_id)) || 'Chantier non identifié';
@@ -111,7 +112,12 @@ export default function AdminHoursView() {
     };
     return (
         <div className="mx-auto max-w-4xl p-4 pb-24 text-slate-100 space-y-5">
-            <div><h1 className="text-2xl font-bold">Heures des employés</h1><p className="text-slate-400">Consultation seulement — aucune modification des pointages.</p></div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><h1 className="text-2xl font-bold">Heures des employés</h1><p className="text-slate-400">Heures corrigées prises en compte dans les totaux.</p></div>
+                <Link to="/timetracking/validation" className="min-h-11 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white">
+                    Vérifier, corriger et valider
+                </Link>
+            </div>
             <div className="flex items-center gap-3 rounded-xl bg-slate-800 p-3">
                 <button className="rounded-lg bg-slate-700 px-4 py-2" onClick={() => changeWeek(-1)} aria-label="Semaine précédente">←</button>
                 <span className="flex-1 text-center font-semibold">Semaine du {localDate(week)} au {localDate(new Date(end.getTime() - 86400000))}</span>
