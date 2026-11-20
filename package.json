@@ -5,14 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run test:hours && npm run test:weekly-approval && npm run test:duration-correction && npm run test:task-performance && npm run test:performance-trends && vite build",
+    "build": "npm run test:hours && npm run test:weekly-approval && npm run test:duration-correction && npm run test:task-performance && npm run test:performance-trends && npm run test:project-monitoring && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:hours": "node --test tests/quarter-hours.test.mjs",
     "test:weekly-approval": "node --test tests/weekly-approval.test.mjs",
     "test:duration-correction": "node --test tests/session-duration-correction.test.mjs",
     "test:task-performance": "node --test tests/task-performance.test.mjs",
-    "test:performance-trends": "node --test tests/performance-trends.test.mjs"
+    "test:performance-trends": "node --test tests/performance-trends.test.mjs",
+    "test:project-monitoring": "node --test tests/project-monitoring.test.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.3.0",
