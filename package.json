@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run test:hours && vite build",
+    "build": "npm run test:hours && npm run test:weekly-approval && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:hours": "node --test tests/quarter-hours.test.mjs"
+    "test:hours": "node --test tests/quarter-hours.test.mjs",
+    "test:weekly-approval": "node --test tests/weekly-approval.test.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.3.0",

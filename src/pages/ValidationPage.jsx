@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock, Pencil, ShieldCheck, X } from 'lucide-react';
+import { CheckCircle2, Clock, Pencil, ShieldCheck, X, ChevronDown, ChevronUp, UsersRound } from 'lucide-react';
 import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
+import { groupSessionsByEmployee, formatDuration } from '../utils/weeklyApproval';
 
 const mondayOf = (date) => {
     const day = new Date(date);
@@ -40,6 +41,7 @@ export default function ValidationPage() {
     const isAdmin = currentUser?.role === 'admin';
     const [week, setWeek] = useState(() => mondayOf(new Date()));
     const [filter, setFilter] = useState('pending');
+    const [expandedUser, setExpandedUser] = useState(null);
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
     const [busyId, setBusyId] = useState(null);
@@ -65,14 +67,13 @@ export default function ValidationPage() {
         if (!isAdmin || !currentCompanyId) return;
         setLoading(true);
         setError('');
-        const { data, error: loadError } = await supabase
-            .from('time_sessions')
-            .select('*')
-            .eq('company_id', currentCompanyId)
-            .gte('punch_start_at', week.toISOString())
-            .lt('punch_start_at', weekEnd.toISOString())
-            .not('punch_end_at', 'is', null)
-            .order('punch_start_at', { ascending: false });
+        // DB applies the same effective-start week boundaries used for atomic
+        // approval. A corrected date can move an entry between weeks.
+        const { data, error: loadError } = await supabase.rpc('bt_review_week_sessions', {
+            p_company_id: currentCompanyId,
+            p_week_start: week.toISOString(),
+            p_week_end: weekEnd.toISOString(),
+        });
         if (loadError) {
             setError('Impossible de charger les pointages : ' + loadError.message);
         } else {
@@ -85,9 +86,19 @@ export default function ValidationPage() {
         void loadSessions();
     }, [loadSessions]);
 
-    const displayed = useMemo(() => rows.filter(row =>
-        filter === 'approved' ? row.approved === true : row.approved !== true
-    ), [rows, filter]);
+    const employeeGroups = useMemo(
+        () => groupSessionsByEmployee(rows, getUserName),
+        [rows, getUserName]
+    );
+    const pendingGroups = useMemo(
+        () => employeeGroups.filter(group => group.pendingCount > 0),
+        [employeeGroups]
+    );
+    const approvedGroups = useMemo(
+        () => employeeGroups.filter(group => group.pendingCount === 0),
+        [employeeGroups]
+    );
+    const displayed = filter === 'approved' ? approvedGroups : pendingGroups;
 
     const refreshRow = (updated) => {
         setRows(previous => previous.map(row =>
@@ -180,26 +191,40 @@ export default function ValidationPage() {
         setDraft(null);
         setMessage('Correction enregistrée, pointage placé en attente de validation.');
         setFilter('pending');
+        setExpandedUser(String(session.user_id));
     };
 
-    const approve = async (session) => {
-        if (!isAdmin || busyId != null) return;
-        if (!window.confirm(`Valider les heures de ${getUserName(session.user_id)} (${hoursDuration(effectiveStart(session), effectiveEnd(session))}) ?`)) return;
-        setBusyId(session.id);
+    const approveWeek = async (group) => {
+        if (!isAdmin || busyId != null || group.pendingCount === 0 || editingId != null) return;
+        const messageText = 'Valider la semaine de ' + group.name
+            + ' ?\n' + group.pendingCount + ' saisie(s) en attente, '
+            + formatDuration(group.totalMinutes) + ' h au total.\n'
+            + 'La validation concerne uniquement les entrées encore en attente.';
+        if (!window.confirm(messageText)) return;
+        setBusyId('week:' + group.userId);
         setError('');
         setMessage('');
-        const { data, error: updateError } = await supabase.from('time_sessions')
-            .update({ approved: true })
-            .eq('id', session.id)
-            .eq('company_id', currentCompanyId)
-            .select('*');
-        setBusyId(null);
-        if (updateError || data?.length !== 1) {
-            setError(updateError?.message || 'Validation non confirmée par le serveur.');
-            return;
+        try {
+            const { data, error: updateError } = await supabase.rpc('bt_approve_employee_week', {
+                p_company_id: currentCompanyId,
+                p_employee_id: group.userId,
+                p_week_start: week.toISOString(),
+                p_week_end: weekEnd.toISOString(),
+                p_expected_ids: group.pendingIds,
+            });
+            if (updateError || Number(data) !== group.pendingCount) {
+                setError(updateError?.message || 'Validation non confirmée. Actualisez puis réessayez.');
+                await loadSessions();
+                return;
+            }
+            await loadSessions();
+            setExpandedUser(null);
+            setMessage(group.pendingCount + ' saisie(s) validée(s) pour ' + group.name + '.');
+        } catch (caught) {
+            setError(caught?.message || 'Erreur de validation de la semaine.');
+        } finally {
+            setBusyId(null);
         }
-        refreshRow(data[0]);
-        setMessage('Heures validées par un administrateur.');
     };
 
     if (companyRoleLoading || !currentCompanyId) {
@@ -215,7 +240,7 @@ export default function ValidationPage() {
             <header className="flex flex-wrap justify-between items-center gap-3">
                 <div>
                     <h1 className="text-2xl font-bold flex gap-2 items-center"><ShieldCheck className="text-blue-400" /> Validation des heures</h1>
-                    <p className="text-sm text-slate-400 mt-1">Accès administrateur · Correction avec historique et motif obligatoire</p>
+                    <p className="text-sm text-slate-400 mt-1">Une carte par employé · Détails et corrections sur demande</p>
                 </div>
                 <Link to="/timetracking" className="text-blue-300 hover:underline text-sm">Retour aux heures</Link>
             </header>
@@ -233,15 +258,15 @@ export default function ValidationPage() {
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-                <button type="button" onClick={() => { setFilter('pending'); setEditingId(null); }}
+                <button type="button" onClick={() => { setFilter('pending'); setEditingId(null); setExpandedUser(null); }}
                     aria-pressed={filter === 'pending'}
                     className={`px-4 py-2.5 rounded-lg font-semibold ${filter === 'pending' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
-                    À valider ({rows.filter(row => row.approved !== true).length})
+                    À valider ({pendingGroups.length})
                 </button>
-                <button type="button" onClick={() => { setFilter('approved'); setEditingId(null); }}
+                <button type="button" onClick={() => { setFilter('approved'); setEditingId(null); setExpandedUser(null); }}
                     aria-pressed={filter === 'approved'}
                     className={`px-4 py-2.5 rounded-lg font-semibold ${filter === 'approved' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
-                    Validées ({rows.filter(row => row.approved === true).length})
+                    Validées ({approvedGroups.length})
                 </button>
                 <button type="button" onClick={() => void loadSessions()} className="ml-auto text-sm text-blue-300 underline">Actualiser</button>
             </div>
@@ -251,17 +276,75 @@ export default function ValidationPage() {
             {loading && <p role="status" className="text-slate-400">Chargement des heures…</p>}
 
             {!loading && displayed.length === 0 &&
-                <p className="rounded-xl bg-slate-800 p-6 text-slate-300">Aucune session {filter === 'pending' ? 'en attente' : 'validée'} pour cette semaine.</p>}
+                <p className="rounded-xl bg-slate-800 p-6 text-slate-300">Aucun employé {filter === 'pending' ? 'en attente de validation' : 'avec une semaine entièrement validée'} pour cette semaine.</p>}
 
+
+            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
+                <UsersRound size={17} />
+                <span>{displayed.length} employé(s) · {formatDuration(displayed.reduce((sum, group) => sum + group.totalMinutes, 0))} h</span>
+                <span className="text-slate-500">Clique sur un employé pour afficher et corriger ses journées.</span>
+            </div>
             <div className="space-y-3">
-                {displayed.map(session => {
+                {displayed.map(group => {
+                    const expanded = expandedUser === group.userId;
+                    const regionId = 'weekly-review-' + group.userId.replace(/[^a-zA-Z0-9_-]/g,'');
+                    return (
+                        <section key={group.userId} className="rounded-xl border border-slate-700 bg-slate-800/90 overflow-hidden">
+                            <div className="flex flex-col sm:flex-row sm:items-stretch gap-2 p-3 sm:p-4">
+                                <button type="button"
+                                    aria-expanded={expanded}
+                                    aria-controls={regionId}
+                                    onClick={() => {
+                                        setExpandedUser(previous => previous === group.userId ? null : group.userId);
+                                        setEditingId(null);
+                                        setDraft(null);
+                                    }}
+                                    className="flex-1 flex flex-wrap items-center justify-between gap-3 rounded-lg p-2 text-left hover:bg-slate-700/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400 min-h-12"
+                                >
+                                    <div className="flex min-w-0 flex-col gap-1">
+                                        <span className="text-lg font-bold text-white">{group.name}</span>
+                                        <span className="text-sm text-slate-400">
+                                            {group.days.length} jour(s) · {group.sessions.length} saisie(s)
+                                            {group.pendingCount > 0 && group.approvedCount > 0 ? ' · ' + group.approvedCount + ' déjà validée(s)' : ''}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="text-right">
+                                            <div className="text-xl font-bold text-white tabular-nums">{formatDuration(group.totalMinutes)} h</div>
+                                            <div className={group.pendingCount > 0 ? 'text-xs font-semibold text-amber-300' : 'text-xs font-semibold text-emerald-300'}>
+                                                {group.pendingCount > 0 ? group.pendingCount + ' à valider' : 'Semaine validée'}
+                                            </div>
+                                        </div>
+                                        {expanded ? <ChevronUp size={21} className="text-blue-300" /> : <ChevronDown size={21} className="text-blue-300" />}
+                                    </div>
+                                </button>
+                                {group.pendingCount > 0 && (
+                                    <button type="button"
+                                        disabled={busyId != null || editingId != null || loading}
+                                        onClick={() => void approveWeek(group)}
+                                        className="sm:self-center min-h-11 rounded-lg bg-emerald-700 hover:bg-emerald-600 px-4 py-3 font-semibold text-white disabled:opacity-50"
+                                    >
+                                        <CheckCircle2 size={17} className="inline mr-2" />
+                                        {busyId === 'week:' + group.userId ? 'Validation…' : 'Valider la semaine'}
+                                    </button>
+                                )}
+                            </div>
+                            {expanded && (
+                                <div id={regionId} className="border-t border-slate-700/70 px-3 pb-4 pt-3 sm:px-5 space-y-4">
+                                    {group.days.map(day => (
+                                        <div key={day.key} className="space-y-2">
+                                            <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-sm text-slate-300">
+                                                <h3 className="font-semibold capitalize">{day.label}</h3>
+                                                <strong className="tabular-nums">{formatDuration(day.totalMinutes)} h</strong>
+                                            </div>
+                                            {day.sessions.map(session => {
                     const start = effectiveStart(session);
                     const end = effectiveEnd(session);
                     const corrected = Boolean(session.corrected_start_at || session.corrected_end_at);
                     const isEditing = editingId === session.id && draft;
                     const tasksForSite = (projectTasks || []).filter(t => String(t.project_id) === draft?.siteId);
                     return (
-                        <section key={session.id} className="rounded-xl border border-slate-700 bg-slate-800/90 p-4 space-y-3">
+                        <section key={session.id} className="rounded-xl border border-slate-700/70 bg-slate-900/60 p-3 sm:p-4 space-y-3">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div className="space-y-1">
                                     <div className="flex flex-wrap gap-2 items-center">
@@ -282,11 +365,11 @@ export default function ValidationPage() {
                                     className="min-h-11 rounded-lg border border-slate-600 px-4 py-2 text-slate-100 font-semibold disabled:opacity-50">
                                     <Pencil size={15} className="inline mr-1" /> {isEditing ? 'Fermer la correction' : 'Corriger'}
                                 </button>
-                                {session.approved !== true && <button type="button" disabled={busyId != null}
-                                    onClick={() => void approve(session)}
-                                    className="min-h-11 rounded-lg bg-emerald-700 px-4 py-2 text-white font-semibold disabled:opacity-50">
-                                    <CheckCircle2 size={16} className="inline mr-1" /> {busyId === session.id ? 'Validation…' : 'Valider'}
-                                </button>}
+                                <span className={session.approved === true
+                                    ? 'rounded-lg bg-emerald-950/50 px-3 py-2 text-sm font-semibold text-emerald-300'
+                                    : 'rounded-lg bg-amber-950/40 px-3 py-2 text-sm font-semibold text-amber-300'}>
+                                    {session.approved === true ? 'Validée' : 'En attente'}
+                                </span>
                             </div>
 
                             {isEditing && <div className="border-t border-slate-700 pt-4 space-y-3">
@@ -344,6 +427,13 @@ export default function ValidationPage() {
                                     </p>)}
                                 </div>}
                             </div>}
+                        </section>
+                    );
+                                            })}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </section>
                     );
                 })}
