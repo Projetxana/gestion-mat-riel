@@ -54,25 +54,35 @@ export default function ActivateAccountPage() {
         if (validationError) return setError(validationError);
         if (saving) return;
         setSaving(true);
-        const { data: check, error: checkError } = await supabase.auth.getUser();
-        const verifiedEmail = normalizeAccountEmail(check?.user?.email);
-        if (checkError || verifiedEmail !== sessionEmail || verifiedEmail !== normalizeAccountEmail(enteredEmail)) {
-            setError('La session a changé. Recommencez depuis le lien d’invitation.');
+        try {
+            const { data: check, error: checkError } = await supabase.auth.getUser();
+            const verifiedEmail = normalizeAccountEmail(check?.user?.email);
+            if (checkError || verifiedEmail !== sessionEmail || verifiedEmail !== normalizeAccountEmail(enteredEmail)) {
+                setError('La session a changé. Recommencez depuis le lien d’invitation.');
+                return;
+            }
+
+            const { error: updateError } = await supabase.auth.updateUser({ password });
+            if (updateError) {
+                setError(updateError.message);
+                return;
+            }
+
+            setSuccess('Mot de passe défini. Redirection vers la connexion…');
+            setPassword('');
+            setConfirmPassword('');
+
+            const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
+            if (signOutError) {
+                setError('Mot de passe enregistré, mais déconnexion impossible : ' + signOutError.message);
+                return;
+            }
+            navigate('/login', { replace: true });
+        } catch (activationError) {
+            setError(activationError?.message || 'Impossible d’enregistrer le mot de passe. Réessayez.');
+        } finally {
             setSaving(false);
-            return;
         }
-        const { error: updateError } = await supabase.auth.updateUser({ password });
-        setSaving(false);
-        if (updateError) return setError(updateError.message);
-        setSuccess('Mot de passe défini. Redirection vers la connexion…');
-        setPassword('');
-        setConfirmPassword('');
-        const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
-        if (signOutError) {
-            setError('Mot de passe enregistré, mais déconnexion impossible : ' + signOutError.message);
-            return;
-        }
-        navigate('/login', { replace: true });
     };
 
     return (
