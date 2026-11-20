@@ -44,6 +44,19 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
+  -- A task must belong to the selected site when an admin changes either.
+  IF (OLD.site_id IS DISTINCT FROM NEW.site_id
+      OR OLD.section_id IS DISTINCT FROM NEW.section_id)
+     AND NEW.section_id IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM public.project_tasks t
+       WHERE t.id = NEW.section_id AND t.project_id = NEW.site_id
+     )
+  THEN
+    RAISE EXCEPTION 'La tâche sélectionnée ne correspond pas au chantier.'
+      USING ERRCODE = '22023';
+  END IF;
+
   is_correction :=
       OLD.corrected_start_at IS DISTINCT FROM NEW.corrected_start_at
    OR OLD.corrected_end_at IS DISTINCT FROM NEW.corrected_end_at
@@ -77,6 +90,17 @@ BEGIN
       RAISE EXCEPTION 'Seul un administrateur de cette entreprise peut corriger ou valider les heures.'
         USING ERRCODE = '42501';
     END IF;
+  END IF;
+
+  IF (is_correction OR NEW.approved IS TRUE)
+      AND NEW.punch_end_at IS NOT NULL
+      AND (coalesce(NEW.corrected_end_at,NEW.punch_end_at)
+          <= coalesce(NEW.corrected_start_at,NEW.punch_start_at)
+        OR coalesce(NEW.corrected_end_at,NEW.punch_end_at)
+          > coalesce(NEW.corrected_start_at,NEW.punch_start_at) + interval '24 hours')
+  THEN
+    RAISE EXCEPTION 'Les heures corrigées doivent représenter une durée positive de 24 h maximum.'
+      USING ERRCODE = '22023';
   END IF;
 
   IF is_correction AND is_admin AND (SELECT auth.uid()) IS NOT NULL THEN
