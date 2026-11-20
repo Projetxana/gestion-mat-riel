@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { ShieldCheck, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { MIN_PASSWORD_LENGTH, normalizeAccountEmail, validateAccountActivation } from '../utils/activationValidation';
 
 export default function ActivateAccountPage() {
     const navigate = useNavigate();
@@ -16,25 +17,46 @@ export default function ActivateAccountPage() {
 
     useEffect(() => {
         let active = true;
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+        const updateSession = (session) => {
             if (!active) return;
-            setSessionEmail((session?.user?.email || '').toLowerCase());
+            setSessionEmail(normalizeAccountEmail(session?.user?.email));
             setLoading(false);
+        };
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            updateSession(session);
         });
-        return () => { active = false; listener.subscription.unsubscribe(); };
+
+        // A session can exist before the listener subscribes (or after an invite redirect).
+        // Reading it explicitly prevents a permanently disabled activation screen.
+        const loadSession = async () => {
+            try {
+                const { data, error: sessionError } = await supabase.auth.getSession();
+                if (!active) return;
+                if (sessionError) setError('Impossible de vérifier la session d’invitation. Rouvrez votre lien.');
+                updateSession(data?.session);
+            } catch {
+                if (active) {
+                    setError('Impossible de vérifier la session d’invitation. Réessayez.');
+                    setLoading(false);
+                }
+            }
+        };
+        void loadSession();
+
+        return () => { active = false; subscription.unsubscribe(); };
     }, []);
 
     const handleSubmit = async (event) => {
         event.preventDefault();
         setError('');
-        if (!sessionEmail) return setError('Session absente : ouvrez le lien d’invitation dans une fenêtre privée.');
-        if (enteredEmail.trim().toLowerCase() !== sessionEmail) return setError('Adresse différente du compte connecté. Ouvrez le lien dans une fenêtre privée, sans compte administrateur connecté.');
-        if (password.length < 8) return setError('Utilisez au moins 8 caractères.');
-        if (password !== confirmPassword) return setError('Les mots de passe ne correspondent pas.');
+        const validationError = validateAccountActivation({ enteredEmail, sessionEmail, password, confirmPassword });
+        if (validationError) return setError(validationError);
         if (saving) return;
         setSaving(true);
         const { data: check, error: checkError } = await supabase.auth.getUser();
-        if (checkError || check?.user?.email?.toLowerCase() !== sessionEmail) {
+        const verifiedEmail = normalizeAccountEmail(check?.user?.email);
+        if (checkError || verifiedEmail !== sessionEmail || verifiedEmail !== normalizeAccountEmail(enteredEmail)) {
             setError('La session a changé. Recommencez depuis le lien d’invitation.');
             setSaving(false);
             return;
@@ -60,20 +82,21 @@ export default function ActivateAccountPage() {
                 <h1 className="text-2xl font-bold mb-2">Définir mon mot de passe</h1>
                 <p className="text-sm text-slate-300 mb-4">Cette opération modifie uniquement le compte Supabase Auth connecté.</p>
                 {loading ? <p>Vérification du compte…</p> : (
-                    <form onSubmit={handleSubmit} className="space-y-4">
+                    <form onSubmit={handleSubmit} noValidate className="space-y-4">
                         <p className="text-sm text-amber-300">Compte connecté : {sessionEmail || 'Aucun — ouvrez votre lien d’invitation dans une fenêtre privée'}</p>
                         <label className="block text-sm">Confirmez l’adresse du compte invité
-                            <input type="email" autoComplete="off" required value={enteredEmail} onChange={e => setEnteredEmail(e.target.value)} className="mt-1 w-full rounded-lg bg-slate-900 p-3 text-white border border-slate-600" />
+                            <input type="email" autoComplete="off" required value={enteredEmail} onChange={e => { setEnteredEmail(e.target.value); setError(''); }} className="mt-1 w-full rounded-lg bg-slate-900 p-3 text-white border border-slate-600" />
                         </label>
                         <label className="block text-sm">Nouveau mot de passe
-                            <input type="password" autoComplete="new-password" required value={password} onChange={e => setPassword(e.target.value)} className="mt-1 w-full rounded-lg bg-slate-900 p-3 text-white border border-slate-600" />
+                            <input type="password" autoComplete="new-password" required value={password} onChange={e => { setPassword(e.target.value); setError(''); }} className="mt-1 w-full rounded-lg bg-slate-900 p-3 text-white border border-slate-600" />
                         </label>
                         <label className="block text-sm">Confirmer le mot de passe
-                            <input type="password" autoComplete="new-password" required value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="mt-1 w-full rounded-lg bg-slate-900 p-3 text-white border border-slate-600" />
+                            <input type="password" autoComplete="new-password" required value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setError(''); }} className="mt-1 w-full rounded-lg bg-slate-900 p-3 text-white border border-slate-600" />
                         </label>
+                        <p className="text-xs text-slate-300">Le mot de passe doit contenir au moins {MIN_PASSWORD_LENGTH} caractères.</p>
                         {error && <p role="alert" className="text-red-300">{error}</p>}
                         {success && <p role="status" className="text-green-300">{success}</p>}
-                        <button type="submit" disabled={saving || !sessionEmail || !!success} className="w-full rounded-lg bg-blue-600 disabled:opacity-50 p-3 font-semibold"><Lock size={16} className="inline mr-2" />{saving ? 'Enregistrement…' : 'Définir le mot de passe'}</button>
+                        <button type="submit" disabled={saving || !!success} className="w-full rounded-lg bg-blue-600 disabled:opacity-50 p-3 font-semibold"><Lock size={16} className="inline mr-2" />{saving ? 'Enregistrement…' : 'Définir le mot de passe'}</button>
                         {success && <button type="button" onClick={() => navigate('/login', { replace: true })} className="w-full rounded-lg bg-slate-700 p-3">Continuer vers BuildTrack</button>}
                     </form>
                 )}
