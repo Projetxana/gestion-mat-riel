@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { filterCurrentEmployeeSites } from '../utils/currentEmployeeSites';
 
 const formatHours = (value) => Number(value).toLocaleString('fr-CA', {
     maximumFractionDigits: 1,
@@ -86,7 +87,7 @@ export function ProjectHoursCards({ rows, showSites, showTasks }) {
         });
     return (
         <div className="space-y-4">
-            {visible.length === 0 && <p>Aucun chantier ou aucune tâche disponible.</p>}
+            {visible.length === 0 && <p>Aucun chantier actif récemment travaillé. Les anciennes heures restent conservées.</p>}
             {visible.map(([id, group]) => (
                 <article key={id} className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-sm">
                     <div className="space-y-4 p-4 sm:p-5">
@@ -109,7 +110,7 @@ export function ProjectHoursCards({ rows, showSites, showTasks }) {
     );
 }
 
-export default function ProjectHoursProgress({ companyId, userId, showSites, showTasks, refreshKey }) {
+export default function ProjectHoursProgress({ companyId, userId, sites, showSites, showTasks, refreshKey }) {
     const [result, setResult] = useState(null);
     const [attempt, setAttempt] = useState(0);
     useEffect(() => {
@@ -132,13 +133,18 @@ export default function ProjectHoursProgress({ companyId, userId, showSites, sho
 
     if (!showSites && !showTasks) return null;
     const current = result?.companyId === companyId && result?.userId === userId ? result : null;
+    const visibleRows = current?.data ? filterCurrentEmployeeSites(current.data, sites, companyId) : [];
     return (
         <section className="mt-4 space-y-4" aria-label="Heures collectives">
-            <h3 className="font-bold">HEURES COLLECTIVES — DEPUIS LE DÉMARRAGE</h3>
+            <h3 className="font-bold">MES CHANTIERS ACTIFS — HEURES COLLECTIVES</h3>
+            <p className="text-xs text-slate-300">
+                Chantiers actifs où tu as pointé au cours des 60 derniers jours.
+                Les totaux affichés concernent toutes les heures enregistrées sur ces chantiers.
+            </p>
             {!companyId || !userId ? <p role="status">Compte et entreprise requis.</p> :
                 !current ? <p role="status">Chargement des heures collectives…</p> :
                     current.error ? <div role="alert">Heures collectives indisponibles. <button className="underline" onClick={() => setAttempt(n => n + 1)}>Réessayer</button></div> :
-                        <ProjectHoursCards rows={current.data} showSites={showSites} showTasks={showTasks} />}
+                        <ProjectHoursCards rows={visibleRows} showSites={showSites} showTasks={showTasks} />}
         </section>
     );
 }

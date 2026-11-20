@@ -1,7 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import ProjectHoursProgress from '../../components/ProjectHoursProgress';
-import { useUserPreferences } from '../../hooks/useUserPreferences';
 import { Link } from 'react-router-dom';
 
 const localDate = (date) => {
@@ -24,7 +22,6 @@ const hoursBetween = (start, end) => {
 
 export default function AdminHoursView() {
     const { currentUser, currentCompanyId, users, sites, timeSessions } = useAppContext();
-    const { preferences } = useUserPreferences(currentUser?.id);
     const [week, setWeek] = useState(() => mondayOf(new Date()));
     const end = new Date(week);
     end.setDate(end.getDate() + 7);
@@ -136,13 +133,10 @@ export default function AdminHoursView() {
                 {Object.entries(r.bySite).sort().map(([name,h]) => <div key={name} className="flex justify-between gap-3 border-t border-slate-700 pt-2 text-sm"><span>{name}</span><span>{number(h)} h</span></div>)}
             </section>)}
             <p className="text-xs text-slate-400">Calcul provisoire sur les pointages terminés, sans déduction automatique des pauses ni validation de paie. Ne pas utiliser pour la paie avant rapprochement.</p>
-            <ProjectHoursProgress
-                companyId={currentCompanyId}
-                userId={currentUser?.id}
-                showSites={preferences.showHoursBySite}
-                showTasks={preferences.showHoursByTask}
-                refreshKey={timeSessions}
-            />
+            <p className="text-xs text-slate-400">
+                Le suivi de progression des chantiers et leurs indices IPMO sont consultables depuis
+                l'accueil, dans « Suivi Projets ». Cette page reste consacrée aux heures hebdomadaires.
+            </p>
         </div>
     );
 }
