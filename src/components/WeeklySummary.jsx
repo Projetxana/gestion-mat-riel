@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Clock, Briefcase, Calendar, Layers } from 'lucide-react';
 import DayDetailModal from './DayDetailModal';
+import { formatHoursHHMM } from '../utils/quarterHours';
 
 const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = true, showTaskBreakdown = false }) => {
     const [selectedDayDetail, setSelectedDayDetail] = useState(null);
@@ -29,17 +30,17 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
         const now = new Date();
         const weeklySessions = sessions.filter(s => {
             if (!s.punch_start_at) return false;
-            const d = new Date(s.punch_start_at);
+            const d = new Date(s.corrected_start_at || s.punch_start_at);
             return d >= startOfWeek && d <= endOfWeek;
         });
 
         const calculateDuration = (s) => {
-            if (s.duration_hours) return Number(s.duration_hours);
+            if (s.duration_hours && !s.corrected_start_at && !s.corrected_end_at) return Number(s.duration_hours);
 
             // Handle finished session (manual calc if duration_hours missing)
             if (s.punch_start_at && s.punch_end_at) {
-                const start = new Date(s.punch_start_at);
-                const end = new Date(s.punch_end_at);
+                const start = new Date(s.corrected_start_at || s.punch_start_at);
+                const end = new Date(s.corrected_end_at || s.punch_end_at);
                 const diff = end - start;
                 return diff > 0 ? diff / (1000 * 60 * 60) : 0;
             }
@@ -61,7 +62,7 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
         const daily = new Array(7).fill(0).map((_, i) => ({ day: daysMap[i], hours: 0, index: i }));
 
         weeklySessions.forEach(s => {
-            const d = new Date(s.punch_start_at);
+            const d = new Date(s.corrected_start_at || s.punch_start_at);
             // JS getDay: Sun=0, Mon=1...Sat=6. We want Mon=0...Sun=6
             let jsDay = d.getDay();
             const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
@@ -89,7 +90,7 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
         });
 
         return {
-            totalHours: Math.round(total * 10) / 10,
+            totalHours: Math.round(total * 60) / 60,
             dailyBreakdown: daily,
             projectBreakdown: projects,
             taskBreakdown: tasks
@@ -104,10 +105,10 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
 
         if (totalHours <= 40) {
             normal = totalHours;
-            remaining = Math.round((40 - totalHours) * 10) / 10;
+            remaining = Math.round((40 - totalHours) * 60) / 60;
         } else {
             normal = 40;
-            overtime = Math.round((totalHours - 40) * 10) / 10;
+            overtime = Math.round((totalHours - 40) * 60) / 60;
         }
 
         return { normal, overtime, remaining };
@@ -129,7 +130,7 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
         if (!selectedDayDetail) return [];
         return sessions.filter(s => {
             if (!s.punch_start_at) return false;
-            const d = new Date(s.punch_start_at);
+            const d = new Date(s.corrected_start_at || s.punch_start_at);
             return d.getDate() === selectedDayDetail.getDate() &&
                 d.getMonth() === selectedDayDetail.getMonth() &&
                 d.getFullYear() === selectedDayDetail.getFullYear();
@@ -150,7 +151,7 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
                     <div>
                         <div className="text-sm text-slate-400 mb-1">Total Semaine</div>
                         <div className="text-3xl font-bold text-white tracking-tight">
-                            {totalHours} <span className="text-lg text-slate-500 font-normal">h</span>
+                            {formatHoursHHMM(totalHours)} <span className="text-lg text-slate-500 font-normal">h</span>
                         </div>
                     </div>
                     <div className={`p-2 rounded-lg ${overtimeData.overtime > 0 ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-400'}`}>
@@ -178,17 +179,17 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
                     <div className="text-xs">
                         {totalHours <= 40 ? (
                             <div className="flex justify-between text-slate-400">
-                                <span>Heures normales : {overtimeData.normal} h</span>
-                                <span className="text-emerald-400">Reste : {overtimeData.remaining} h</span>
+                                <span>Heures normales : {formatHoursHHMM(overtimeData.normal)} h</span>
+                                <span className="text-emerald-400">Reste : {formatHoursHHMM(overtimeData.remaining)} h</span>
                             </div>
                         ) : (
                             <div className="space-y-1">
                                 <div className="flex justify-between text-slate-400">
-                                    <span>Heures normales : 40 h</span>
+                                    <span>Heures normales : 40:00 h</span>
                                 </div>
                                 <div className="flex justify-between text-amber-400 font-medium">
                                     <span>Heures supplémentaires estimées :</span>
-                                    <span>+{overtimeData.overtime} h</span>
+                                    <span>+{formatHoursHHMM(overtimeData.overtime)} h</span>
                                 </div>
                             </div>
                         )}
@@ -201,7 +202,7 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
                 <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4">
                     <div className="flex items-center gap-2 mb-3 text-slate-300 font-medium text-sm">
                         <Calendar size={16} className="text-blue-400" />
-                        Détail Journalier <span className="text-xs text-slate-500 font-normal ml-auto">(Cliquer pour modifier)</span>
+                        Détail Journalier <span className="text-xs text-slate-500 font-normal ml-auto">(Cliquer pour consulter)</span>
                     </div>
                     <div className="space-y-2">
                         {dailyBreakdown.map((d, i) => (
@@ -211,7 +212,7 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
                                 className={`w-full flex justify-between text-sm p-2 rounded-lg transition-colors hover:bg-slate-700/50 ${d.hours > 0 ? 'text-white' : 'text-slate-600'}`}
                             >
                                 <span>{d.day}</span>
-                                <span className={d.hours > 0 ? 'font-medium' : ''}>{d.hours > 0 ? `${Math.round(d.hours * 10) / 10} h` : '-'}</span>
+                                <span className={d.hours > 0 ? 'font-medium' : ''}>{d.hours > 0 ? `${formatHoursHHMM(d.hours)} h` : '-'}</span>
                             </button>
                         ))}
                     </div>
@@ -229,7 +230,7 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
                                 <div key={name} className="flex justify-between items-center text-sm">
                                     <span className="text-slate-300 truncate max-w-[70%]">{name}</span>
                                     <div className="bg-slate-700 px-2 py-1 rounded text-white text-xs font-mono">
-                                        {Math.round(hours * 10) / 10} h
+                                        {formatHoursHHMM(hours)} h
                                     </div>
                                 </div>
                             ))
@@ -254,7 +255,7 @@ const WeeklySummary = ({ sessions, sites, projectTasks, showProjectBreakdown = t
                                 <div key={name} className="flex justify-between items-center text-sm">
                                     <span className="text-slate-300 truncate max-w-[70%]">{name}</span>
                                     <div className="bg-slate-700 px-2 py-1 rounded text-white text-xs font-mono">
-                                        {Math.round(hours * 10) / 10} h
+                                        {formatHoursHHMM(hours)} h
                                     </div>
                                 </div>
                             ))
