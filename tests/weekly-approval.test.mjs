@@ -1,0 +1,49 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { groupSessionsByEmployee, formatDuration, durationInMinutes } from '../src/utils/weeklyApproval.js';
+
+const session = (id, user, start, lengthMinutes, approved = false, correctedStart = null) => ({
+    id, user_id: user, punch_start_at: start,
+    punch_end_at: new Date(Date.parse(start) + lengthMinutes * 60000).toISOString(),
+    corrected_start_at: correctedStart,
+    corrected_end_at: correctedStart
+      ? new Date(Date.parse(correctedStart) + lengthMinutes * 60000).toISOString()
+      : null,
+    approved,
+});
+
+test('one employee card per week, with a single list of pending ids', () => {
+    const rows = [
+        session(1, 'alex', '2026-11-16T08:00:00-05:00', 480),
+        session(2, 'alex', '2026-11-17T08:00:00-05:00', 435, true),
+        session(3, 'nikolai', '2026-11-16T08:00:00-05:00', 510),
+    ];
+    const result = groupSessionsByEmployee(rows, id => ({alex:'Alex',nikolai:'Nikolai'}[id]));
+    assert.equal(result.length, 2);
+    assert.deepEqual(result[0].pendingIds, [1]);
+    assert.equal(result[0].approvedCount, 1);
+    assert.equal(result[0].pendingCount, 1);
+    assert.equal(result[0].days.length, 2);
+    assert.equal(formatDuration(result[0].totalMinutes), '15:15');
+    assert.equal(formatDuration(result[1].totalMinutes), '8:30');
+});
+
+test('corrected effective times define totals and day grouping', () => {
+    const old = session(4, 'alex', '2026-11-16T08:00:00-05:00', 480);
+    old.corrected_start_at = '2026-11-17T07:00:00-05:00';
+    old.corrected_end_at = '2026-11-17T14:15:00-05:00';
+    assert.equal(durationInMinutes(old), 435);
+    const group = groupSessionsByEmployee([old], ()=>'Alex')[0];
+    assert.equal(group.days[0].key,'2026-11-17');
+    assert.equal(formatDuration(group.totalMinutes), '7:15');
+});
+
+test('validated employees and all-approved groups have no pending ids', () => {
+    const group = groupSessionsByEmployee([
+        session(8,'alex','2026-11-18T08:00:00-05:00',495,true),
+        session(9,'alex','2026-11-19T08:00:00-05:00',450,true),
+    ], ()=>'Alex')[0];
+    assert.equal(group.pendingCount,0);
+    assert.equal(group.approvedCount,2);
+    assert.equal(formatDuration(group.totalMinutes),'15:45');
+});
