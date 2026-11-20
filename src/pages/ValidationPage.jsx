@@ -4,6 +4,8 @@ import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { groupSessionsByEmployee, formatDuration } from '../utils/weeklyApproval';
+import { originalDuration, currentDuration, prepareDurationCorrection } from '../utils/sessionDurationCorrection';
+import { parseLocalizedHours, isValidQuarterHour, formatHoursHHMM, normalizeHoursInput } from '../utils/quarterHours';
 
 const mondayOf = (date) => {
     const day = new Date(date);
@@ -15,13 +17,6 @@ const mondayOf = (date) => {
 const displayDate = (date) => new Date(date).toLocaleDateString('fr-CA', {
     year: 'numeric', month: 'short', day: 'numeric',
 });
-
-const localInputDateTime = (date) => {
-    const value = new Date(date);
-    if (Number.isNaN(value.getTime())) return '';
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
-};
 
 const hoursDuration = (start, end) => {
     if (!start || !end) return '—';
@@ -126,56 +121,26 @@ export default function ValidationPage() {
         setMessage('');
         setEditingId(session.id);
         setDraft({
-            start: localInputDateTime(effectiveStart(session)),
-            end: localInputDateTime(effectiveEnd(session)),
-            siteId: String(session.site_id || ''),
-            sectionId: String(session.section_id || ''),
+            hours: currentDuration(session),
             reason: '',
         });
         void readAudit(session.id);
     };
 
-    const updateDraftSite = (siteId) =>
-        setDraft(previous => ({ ...previous, siteId, sectionId: '' }));
-
     const saveCorrection = async (session) => {
         if (!isAdmin || !draft || busyId != null) return;
         setError('');
         setMessage('');
-        const start = new Date(draft.start);
-        const end = new Date(draft.end);
-        const durationMs = end.getTime() - start.getTime();
-        if (!draft.start || !draft.end || !Number.isFinite(durationMs)
-            || durationMs <= 0 || durationMs > 24 * 3600000) {
-            setError('Vérifie les dates et les heures : la durée doit être comprise entre 1 minute et 24 heures.');
-            return;
-        }
-        if (!draft.siteId || !draft.sectionId || !(projectTasks || []).some(task =>
-            String(task.id) === draft.sectionId && String(task.project_id) === draft.siteId)) {
-            setError('Choisis un chantier et une tâche appartenant à ce chantier.');
-            return;
-        }
-        if (draft.reason.trim().length < 3) {
-            setError('Indique le motif de la correction (3 caractères minimum).');
-            return;
-        }
-        const didChange = start.getTime() !== new Date(effectiveStart(session)).getTime()
-            || end.getTime() !== new Date(effectiveEnd(session)).getTime()
-            || draft.siteId !== String(session.site_id || '')
-            || draft.sectionId !== String(session.section_id || '');
-        if (!didChange) {
-            setError('Aucune modification détectée.');
+
+        // The administrator corrects only the daily duration. Keep the
+        // original timestamps, effective start, project and task unchanged.
+        const prepared = prepareDurationCorrection(session, draft.hours, draft.reason);
+        if (prepared.error) {
+            setError(prepared.error);
             return;
         }
         setBusyId(session.id);
-        const updates = {
-            corrected_start_at: start.toISOString(),
-            corrected_end_at: end.toISOString(),
-            site_id: Number(draft.siteId),
-            section_id: Number(draft.sectionId),
-            correction_reason: draft.reason.trim(),
-            approved: false,
-        };
+        const updates = prepared.updates;
         const { data, error: saveError } = await supabase.from('time_sessions')
             .update(updates)
             .eq('id', session.id)
@@ -342,7 +307,6 @@ export default function ValidationPage() {
                     const end = effectiveEnd(session);
                     const corrected = Boolean(session.corrected_start_at || session.corrected_end_at);
                     const isEditing = editingId === session.id && draft;
-                    const tasksForSite = (projectTasks || []).filter(t => String(t.project_id) === draft?.siteId);
                     return (
                         <section key={session.id} className="rounded-xl border border-slate-700/70 bg-slate-900/60 p-3 sm:p-4 space-y-3">
                             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -373,34 +337,39 @@ export default function ValidationPage() {
                             </div>
 
                             {isEditing && <div className="border-t border-slate-700 pt-4 space-y-3">
-                                <p className="text-sm text-slate-300">Les horaires pointés d'origine restent conservés. Toute correction remet l'entrée en attente.</p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <label className="text-sm flex flex-col gap-1">Début corrigé
-                                        <input type="datetime-local" required step="60" value={draft.start}
-                                            onChange={event => setDraft(previous => ({ ...previous, start: event.target.value }))}
-                                            className="min-h-11 w-full rounded-lg bg-slate-950 border border-slate-600 p-2 text-white" />
-                                    </label>
-                                    <label className="text-sm flex flex-col gap-1">Fin corrigée
-                                        <input type="datetime-local" required step="60" value={draft.end}
-                                            onChange={event => setDraft(previous => ({ ...previous, end: event.target.value }))}
-                                            className="min-h-11 w-full rounded-lg bg-slate-950 border border-slate-600 p-2 text-white" />
-                                    </label>
-                                    <label className="text-sm flex flex-col gap-1">Chantier
-                                        <select value={draft.siteId} required
-                                            onChange={event => updateDraftSite(event.target.value)}
-                                            className="min-h-11 rounded-lg bg-slate-950 border border-slate-600 p-2 text-white">
-                                            <option value="">Choisir le chantier</option>
-                                            {(sites || []).filter(site => String(site.company_id) === String(currentCompanyId))
-                                                .map(site => <option key={site.id} value={site.id}>{site.name}</option>)}
-                                        </select>
-                                    </label>
-                                    <label className="text-sm flex flex-col gap-1">Tâche
-                                        <select value={draft.sectionId} required
-                                            onChange={event => setDraft(previous => ({ ...previous, sectionId: event.target.value }))}
-                                            className="min-h-11 rounded-lg bg-slate-950 border border-slate-600 p-2 text-white">
-                                            <option value="">Choisir la tâche</option>
-                                            {tasksForSite.map(task => <option key={task.id} value={task.id}>{task.name}</option>)}
-                                        </select>
+                                <p className="text-sm text-slate-300">
+                                    Corrige uniquement le total de la journée. La date, le chantier et la tâche restent inchangés.
+                                </p>
+                                <div className="space-y-3 rounded-xl bg-slate-800/70 p-3 sm:p-4">
+                                    <div className="flex items-center justify-between gap-3 border-b border-slate-700 pb-3">
+                                        <span className="text-sm font-medium text-slate-300">Heures saisies</span>
+                                        <strong className="text-xl tabular-nums text-slate-100">{originalDuration(session)} h</strong>
+                                    </div>
+                                    <label className="flex flex-wrap items-center justify-between gap-3 text-sm font-medium text-slate-200">
+                                        <span>Heures corrigées</span>
+                                        <span className="flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                autoComplete="off"
+                                                aria-label="Heures corrigées de la journée"
+                                                value={draft.hours}
+                                                onChange={event => setDraft(previous => ({
+                                                    ...previous, hours: normalizeHoursInput(event.target.value),
+                                                }))}
+                                                onBlur={() => {
+                                                    const value = parseLocalizedHours(draft.hours);
+                                                    if (isValidQuarterHour(value)) {
+                                                        setDraft(previous => ({
+                                                            ...previous, hours: formatHoursHHMM(value),
+                                                        }));
+                                                    }
+                                                }}
+                                                placeholder="8:00"
+                                                className="min-h-11 w-28 rounded-lg border border-slate-500 bg-slate-950 p-2 text-center text-lg font-bold tabular-nums text-white"
+                                            />
+                                            <span className="text-slate-400">h</span>
+                                        </span>
                                     </label>
                                 </div>
                                 <label className="text-sm flex flex-col gap-1">Motif de correction (obligatoire)
