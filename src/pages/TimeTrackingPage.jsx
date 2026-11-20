@@ -318,7 +318,7 @@ const TimeTracking = () => {
                     <WeeklySummary sessions={timeSessions.filter(session => String(session.user_id) === String(currentUser?.id))} sites={sites} projectTasks={projectTasks} showProjectBreakdown={false} showTaskBreakdown={false} />
                 </div>
 
-                <ProjectHoursProgress companyId={currentCompanyId} userId={currentUser?.id} showSites={preferences.showHoursBySite} showTasks={preferences.showHoursByTask} refreshKey={timeSessions} />
+                <ProjectHoursProgress companyId={currentCompanyId} userId={currentUser?.id} sites={sites} showSites={preferences.showHoursBySite} showTasks={preferences.showHoursByTask} refreshKey={timeSessions} />
                 {isLeader && <LeaderHoursView />}
             </div>
         );
@@ -670,7 +670,7 @@ const TimeTracking = () => {
                     </div>
                 )}
 
-                <ProjectHoursProgress companyId={currentCompanyId} userId={currentUser?.id} showSites={preferences.showHoursBySite} showTasks={preferences.showHoursByTask} refreshKey={timeSessions} />
+                <ProjectHoursProgress companyId={currentCompanyId} userId={currentUser?.id} sites={sites} showSites={preferences.showHoursBySite} showTasks={preferences.showHoursByTask} refreshKey={timeSessions} />
                 {isLeader && <LeaderHoursView />}
             </div>
         );
