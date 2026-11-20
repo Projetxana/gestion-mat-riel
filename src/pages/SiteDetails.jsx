@@ -240,6 +240,7 @@ const SiteDetails = () => {
                         });
                     })()}
                 </div>
+                </div>
             </details>
 
             <h2 className="text-xl font-bold mb-4">Matériel Assigné</h2>
