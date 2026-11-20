@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock, Pencil, ShieldCheck, X } from 'lucide-react';
+import { CheckCircle2, Clock, Pencil, ShieldCheck, X, ChevronDown, ChevronUp, UsersRound } from 'lucide-react';
 import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
+import { groupSessionsByEmployee, formatDuration } from '../utils/weeklyApproval';
 
 const mondayOf = (date) => {
     const day = new Date(date);
@@ -40,6 +41,7 @@ export default function ValidationPage() {
     const isAdmin = currentUser?.role === 'admin';
     const [week, setWeek] = useState(() => mondayOf(new Date()));
     const [filter, setFilter] = useState('pending');
+    const [expandedUser, setExpandedUser] = useState(null);
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
     const [busyId, setBusyId] = useState(null);
@@ -65,14 +67,13 @@ export default function ValidationPage() {
         if (!isAdmin || !currentCompanyId) return;
         setLoading(true);
         setError('');
-        const { data, error: loadError } = await supabase
-            .from('time_sessions')
-            .select('*')
-            .eq('company_id', currentCompanyId)
-            .gte('punch_start_at', week.toISOString())
-            .lt('punch_start_at', weekEnd.toISOString())
-            .not('punch_end_at', 'is', null)
-            .order('punch_start_at', { ascending: false });
+        // DB applies the same effective-start week boundaries used for atomic
+        // approval. A corrected date can move an entry between weeks.
+        const { data, error: loadError } = await supabase.rpc('bt_review_week_sessions', {
+            p_company_id: currentCompanyId,
+            p_week_start: week.toISOString(),
+            p_week_end: weekEnd.toISOString(),
+        });
         if (loadError) {
             setError('Impossible de charger les pointages : ' + loadError.message);
         } else {
@@ -85,9 +86,19 @@ export default function ValidationPage() {
         void loadSessions();
     }, [loadSessions]);
 
-    const displayed = useMemo(() => rows.filter(row =>
-        filter === 'approved' ? row.approved === true : row.approved !== true
-    ), [rows, filter]);
+    const employeeGroups = useMemo(
+        () => groupSessionsByEmployee(rows, getUserName),
+        [rows, getUserName]
+    );
+    const pendingGroups = useMemo(
+        () => employeeGroups.filter(group => group.pendingCount > 0),
+        [employeeGroups]
+    );
+    const approvedGroups = useMemo(
+        () => employeeGroups.filter(group => group.pendingCount === 0),
+        [employeeGroups]
+    );
+    const displayed = filter === 'approved' ? approvedGroups : pendingGroups;
 
     const refreshRow = (updated) => {
         setRows(previous => previous.map(row =>
@@ -180,26 +191,40 @@ export default function ValidationPage() {
         setDraft(null);
         setMessage('Correction enregistrée, pointage placé en attente de validation.');
         setFilter('pending');
+        setExpandedUser(String(session.user_id));
     };
 
-    const approve = async (session) => {
-        if (!isAdmin || busyId != null) return;
-        if (!window.confirm(`Valider les heures de ${getUserName(session.user_id)} (${hoursDuration(effectiveStart(session), effectiveEnd(session))}) ?`)) return;
-        setBusyId(session.id);
+    const approveWeek = async (group) => {
+        if (!isAdmin || busyId != null || group.pendingCount === 0 || editingId != null) return;
+        const messageText = 'Valider la semaine de ' + group.name
+            + ' ?\\n' + group.pendingCount + ' saisie(s) en attente, '
+            + formatDuration(group.totalMinutes) + ' h au total.\\n'
+            + 'La validation concerne uniquement les entrées encore en attente.';
+        if (!window.confirm(messageText)) return;
+        setBusyId('week:' + group.userId);
         setError('');
         setMessage('');
-        const { data, error: updateError } = await supabase.from('time_sessions')
-            .update({ approved: true })
-            .eq('id', session.id)
-            .eq('company_id', currentCompanyId)
-            .select('*');
-        setBusyId(null);
-        if (updateError || data?.length !== 1) {
-            setError(updateError?.message || 'Validation non confirmée par le serveur.');
-            return;
+        try {
+            const { data, error: updateError } = await supabase.rpc('bt_approve_employee_week', {
+                p_company_id: currentCompanyId,
+                p_employee_id: group.userId,
+                p_week_start: week.toISOString(),
+                p_week_end: weekEnd.toISOString(),
+                p_expected_ids: group.pendingIds,
+            });
+            if (updateError || Number(data) !== group.pendingCount) {
+                setError(updateError?.message || 'Validation non confirmée. Actualisez puis réessayez.');
+                await loadSessions();
+                return;
+            }
+            await loadSessions();
+            setExpandedUser(null);
+            setMessage(group.pendingCount + ' saisie(s) validée(s) pour ' + group.name + '.');
+        } catch (caught) {
+            setError(caught?.message || 'Erreur de validation de la semaine.');
+        } finally {
+            setBusyId(null);
         }
-        refreshRow(data[0]);
-        setMessage('Heures validées par un administrateur.');
     };
 
     if (companyRoleLoading || !currentCompanyId) {
@@ -215,7 +240,7 @@ export default function ValidationPage() {
             <header className="flex flex-wrap justify-between items-center gap-3">
                 <div>
                     <h1 className="text-2xl font-bold flex gap-2 items-center"><ShieldCheck className="text-blue-400" /> Validation des heures</h1>
-                    <p className="text-sm text-slate-400 mt-1">Accès administrateur · Correction avec historique et motif obligatoire</p>
+                    <p className="text-sm text-slate-400 mt-1">Une carte par employé · Détails et corrections sur demande</p>
                 </div>
                 <Link to="/timetracking" className="text-blue-300 hover:underline text-sm">Retour aux heures</Link>
             </header>
@@ -233,15 +258,15 @@ export default function ValidationPage() {
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-                <button type="button" onClick={() => { setFilter('pending'); setEditingId(null); }}
+                <button type="button" onClick={() => { setFilter('pending'); setEditingId(null); setExpandedUser(null); }}
                     aria-pressed={filter === 'pending'}
                     className={`px-4 py-2.5 rounded-lg font-semibold ${filter === 'pending' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
-                    À valider ({rows.filter(row => row.approved !== true).length})
+                    À valider ({pendingGroups.length})
                 </button>
-                <button type="button" onClick={() => { setFilter('approved'); setEditingId(null); }}
+                <button type="button" onClick={() => { setFilter('approved'); setEditingId(null); setExpandedUser(null); }}
                     aria-pressed={filter === 'approved'}
                     className={`px-4 py-2.5 rounded-lg font-semibold ${filter === 'approved' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
-                    Validées ({rows.filter(row => row.approved === true).length})
+                    Validées ({approvedGroups.length})
                 </button>
                 <button type="button" onClick={() => void loadSessions()} className="ml-auto text-sm text-blue-300 underline">Actualiser</button>
             </div>
@@ -251,7 +276,7 @@ export default function ValidationPage() {
             {loading && <p role="status" className="text-slate-400">Chargement des heures…</p>}
 
             {!loading && displayed.length === 0 &&
-                <p className="rounded-xl bg-slate-800 p-6 text-slate-300">Aucune session {filter === 'pending' ? 'en attente' : 'validée'} pour cette semaine.</p>}
+                <p className="rounded-xl bg-slate-800 p-6 text-slate-300">Aucun employé {filter === 'pending' ? 'en attente de validation' : 'avec une semaine entièrement validée'} pour cette semaine.</p>}
 
             <div className="space-y-3">
                 {displayed.map(session => {
