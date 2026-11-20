@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { useCompanyPerformance } from '../hooks/useCompanyPerformance';
 import TaskPerformanceBars from './TaskPerformanceBars';
+import PerformanceTrends from './PerformanceTrends';
 import { computeTaskHours } from '../utils/taskPerformance';
 
 const number = (value, digits = 1) =>
@@ -56,7 +57,7 @@ const SitePerformancePanel = ({ site }) => {
             .eq('site_id', site.id)
             .order('validated_at', { ascending: false })
             .order('id', { ascending: false })
-            .limit(8);
+            .limit(250);
         if (reportsError) {
             setError('Impossible de charger les bilans : ' + reportsError.message);
             setLoading(false);
@@ -217,6 +218,10 @@ const SitePerformancePanel = ({ site }) => {
                 historyMode={latest?.history_mode || 'unverified'}
                 validatedAt={latest?.validated_at}
             />}
+
+            {/* Each trend appears when its distinct-week validation threshold is reached.
+                Until then, keep the dashboard uncluttered. */}
+            {!loading && <PerformanceTrends reports={reports} />}
 
             <button type="button" aria-expanded={showValidation}
                 onClick={() => setShowValidation(value => !value)}
