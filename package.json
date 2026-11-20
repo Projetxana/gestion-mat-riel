@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run test:task-performance && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:task-performance": "node --test tests/task-performance.test.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.3.0",
