@@ -318,7 +318,7 @@ const SitePerformancePanel = ({ site }) => {
                         {saving ? 'Enregistrement…' : 'Valider l’avancement du chantier'}
                     </button>
                 </>
-            )}
+            ))}
 
             {reports.length > 1 && (
                 <div className="border-t border-slate-700 pt-4">
