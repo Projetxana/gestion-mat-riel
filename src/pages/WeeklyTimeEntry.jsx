@@ -84,7 +84,7 @@ const WeeklyTimeEntry = () => {
         const weekSessions = (timeSessions || []).filter(session => {
             if (!session.punch_start_at || !session.manual_entry) return false;
             if (currentUser && String(session.user_id) !== String(currentUser.id)) return false;
-            const date = new Date(session.punch_start_at);
+            const date = new Date(session.corrected_start_at || session.punch_start_at);
             return date >= start && date < weekEnd;
         });
 
@@ -92,9 +92,9 @@ const WeeklyTimeEntry = () => {
         for (const day of days) {
             const dateKey = formatDateISO(day);
             const savedEntries = weekSessions
-                .filter(session => formatDateISO(new Date(session.punch_start_at)) === dateKey)
+                .filter(session => formatDateISO(new Date(session.corrected_start_at || session.punch_start_at)) === dateKey)
                 .map(session => {
-                    const hours = (new Date(session.punch_end_at) - new Date(session.punch_start_at)) / 3600000;
+                    const hours = (new Date(session.corrected_end_at || session.punch_end_at) - new Date(session.corrected_start_at || session.punch_start_at)) / 3600000;
                     return {
                         id: `db-${session.id}`,
                         dbId: session.id,
@@ -102,6 +102,7 @@ const WeeklyTimeEntry = () => {
                         siteId: String(session.site_id || ''),
                         taskId: String(session.section_id || ''),
                         saved: true,
+                        approved: session.approved === true,
                     };
                 });
             const dayDrafts = (drafts[dateKey] || []).filter(entry => !entry.saved);
@@ -517,7 +518,7 @@ const WeeklyTimeEntry = () => {
                                             {dayEntries.length > 1 ? (
                                                 <button
                                                     onClick={() => removeEntry(dateKey, entry.id)}
-                                                    disabled={!!deletingEntryId}
+                                                    disabled={!!deletingEntryId || entry.approved === true}
                                                     className="p-1.5 text-red-400/60 hover:text-red-400 transition-colors shrink-0"
                                                 >
                                                     <Trash2 size={14} />

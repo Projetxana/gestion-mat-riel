@@ -355,7 +355,7 @@ const Settings = () => {
             </div>
 
             {/* Admin Links */}
-            {(currentUser?.role === 'admin' || currentUser?.role === 'foreman' || currentUser?.level === "Chef d'équipe" || currentUser?.level === 'Compagnon') && (
+            {currentUser?.role === 'admin' && (
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
                     <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-slate-800">
                         <Users className="text-amber-600" size={24} />
