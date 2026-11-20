@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { Hammer, HardHat, AlertTriangle, Activity, Camera, ClipboardList, Image as ImageIcon, Users, Plus } from 'lucide-react';
-import { getProjectStats } from '../utils/projectHelpers';
 import { supabase } from '../supabaseClient';
 import DeliveryNoteModal from '../components/DeliveryNoteModal';
 import DailyReportModal from '../components/DailyReportModal';
@@ -161,68 +160,9 @@ const Dashboard = () => {
                 </div>
             )}
 
-            {/* ALERTS: CHANTIERS EN DÉRIVE (Admin Only) */}
-            {(currentUser?.role === 'admin' || currentUser?.role === 'foreman') && (
-                <div className="mb-6">
-                    {(() => {
-                        const driftingSites = [];
-                        sites.forEach(site => {
-                            if (site.status !== 'active' || !site.planned_hours || !site.end_date) return;
-
-                            const start = new Date(site.start_date || site.created_at).getTime();
-                            const end = new Date(site.end_date).getTime();
-                            const now = new Date().getTime();
-                            if (end <= start || now < start) return;
-
-                            // Time Calculation
-                            const totalDays = (end - start) / (1000 * 60 * 60 * 24);
-                            const elapsedDays = Math.max(0.1, (now - start) / (1000 * 60 * 60 * 24));
-                            if (elapsedDays <= 0) return;
-
-                            // Hours Calculation via Helper
-                            const stats = getProjectStats(site.id, projectTasks, timeSessions);
-                            const totalHours = stats.realized;
-                            const plannedTotal = stats.planned;
-
-                            if (plannedTotal === 0) return; // Prevent division by zero
-
-                            // Ratio Checking (1.15)
-                            const plannedPerDay = plannedTotal / totalDays;
-                            const realizedPerDay = totalHours / elapsedDays;
-                            const ratio = realizedPerDay / plannedPerDay;
-
-                            if (ratio > 1.15) {
-                                driftingSites.push({ ...site, ratio });
-                            }
-                        });
-
-                        if (driftingSites.length === 0) return null;
-
-                        return (
-                            <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-4 animate-in fade-in zoom-in duration-300">
-                                <h3 className="text-red-400 text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2">
-                                    <AlertTriangle size={14} />
-                                    Alertes Rythme
-                                </h3>
-                                <div className="space-y-2">
-                                    {driftingSites.map(site => (
-                                        <button
-                                            key={site.id}
-                                            onClick={() => navigate(`/sites/${site.id}`)}
-                                            className="w-full flex items-center justify-between text-left p-2 hover:bg-red-500/10 rounded-lg transition-colors group"
-                                        >
-                                            <span className="text-white font-medium text-sm group-hover:underline">{site.name}</span>
-                                            <span className="text-xs font-bold text-red-400 bg-red-500/20 px-2 py-0.5 rounded">
-                                                +{Math.round((site.ratio - 1) * 100)}% Rapide
-                                            </span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        );
-                    })()}
-                </div>
-            )}
+            {/* Les alertes de rythme basées sur des journées calendaires ont été retirées.
+                Le statut de productivité fiable est maintenant affiché dans Suivi Projets
+                à partir de l'IPMO validé, et non d'une projection théorique. */}
 
             {/* SUIVI PROJETS (Admin / Foreman Only) */}
             {(currentUser?.role === 'admin' || currentUser?.role === 'foreman') && (
@@ -237,7 +177,7 @@ const Dashboard = () => {
                             </div>
                             <div className="text-left">
                                 <h3 className="font-bold text-white text-sm">Suivi Projets</h3>
-                                <p className="text-xs text-slate-400">Vue direction : Écarts Heures</p>
+                                <p className="text-xs text-slate-400">Avancement physique · Budget · IPMO</p>
                             </div>
                         </div>
                     </div>
