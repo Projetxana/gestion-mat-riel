@@ -94,7 +94,7 @@ const WeeklyTimeEntry = () => {
             const savedEntries = weekSessions
                 .filter(session => formatDateISO(new Date(session.punch_start_at)) === dateKey)
                 .map(session => {
-                    const hours = (new Date(session.punch_end_at) - new Date(session.punch_start_at)) / 3600000;
+                    const hours = (new Date(session.corrected_end_at || session.punch_end_at) - new Date(session.corrected_start_at || session.punch_start_at)) / 3600000;
                     return {
                         id: `db-${session.id}`,
                         dbId: session.id,
