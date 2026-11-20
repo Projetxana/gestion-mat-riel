@@ -3,6 +3,8 @@ import { BarChart3, CheckCircle2, Clock3 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { useCompanyPerformance } from '../hooks/useCompanyPerformance';
+import TaskPerformanceBars from './TaskPerformanceBars';
+import { computeTaskHours } from '../utils/taskPerformance';
 
 const number = (value, digits = 1) =>
     Number(value || 0).toLocaleString('fr-CA', {
@@ -21,13 +23,15 @@ const statusColor = (index) => {
 // Each save creates an immutable, timestamped snapshot of BOTH earned and actual
 // hours, so future punches cannot silently change a past productivity index.
 const SitePerformancePanel = ({ site }) => {
-    const { projectTasks } = useAppContext();
+    const { projectTasks, timeSessions } = useAppContext();
     const { enabled, isAdmin, loading: accessLoading } = useCompanyPerformance();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [reports, setReports] = useState([]);
+    const [latestTaskSnapshots, setLatestTaskSnapshots] = useState([]);
+    const [showValidation, setShowValidation] = useState(false);
     const [percentages, setPercentages] = useState({});
     const [historyMode, setHistoryMode] = useState('unverified');
 
@@ -60,11 +64,12 @@ const SitePerformancePanel = ({ site }) => {
         }
         const list = data || [];
         setReports(list);
+        if (!list.length) setShowValidation(true);
         let saved = [];
         if (list.length) {
             const { data: rows, error: rowsError } = await supabase
                 .from('bt_performance_report_tasks')
-                .select('task_id, physical_percent')
+                .select('task_id, physical_percent, planned_hours, consumed_hours, task_performance_index')
                 .eq('report_id', list[0].id);
             if (rowsError) {
                 setError('Impossible de charger les avancements : ' + rowsError.message);
@@ -73,6 +78,7 @@ const SitePerformancePanel = ({ site }) => {
             }
             saved = rows || [];
         }
+        setLatestTaskSnapshots(saved);
         const draft = {};
         for (const task of siteTasks) {
             const last = saved.find(row => String(row.task_id) === String(task.id));
@@ -88,9 +94,15 @@ const SitePerformancePanel = ({ site }) => {
         void loadReports();
     }, [accessLoading, isAdmin, enabled, site?.status, loadReports]);
 
-    if (accessLoading || !isAdmin || !enabled || site?.status === 'archived') return null;
-
     const latest = reports[0] || null;
+    const taskRows = useMemo(() => computeTaskHours({
+        tasks: siteTasks,
+        sessions: timeSessions || [],
+        siteId: site?.id,
+        historyMode: latest?.history_mode || 'unverified',
+    }), [siteTasks, timeSessions, site?.id, latest?.history_mode]);
+
+    if (accessLoading || !isAdmin || !enabled || site?.status === 'archived') return null;
     const earnedPreview = siteTasks.reduce((sum, task) =>
         sum + Number(task.planned_hours || 0) * Number(percentages[String(task.id)] || 0) / 100, 0);
     const physicalPreview = taskBudget > 0 ? earnedPreview / taskBudget * 100 : 0;
@@ -125,6 +137,7 @@ const SitePerformancePanel = ({ site }) => {
                 return;
             }
             await loadReports();
+            setShowValidation(false);
             setSuccess('Bilan enregistré. Les pointages futurs ne modifieront pas cet indice historique.');
         } catch (exception) {
             setError(exception?.message || 'Impossible d’enregistrer le bilan.');
@@ -144,37 +157,73 @@ const SitePerformancePanel = ({ site }) => {
                 </div>
             </div>
 
-            {latest && (
-                <div className="bg-slate-800 rounded-xl p-4 space-y-3" aria-label="Dernier bilan validé">
+            {latest ? (
+                <div className="bg-slate-800 rounded-xl p-4 space-y-3" aria-label="Tableau de bord de performance du chantier">
                     <p className="text-xs text-slate-400 flex items-center gap-2">
                         <Clock3 size={14} />
-                        Dernière validation : {new Date(latest.validated_at).toLocaleString('fr-CA', {
+                        Dernier bilan validé : {new Date(latest.validated_at).toLocaleString('fr-CA', {
                             dateStyle: 'medium', timeStyle: 'short'
                         })}
                     </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div><p className="text-xs text-slate-400">Avancement physique</p><p className="text-xl font-bold">{number(latest.physical_percent)} %</p></div>
-                        <div><p className="text-xs text-slate-400">Heures gagnées</p><p className="text-xl font-bold">{number(latest.earned_hours)} h</p></div>
-                        <div><p className="text-xs text-slate-400">Heures consommées</p><p className="text-xl font-bold">{latest.consumed_hours == null ? 'À confirmer' : number(latest.consumed_hours) + ' h'}</p></div>
-                        <div><p className="text-xs text-slate-400">IPMO</p>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div>
+                            <p className="text-xs text-slate-400">Travaux réalisés</p>
+                            <p className="text-xl font-bold">{number(latest.physical_percent)} %</p>
+                            <div className="mt-2 h-2 rounded-full bg-slate-700 overflow-hidden">
+                                <div className="h-full rounded-full bg-blue-500" style={{width: `${Math.min(100,Number(latest.physical_percent))}%`}}/>
+                            </div>
+                        </div>
+                        <div>
+                            <p className="text-xs text-slate-400">Budget consommé</p>
+                            <p className="text-xl font-bold">{latest.consumed_hours == null ? 'À confirmer' : number(latest.consumed_hours) + ' h'}</p>
+                            <p className="text-xs text-slate-400">sur {number(latest.planned_hours)} h prévues</p>
+                            {latest.consumed_hours != null && <div className="mt-2 h-2 rounded-full bg-slate-700 overflow-hidden">
+                                <div className="h-full rounded-full bg-amber-500" style={{width: `${Math.min(100,Number(latest.consumed_hours)/Number(latest.planned_hours||1)*100)}%`}}/>
+                            </div>}
+                        </div>
+                        <div>
+                            <p className="text-xs text-slate-400">Indice de performance</p>
                             <p className={`text-2xl font-bold ${statusColor(latest.performance_index)}`}>
                                 {latest.performance_index == null ? '—' : number(latest.performance_index, 2)}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-slate-400">Écart de productivité</p>
+                            <p className={`text-xl font-bold ${latest.performance_index == null
+                                ? 'text-amber-300'
+                                : Number(latest.earned_hours) >= Number(latest.consumed_hours) ? 'text-emerald-300' : 'text-red-300'}`}>
+                                {latest.performance_index == null ? 'À confirmer' : `${Number(latest.earned_hours) >= Number(latest.consumed_hours) ? '+' : ''}${number(Number(latest.earned_hours)-Number(latest.consumed_hours),2)} h`}
                             </p>
                         </div>
                     </div>
                     {latest.performance_index == null && (
                         <p className="text-sm text-amber-200">
-                            Indice suspendu : heures historiques non réconciliées, budget incohérent ou absence d’heures consommées.
+                            Indice suspendu : heures historiques non rapprochées, budget incohérent ou absence d'heures consommées.
                         </p>
                     )}
                     <p className="text-xs text-slate-400">
-                        Bilan figé : {number(latest.session_hours)} h de pointages et {number(latest.historical_hours)} h historiques à la validation.
-                        Les heures enregistrées après cette date apparaîtront au prochain bilan.
+                        Résultats figés au dernier bilan. Les barres des tâches ci-dessous reflètent les heures enregistrées depuis.
                     </p>
                 </div>
+            ) : (
+                <p className="rounded-xl bg-slate-800 p-4 text-sm text-slate-300">
+                    Aucun bilan validé. Renseignez l'avancement physique ci-dessous pour démarrer le suivi.
+                </p>
             )}
 
-            {loading ? <p role="status" className="text-slate-300">Chargement des validations…</p> : (
+            {!loading && <TaskPerformanceBars
+                rows={taskRows}
+                snapshotRows={latestTaskSnapshots}
+                historyMode={latest?.history_mode || 'unverified'}
+                validatedAt={latest?.validated_at}
+            />}
+
+            <button type="button" aria-expanded={showValidation}
+                onClick={() => setShowValidation(value => !value)}
+                className="w-full min-h-11 text-left rounded-xl border border-slate-600 bg-slate-800 p-3 font-semibold text-blue-200">
+                {showValidation ? 'Masquer la validation de l’avancement ▲' : 'Mettre à jour l’avancement physique ▼'}
+            </button>
+            {showValidation && (loading ? <p role="status" className="text-slate-300">Chargement des validations…</p> : (
                 <>
                     <div>
                         <h4 className="font-semibold mb-1">Validation de l'avancement des tâches</h4>
@@ -228,7 +277,7 @@ const SitePerformancePanel = ({ site }) => {
 
                     <div className="bg-slate-800/70 rounded-xl p-3 flex flex-wrap gap-4 justify-between">
                         <div><p className="text-xs text-slate-400">Avancement proposé</p><p className="font-bold text-lg">{number(physicalPreview)} %</p></div>
-                        <div><p className="text-xs text-slate-400">Heures gagnées proposées</p><p className="font-bold text-lg">{number(earnedPreview)} h</p></div>
+                        <div><p className="text-xs text-slate-400">Budget correspondant aux travaux exécutés</p><p className="font-bold text-lg">{number(earnedPreview)} h</p></div>
                     </div>
 
                     {historicalHours > 0 && (
