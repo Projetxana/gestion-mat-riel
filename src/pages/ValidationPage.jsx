@@ -197,8 +197,8 @@ export default function ValidationPage() {
     const approveWeek = async (group) => {
         if (!isAdmin || busyId != null || group.pendingCount === 0 || editingId != null) return;
         const messageText = 'Valider la semaine de ' + group.name
-            + ' ?\\n' + group.pendingCount + ' saisie(s) en attente, '
-            + formatDuration(group.totalMinutes) + ' h au total.\\n'
+            + ' ?\n' + group.pendingCount + ' saisie(s) en attente, '
+            + formatDuration(group.totalMinutes) + ' h au total.\n'
             + 'La validation concerne uniquement les entrées encore en attente.';
         if (!window.confirm(messageText)) return;
         setBusyId('week:' + group.userId);
