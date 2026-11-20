@@ -137,6 +137,13 @@ const CompanyHoursRoute = () => {
   return <TimeTracking />;
 };
 
+const AdminValidationRoute = () => {
+  const { currentCompanyId, companyRoleLoading, currentUser } = useAppContext();
+  if (!currentCompanyId || companyRoleLoading) return <p className="p-6 text-slate-400">Chargement de votre entreprise…</p>;
+  if (currentUser?.role !== 'admin') return <Navigate to="/timetracking" replace />;
+  return <ValidationPage />;
+};
+
 const EmployeeWeeklyRoute = () => {
   const { currentCompanyId, companyRoleLoading, currentUser } = useAppContext();
   if (!currentCompanyId || companyRoleLoading) return <p className="p-6 text-slate-400">Chargement de votre entreprise…</p>;
@@ -170,7 +177,7 @@ const AppRoutes = () => {
         <Route path="hours" element={<CompanyHoursRoute />} />
         <Route path="timetracking" element={<CompanyHoursRoute />} />
         <Route path="timetracking/manual" element={<EmployeeWeeklyRoute />} />
-        <Route path="timetracking/validation" element={<ValidationPage />} />
+        <Route path="timetracking/validation" element={<AdminValidationRoute />} />
         <Route path="*" element={<PlaceholderPage title="Page Non Trouvée" />} /> {/* Added catch-all route */}
       </Route>
     </Routes>
