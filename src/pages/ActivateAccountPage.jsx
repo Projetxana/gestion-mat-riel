@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { ShieldCheck, Lock } from 'lucide-react';
+import { ShieldCheck, Lock, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { MIN_PASSWORD_LENGTH, normalizeAccountEmail, validateAccountActivation } from '../utils/activationValidation';
 
@@ -11,6 +11,8 @@ export default function ActivateAccountPage() {
     const [enteredEmail, setEnteredEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [saving, setSaving] = useState(false);
@@ -71,6 +73,8 @@ export default function ActivateAccountPage() {
             setSuccess('Mot de passe défini. Redirection vers la connexion…');
             setPassword('');
             setConfirmPassword('');
+            setShowPassword(false);
+            setShowConfirmPassword(false);
 
             const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
             if (signOutError) {
@@ -113,12 +117,60 @@ export default function ActivateAccountPage() {
                         <label className="block text-sm">Confirmez l’adresse du compte invité
                             <input type="email" autoComplete="off" required value={enteredEmail} onChange={e => { setEnteredEmail(e.target.value); setError(''); }} className="mt-1 w-full rounded-lg bg-slate-900 p-3 text-white border border-slate-600" />
                         </label>
-                        <label className="block text-sm">Nouveau mot de passe
-                            <input type="password" autoComplete="new-password" required value={password} onChange={e => { setPassword(e.target.value); setError(''); }} className="mt-1 w-full rounded-lg bg-slate-900 p-3 text-white border border-slate-600" />
-                        </label>
-                        <label className="block text-sm">Confirmer le mot de passe
-                            <input type="password" autoComplete="new-password" required value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setError(''); }} className="mt-1 w-full rounded-lg bg-slate-900 p-3 text-white border border-slate-600" />
-                        </label>
+                        <div className="text-sm">
+                            <label htmlFor="activation-password">Nouveau mot de passe</label>
+                            <div className="relative mt-1">
+                                <input
+                                    id="activation-password"
+                                    type={showPassword ? 'text' : 'password'}
+                                    autoComplete="new-password"
+                                    autoCapitalize="none"
+                                    autoCorrect="off"
+                                    spellCheck={false}
+                                    required
+                                    value={password}
+                                    onChange={e => { setPassword(e.target.value); setError(''); }}
+                                    className="w-full rounded-lg bg-slate-900 p-3 pr-14 text-white border border-slate-600"
+                                />
+                                <button
+                                    type="button"
+                                    aria-label={showPassword ? 'Masquer le nouveau mot de passe' : 'Afficher le nouveau mot de passe'}
+                                    aria-pressed={showPassword}
+                                    aria-controls="activation-password"
+                                    onClick={() => setShowPassword(value => !value)}
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-lg text-slate-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                                >
+                                    {showPassword ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="text-sm">
+                            <label htmlFor="activation-confirm-password">Confirmer le mot de passe</label>
+                            <div className="relative mt-1">
+                                <input
+                                    id="activation-confirm-password"
+                                    type={showConfirmPassword ? 'text' : 'password'}
+                                    autoComplete="new-password"
+                                    autoCapitalize="none"
+                                    autoCorrect="off"
+                                    spellCheck={false}
+                                    required
+                                    value={confirmPassword}
+                                    onChange={e => { setConfirmPassword(e.target.value); setError(''); }}
+                                    className="w-full rounded-lg bg-slate-900 p-3 pr-14 text-white border border-slate-600"
+                                />
+                                <button
+                                    type="button"
+                                    aria-label={showConfirmPassword ? 'Masquer la confirmation du mot de passe' : 'Afficher la confirmation du mot de passe'}
+                                    aria-pressed={showConfirmPassword}
+                                    aria-controls="activation-confirm-password"
+                                    onClick={() => setShowConfirmPassword(value => !value)}
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-lg text-slate-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                                >
+                                    {showConfirmPassword ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}
+                                </button>
+                            </div>
+                        </div>
                         <p className="text-xs text-slate-300">Le mot de passe doit contenir au moins {MIN_PASSWORD_LENGTH} caractères.</p>
                         {error && <p role="alert" className="text-red-300">{error}</p>}
                         {success && <p role="status" className="text-green-300">{success}</p>}
