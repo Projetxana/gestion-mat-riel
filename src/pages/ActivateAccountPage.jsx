@@ -91,7 +91,23 @@ export default function ActivateAccountPage() {
                 <ShieldCheck size={32} className="mb-4 text-blue-400" />
                 <h1 className="text-2xl font-bold mb-2">Définir mon mot de passe</h1>
                 <p className="text-sm text-slate-300 mb-4">Cette opération modifie uniquement le compte Supabase Auth connecté.</p>
-                {loading ? <p>Vérification du compte…</p> : (
+                {loading ? <p>Vérification du compte…</p> : !sessionEmail ? (
+                    <div className="space-y-4">
+                        <p role="alert" className="text-sm text-red-300">
+                            Aucun lien d’activation valide n’est ouvert dans ce navigateur. Un ancien lien peut être expiré ou déjà utilisé.
+                        </p>
+                        <p className="text-sm text-slate-300">
+                            Si vous connaissez votre mot de passe, connectez-vous normalement. Sinon, utilisez « Mot de passe oublié ? » pour demander un nouveau lien.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => navigate('/login', { replace: true })}
+                            className="w-full rounded-lg bg-blue-600 p-3 font-semibold"
+                        >
+                            Retour à la connexion
+                        </button>
+                    </div>
+                ) : (
                     <form onSubmit={handleSubmit} noValidate className="space-y-4">
                         <p className="text-sm text-amber-300">Compte connecté : {sessionEmail || 'Aucun — ouvrez votre lien d’invitation dans une fenêtre privée'}</p>
                         <label className="block text-sm">Confirmez l’adresse du compte invité
