@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { ShieldCheck, Lock } from 'lucide-react';
+import { ShieldCheck, Lock, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const ChangePasswordPage = () => {
@@ -8,6 +8,8 @@ const ChangePasswordPage = () => {
     const navigate = useNavigate();
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [error, setError] = useState('');
 
     const handleSubmit = async (e) => {
@@ -44,32 +46,62 @@ const ChangePasswordPage = () => {
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1">Nouveau mot de passe</label>
+                            <label htmlFor="change-password" className="block text-sm font-medium text-slate-300 mb-1">Nouveau mot de passe</label>
                             <div className="relative">
-                                <Lock className="absolute left-3 top-3 text-slate-500" size={18} />
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} aria-hidden="true" />
                                 <input
-                                    type="password"
+                                    id="change-password"
+                                    type={showPassword ? 'text' : 'password'}
+                                    autoComplete="new-password"
+                                    autoCapitalize="none"
+                                    autoCorrect="off"
+                                    spellCheck={false}
                                     required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full pl-10 p-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder:text-slate-600"
+                                    className="w-full pl-10 pr-14 p-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder:text-slate-600"
                                     placeholder="Nouveau mot de passe"
                                 />
+                                <button
+                                    type="button"
+                                    aria-label={showPassword ? 'Masquer le nouveau mot de passe' : 'Afficher le nouveau mot de passe'}
+                                    aria-pressed={showPassword}
+                                    aria-controls="change-password"
+                                    onClick={() => setShowPassword(value => !value)}
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-lg text-slate-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                                >
+                                    {showPassword ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}
+                                </button>
                             </div>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1">Confirmer le mot de passe</label>
+                            <label htmlFor="change-confirm-password" className="block text-sm font-medium text-slate-300 mb-1">Confirmer le mot de passe</label>
                             <div className="relative">
-                                <Lock className="absolute left-3 top-3 text-slate-500" size={18} />
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} aria-hidden="true" />
                                 <input
-                                    type="password"
+                                    id="change-confirm-password"
+                                    type={showConfirmPassword ? 'text' : 'password'}
+                                    autoComplete="new-password"
+                                    autoCapitalize="none"
+                                    autoCorrect="off"
+                                    spellCheck={false}
                                     required
                                     value={confirmPassword}
                                     onChange={(e) => setConfirmPassword(e.target.value)}
-                                    className="w-full pl-10 p-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder:text-slate-600"
+                                    className="w-full pl-10 pr-14 p-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder:text-slate-600"
                                     placeholder="Confirmer le mot de passe"
                                 />
+                                <button
+                                    type="button"
+                                    aria-label={showConfirmPassword ? 'Masquer la confirmation du mot de passe' : 'Afficher la confirmation du mot de passe'}
+                                    aria-pressed={showConfirmPassword}
+                                    aria-controls="change-confirm-password"
+                                    onClick={() => setShowConfirmPassword(value => !value)}
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-lg text-slate-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                                >
+                                    {showConfirmPassword ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}
+                                </button>
                             </div>
                         </div>
                     </div>
