@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {extractSupplierTableLines,safeSupplierNumber} from '../src/utils/purchaseDocumentLines.js';
+import {extractSupplierTableLines,safeSupplierNumber,validateReviewedOrderRows} from '../src/utils/purchaseDocumentLines.js';
 
 const flocorOrder = [
 '## Flocor – confirmation de commande (anonymized fixture)',
@@ -86,4 +86,17 @@ test('incomplete images with table headings still preserve review instead of ass
  assert.equal(found.items.length,1);
  assert.equal(found.items[0].shipped_qty,null);
  assert.equal(found.items[0].is_complete,false);
+});
+
+test('reviewed rows require all quantity/unit/cost fields and reject arithmetic mismatch',()=>{
+ const row={included:true,item_code:'ART00429',description:'Té CPVC',unit:'UN',
+  quantity:'40',unit_cost:'3,80',amount:'152,00'};
+ assert.deepEqual(validateReviewedOrderRows([row]),[{
+  item_code:'ART00429',description:'Té CPVC',unit:'UN',
+  quantity:40,unit_cost:3.8,amount:152
+ }]);
+ assert.throws(()=>validateReviewedOrderRows([{...row,amount:'122,00'}]),/écart/);
+ assert.throws(()=>validateReviewedOrderRows([{...row,unit:''}]),/invalide/);
+ assert.throws(()=>validateReviewedOrderRows([{...row,quantity:'1,000'}]),/invalide/);
+ assert.throws(()=>validateReviewedOrderRows([{...row,included:false}]),/Sélectionnez/);
 });
