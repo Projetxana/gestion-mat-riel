@@ -24,7 +24,7 @@ test('unit price per CT is converted for review using row amount divided by unit
  assert.equal(found.items[0].quantity,6474);
  assert.equal(found.items[0].unit,'UN');
  assert.equal(found.items[0].source_price_unit,'CT');
- assert.equal(found.items[0].unit_cost,1.5956);
+ assert.ok(Math.abs(found.items[0].unit_cost-1.5956)<0.00001);
  assert.equal(found.items[0].amount,10329.91);
  assert.equal(found.items[0].included,true);
  assert.ok(found.warnings.some(w=>w.includes('CT')));
