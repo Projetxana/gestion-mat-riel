@@ -81,7 +81,7 @@ CREATE POLICY bt_purchase_budgets_insert ON public.bt_purchase_budgets
         public.bt_stage2_is_admin(company_id)
         AND created_by = (SELECT auth.uid())
         AND EXISTS (SELECT 1 FROM public.sites s
-            WHERE s.id = site_id AND s.company_id = company_id AND s.status = 'active')
+            WHERE s.id = bt_purchase_budgets.site_id AND s.company_id = bt_purchase_budgets.company_id AND s.status = 'active')
     );
 CREATE POLICY bt_purchase_budget_lines_read ON public.bt_purchase_budget_lines
     FOR SELECT TO authenticated USING (public.bt_stage2_is_admin(company_id));
@@ -95,7 +95,7 @@ CREATE POLICY bt_purchase_orders_insert ON public.bt_purchase_orders
         public.bt_stage2_is_admin(company_id)
         AND project_verified_by = (SELECT auth.uid())
         AND EXISTS (SELECT 1 FROM public.sites s
-            WHERE s.id = site_id AND s.company_id = company_id AND s.status = 'active')
+            WHERE s.id = bt_purchase_orders.site_id AND s.company_id = bt_purchase_orders.company_id AND s.status = 'active')
     );
 CREATE POLICY bt_purchase_order_lines_read ON public.bt_purchase_order_lines
     FOR SELECT TO authenticated USING (public.bt_stage2_is_admin(company_id));
