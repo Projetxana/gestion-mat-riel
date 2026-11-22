@@ -86,3 +86,23 @@ test('pilot: a supplier document with a valid PO but wrong delivery project must
     {id:'po1',company_id:companyId,site_id:site.id,po_number:'P02330',supplier:'Fournisseur Démo'}
   ]).status,'review');
 });
+
+test('pilot fixture: same construction site, different PO, must not attach shipment',()=>{
+ const confirmation={id:'order-B',company_id:companyId,site_id:site.id,
+  po_number:'P02330',supplier:'Fournisseur Démo'};
+ const scanned={poNumber:'P02281',companyId,siteId:site.id,supplier:confirmation.supplier};
+ assert.equal(matchDeliveryToOrder(scanned,[confirmation]).status,'review');
+ // The original photo example contained 100 ordered, 0 shipped and 100 B/O:
+ // preserve all three quantities separately and never create committed spend.
+ const summary=summarizeDeliveries(
+   [{id:22,order_id:'order-A',item_code:'ART77703',unit:'UN',quantity:100}],
+   [{id:'scan-A',status:'verified',order_id:'order-A',
+     verified_at:'2026-11-22T12:00:00Z'}],
+   [{delivery_id:'scan-A',order_id:'order-A',order_line_id:22,
+     shipped_qty:0,supplier_bo_qty:100}]
+ );
+ assert.equal(summary[0].receivedQty,0);
+ assert.equal(summary[0].remainingQty,100);
+ assert.equal(summary[0].supplierBoQty,100);
+ assert.equal(summary[0].status,'supplier_bo');
+});
