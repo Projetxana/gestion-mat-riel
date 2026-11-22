@@ -9,6 +9,7 @@ on:
       - feature/buildtrack-purchases-mvp1-20261121
       - feature/buildtrack-deliveries-mvp2-20261121
       - feature/buildtrack-documents-email-mvp3-20261121
+      - feature/buildtrack-document-lines-mvp4-20261122
 
 permissions:
   contents: read
