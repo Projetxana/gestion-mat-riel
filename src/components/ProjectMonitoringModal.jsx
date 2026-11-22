@@ -84,6 +84,8 @@ const ProjectMonitoringModal = ({ onClose }) => {
     // Project details stay inside Suivi des projets; no extra navigation layout.
     const [selectedProjectId, setSelectedProjectId] = useState(null);
     const [detailView, setDetailView] = useState('overview');
+    const detailViewRef = useRef(detailView);
+    detailViewRef.current = detailView;
     const closeDetail = useCallback(() => setDetailView('overview'), []);
     const [purchaseRefresh, setPurchaseRefresh] = useState(0);
     const [purchaseSummary, setPurchaseSummary] = useState({ status: 'loading' });
@@ -102,13 +104,13 @@ const ProjectMonitoringModal = ({ onClose }) => {
         closeRef.current?.focus();
         const oldOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
-        const onKeyDown = event => { if (event.key === 'Escape' && detailView === 'overview') onClose(); };
+        const onKeyDown = event => { if (event.key === 'Escape' && detailViewRef.current === 'overview') onClose(); };
         document.addEventListener('keydown', onKeyDown);
         return () => {
             document.body.style.overflow = oldOverflow;
             document.removeEventListener('keydown', onKeyDown);
         };
-    }, [onClose, detailView]);
+    }, [onClose]);
 
     useEffect(() => {
         let cancelled = false;
