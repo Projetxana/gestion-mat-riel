@@ -61,6 +61,8 @@ Deno.serve(async req=>{
    if(loadError||!blob)return respond({error:'Photo unavailable'},422);
    const bytes=new Uint8Array(await blob.arrayBuffer());
    if(!bytes.length||bytes.length>3*1024*1024)return respond({error:'Photo too large'},413);
+   if(bytes.length<4 || bytes[0]!==0xff || bytes[1]!==0xd8)
+     return respond({error:'Invalid JPEG photo'},422);
    totalBytes+=bytes.length;
    if(totalBytes>15*1024*1024)return respond({error:'Photos too large'},413);
    bytesList.push(bytes);
