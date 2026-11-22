@@ -146,16 +146,22 @@ $fn$;
 CREATE OR REPLACE FUNCTION public.bt_purchase_create_order(
     p_company_id uuid, p_site_id bigint, p_po_number text, p_supplier text,
     p_supplier_order_number text, p_shipping_project_name text, p_order_date date,
-    p_source_name text, p_project_verified boolean, p_lines jsonb
+    p_source_name text, p_project_verified boolean, p_override_confirmation text, p_lines jsonb
 ) RETURNS uuid
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = ''
 AS $fn$
 DECLARE v_id uuid;
+        v_site_name text;
 BEGIN
-    IF NOT public.bt_stage2_is_admin(p_company_id)
-      OR NOT EXISTS (SELECT 1 FROM public.sites s
-          WHERE s.id=p_site_id AND s.company_id=p_company_id AND s.status='active') THEN
+    SELECT s.name INTO v_site_name FROM public.sites s
+    WHERE s.id=p_site_id AND s.company_id=p_company_id AND s.status='active';
+    IF NOT public.bt_stage2_is_admin(p_company_id) OR v_site_name IS NULL THEN
         RAISE EXCEPTION 'Chantier indisponible ou administrateur requis' USING ERRCODE='42501';
+    END IF;
+    IF lower(regexp_replace(btrim(coalesce(p_shipping_project_name,'')), '[[:space:][:punct:]]+', '', 'g'))
+       <> lower(regexp_replace(btrim(v_site_name), '[[:space:][:punct:]]+', '', 'g'))
+       AND lower(btrim(coalesce(p_override_confirmation,''))) <> lower(btrim(v_site_name)) THEN
+        RAISE EXCEPTION 'Nom du chantier de livraison différent : validation explicite requise';
     END IF;
     IF p_project_verified IS DISTINCT FROM true THEN
         RAISE EXCEPTION 'Le chantier de livraison doit être vérifié';
@@ -183,7 +189,7 @@ END;
 $fn$;
 
 REVOKE ALL ON FUNCTION public.bt_purchase_import_budget(uuid,bigint,text,jsonb) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.bt_purchase_create_order(uuid,bigint,text,text,text,text,date,text,boolean,jsonb) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.bt_purchase_create_order(uuid,bigint,text,text,text,text,date,text,boolean,text,jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bt_purchase_import_budget(uuid,bigint,text,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.bt_purchase_create_order(uuid,bigint,text,text,text,text,date,text,boolean,jsonb) TO authenticated;
 
