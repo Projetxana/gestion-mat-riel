@@ -1,6 +1,7 @@
 // Conservative document cues extracted from Cloudflare Markdown conversion.
 // These are *suggestions only*. No price or quantity may be committed without review.
 import { normalizeToken } from './purchaseBudget.js';
+import { extractSupplierTableLines } from './purchaseDocumentLines.js';
 
 const field = (text, names) => {
   for (const name of names) {
@@ -32,7 +33,8 @@ export const extractDocumentHints = (input, type = 'order') => {
     'commande\\s*fournisseur',
     'order\\s*confirmation\\s*(?:number|#|no\\.?)'
   ]));
-  // No extraction of monetary amounts or shipped quantities without independent review.
+  // Candidate quantities/prices come only from recognized tables and ALWAYS require review.
+  const lineSuggestions = extractSupplierTableLines(text, { kind: type === 'delivery' ? 'delivery' : 'order' });
   const numbers = text.match(/(?:B\/O|back.?order|en souffrance|ordered|shipped|expédiée|commandée)/ig) || [];
   return {
     type: type === 'delivery' ? 'delivery' : 'order',
@@ -40,10 +42,14 @@ export const extractDocumentHints = (input, type = 'order') => {
     shipping_project_name: shippingProject,
     supplier_order_number: supplierOrder,
     has_quantity_columns: numbers.length >= 2,
+    suggested_lines: lineSuggestions.items,
+    suggested_line_count: lineSuggestions.items.length,
+    line_warnings: lineSuggestions.warnings,
     requires_review: true,
     warnings: [
       ...(!poNumber ? ['Numéro de PO non identifié'] : []),
       ...(!shippingProject ? ['Nom de chantier de livraison non identifié'] : []),
+      ...lineSuggestions.warnings,
       'Comparer les articles et les quantités au document original avant validation',
     ],
     text_excerpt: text.slice(0, 8000),
