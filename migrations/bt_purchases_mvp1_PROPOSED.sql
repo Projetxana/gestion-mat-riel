@@ -191,6 +191,6 @@ $fn$;
 REVOKE ALL ON FUNCTION public.bt_purchase_import_budget(uuid,bigint,text,jsonb) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.bt_purchase_create_order(uuid,bigint,text,text,text,text,date,text,boolean,text,jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.bt_purchase_import_budget(uuid,bigint,text,jsonb) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.bt_purchase_create_order(uuid,bigint,text,text,text,text,date,text,boolean,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.bt_purchase_create_order(uuid,bigint,text,text,text,text,date,text,boolean,text,jsonb) TO authenticated;
 
 COMMIT;
