@@ -111,4 +111,39 @@ SET ROLE anon;
 SELECT public.bt_test_expect_error(
  $sql$SELECT count(*) FROM public.bt_purchase_documents$sql$,'42501');
 RESET ROLE;
+
+-- New MVP4 draft lines must inherit document tenant isolation and remain uncommitted.
+\ir ../migrations/bt_purchases_mvp4_PROPOSED.sql
+UPDATE public.bt_purchase_documents
+ SET line_candidates='[{"item_code":"ART00429","description":"Te CPVC","quantity":40,
+                       "unit":"UN","unit_cost":3.80,"amount":152.00,"requires_review":true}]'::jsonb,
+     line_warnings=ARRAY['Vérifier la livraison'];
+
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000002';
+SET ROLE authenticated;
+DO $check$
+BEGIN
+ IF (SELECT count(*) FROM public.bt_purchase_documents WHERE jsonb_array_length(line_candidates)=1)<>1
+ THEN RAISE EXCEPTION 'Tenant A admin cannot see private candidate rows'; END IF;
+END $check$;
+RESET ROLE;
+
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000001';
+SET ROLE authenticated;
+DO $check$
+BEGIN
+ IF (SELECT count(*) FROM public.bt_purchase_documents)<>0 THEN
+  RAISE EXCEPTION 'Employee can inspect unverified supplier prices'; END IF;
+END $check$;
+RESET ROLE;
+
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000006';
+SET ROLE authenticated;
+DO $check$
+BEGIN
+ IF (SELECT count(*) FROM public.bt_purchase_documents)<>0 THEN
+  RAISE EXCEPTION 'Other tenant can inspect extracted purchase rows'; END IF;
+END $check$;
+RESET ROLE;
+
 SELECT 'PASS: private document storage, inbox aliases, tenant admin/employee RLS, authenticated delivery upload' AS result;

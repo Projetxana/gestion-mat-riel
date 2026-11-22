@@ -1,6 +1,9 @@
 // Conservative document cues extracted from Cloudflare Markdown conversion.
 // These are *suggestions only*. No price or quantity may be committed without review.
 import { normalizeToken } from './purchaseBudget.js';
+import { extractSupplierTableLines } from './purchaseDocumentLines.js';
+import { extractFlocorHeader,extractFlocorLayoutLines } from './flocorLayoutParser.js';
+import {extractCdEstimateHeader,extractCdEstimateLines} from './cdEstimateLayoutParser.js';
 
 const field = (text, names) => {
   for (const name of names) {
@@ -15,35 +18,50 @@ const clean = value => String(value ?? '').trim().replace(/[^\p{L}\p{N}\s.'#&+/-
 
 export const extractDocumentHints = (input, type = 'order') => {
   const text = String(input ?? '').replace(/\r\n?/g, '\n').slice(0, 120000);
+  const flocorHeader = extractFlocorHeader(text);
+  const estimateHeader = type==='budget'?extractCdEstimateHeader(text):null;
   const poNumber = clean(field(text, [
     'customer\\s*po\\s*(?:no\\.?|number|#)?',
     'no\\.?\\s*commande\\s*client',
     'n[o°]\\s*de\\s*po',
     'po\\s*client', 'purchase\\s*order',
     'p\\.?o\\.?\\s*(?:number|#|no\\.?)'
-  ]));
+  ]) || flocorHeader?.po_number);
   const shippingProject = clean(field(text, [
     'job\\s*name', 'nom\\s*(?:du\\s*)?projet',
     'chantier\\s*(?:de\\s*livraison)?', 'ship\\s*to\\s*(?:project|job)',
     'adresse\\s*livraison', 'delivery\\s*address',
-  ]));
+  ]) || flocorHeader?.shipping_project_name || estimateHeader?.shipping_project_name);
   const supplierOrder = clean(field(text, [
     'supplier\\s*order\\s*(?:number|#|no\\.?)*',
     'commande\\s*fournisseur',
     'order\\s*confirmation\\s*(?:number|#|no\\.?)'
   ]));
-  // No extraction of monetary amounts or shipped quantities without independent review.
+  // Candidate quantities/prices come only from recognized tables and ALWAYS require review.
+  let lineSuggestions = type==='budget'
+      ? extractCdEstimateLines(text)
+      : extractSupplierTableLines(text, { kind: type === 'delivery' ? 'delivery' : 'order' });
+  if(type!=='budget' && !lineSuggestions.items.length){
+    const flocor=extractFlocorLayoutLines(text,{kind:type === 'delivery' ? 'delivery' : 'order'});
+    if(flocor.matched_format)lineSuggestions={
+      items:flocor.items, warnings:flocor.warnings,
+    };
+  }
   const numbers = text.match(/(?:B\/O|back.?order|en souffrance|ordered|shipped|expédiée|commandée)/ig) || [];
   return {
-    type: type === 'delivery' ? 'delivery' : 'order',
+    type: ['budget','delivery'].includes(type) ? type : 'order',
     po_number: poNumber,
     shipping_project_name: shippingProject,
     supplier_order_number: supplierOrder,
     has_quantity_columns: numbers.length >= 2,
+    suggested_lines: lineSuggestions.items,
+    suggested_line_count: lineSuggestions.items.length,
+    line_warnings: lineSuggestions.warnings,
     requires_review: true,
     warnings: [
-      ...(!poNumber ? ['Numéro de PO non identifié'] : []),
+      ...(!poNumber && type !== 'budget' ? ['Numéro de PO non identifié'] : []),
       ...(!shippingProject ? ['Nom de chantier de livraison non identifié'] : []),
+      ...lineSuggestions.warnings,
       'Comparer les articles et les quantités au document original avant validation',
     ],
     text_excerpt: text.slice(0, 8000),

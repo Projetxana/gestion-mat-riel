@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ClipboardCheck, PackageCheck, RefreshCw } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { normalizePurchaseOrder } from '../utils/purchaseBudget';
-import { deliveryReviewPayload, summarizeDeliveries } from '../utils/deliveryReconciliation';
+import { deliveryReviewPayload, summarizeDeliveries, suggestDeliveryReviewRows } from '../utils/deliveryReconciliation';
 
 export default function DeliveryReviewPanel({ site, currentCompanyId, orders, orderLines }) {
     const [notes, setNotes] = useState([]);
@@ -96,6 +96,23 @@ export default function DeliveryReviewPanel({ site, currentCompanyId, orders, or
             setConfirmed(false);
         }catch(err){setError('Analyse de photo impossible : '+(err.message||'réessayez plus tard'));}
         finally{setOcrBusy(false);}
+    };
+    const applyOcrLineSuggestions = () => {
+        if(!ocrHint || !selectedOrder || !poValid ||
+           ocrHint.proposed_project_match!=='candidate') {
+            setError('Vérifiez le nom du chantier, le PO et la commande avant le rapprochement.');
+            return;
+        }
+        const result=suggestDeliveryReviewRows(ocrHint.suggested_lines||[],currentOrderLines);
+        if(!Object.keys(result.proposals).length){
+            setError('Aucune quantité suffisamment fiable pour préremplir. Saisie manuelle nécessaire.');
+            return;
+        }
+        setReviewRows(result.proposals);
+        setConfirmed(false);
+        setError('');
+        setNotice(Object.keys(result.proposals).length+' ligne(s) préremplie(s), non validées. '+
+           result.rejected.length+' ligne(s) à contrôler manuellement.');
     };
     const chooseNote = id => {
         setSelectedNoteId(id);
@@ -220,7 +237,18 @@ export default function DeliveryReviewPanel({ site, currentCompanyId, orders, or
                           {ocrHint.proposed_project_match==='candidate'
                             ? 'Chantier cohérent à vérifier' : 'Nom de chantier absent ou différent : vérifier manuellement'}
                         </p>
+                        <p>{ocrHint.suggested_lines?.length||0} ligne(s) candidate(s) lue(s) sur la première photo seulement.</p>
                         <p>Aucune quantité n’est validée automatiquement.</p>
+                        {ocrHint.line_warnings?.map((w,i)=>(
+                          <p key={i} className="text-amber-300">{w}</p>
+                        ))}
+                        {poValid && selectedOrder && ocrHint.proposed_project_match==='candidate' &&
+                          (ocrHint.suggested_lines?.length||0)>0 && (
+                            <button type="button" onClick={applyOcrLineSuggestions}
+                              className="min-h-11 rounded-lg bg-blue-700 px-3 font-medium">
+                              Préremplir les quantités à contrôler
+                            </button>
+                          )}
                       </div>
                     )}
                     <p className="text-xs text-amber-200 flex items-start gap-2">

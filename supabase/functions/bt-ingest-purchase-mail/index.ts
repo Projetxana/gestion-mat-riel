@@ -94,6 +94,8 @@ Deno.serve(async req=>{
       mime_type:mime,sha256,storage_path:storagePath,
       extracted_text:result.text,po_hint:hints.po_number,
       shipping_project_hint:hints.shipping_project_name,
+      line_candidates:hints.suggested_lines.slice(0,300),
+      line_warnings:hints.line_warnings,
     });
     if(insertError){
       if(insertError.code==='23505'){duplicates++;continue;}

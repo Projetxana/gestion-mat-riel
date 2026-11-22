@@ -99,3 +99,41 @@ export const fingerprintDeliveryPhotos = async (photos, cryptoApi = globalThis.c
     const digest = await cryptoApi.subtle.digest('SHA-256', combined);
     return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
 };
+
+// Produces editable proposals only; never writes a receipt. Ambiguous identifiers
+// or nonnumeric scans are deliberately excluded instead of guessed.
+export const suggestDeliveryReviewRows = (ocrLines=[],orderLines=[]) => {
+    const proposals={};
+    const rejected=[];
+    const used=new Set();
+    const unitCode = unit => {
+        const raw=normalizeToken(unit);
+        if(['PI','PIED','PIEDS','FT','FOOT','FEET'].includes(raw))return 'FT';
+        if(['UN','UNIT','EA','EACH','PCS','PC'].includes(raw))return 'EA';
+        return raw;
+    };
+    (ocrLines||[]).forEach((line,index)=>{
+        const code=normalizeCatalogCode(line.item_code);
+        const possible=orderLines.filter(order=>{
+            const orderCode=normalizeCatalogCode(order.item_code);
+            if(!code||code!==orderCode)return false;
+            const from=unitCode(line.unit),to=unitCode(order.unit);
+            return !from||!to||from===to;
+        });
+        const qty=Number(line.shipped_qty),bo=line.supplier_bo_qty==null?null:Number(line.supplier_bo_qty);
+        if(!line.is_complete || possible.length!==1 || used.has(String(possible[0]?.id)) ||
+            !Number.isFinite(qty)||qty<0 || (bo!==null&&(!Number.isFinite(bo)||bo<0)) ||
+            qty>Number(possible[0]?.quantity)){
+            rejected.push({index,code:line.item_code||'',description:line.description||'',
+                reason:possible.length!==1?'Correspondance ambiguë': 'Quantité ou unité à vérifier'});
+            return;
+        }
+        const target=possible[0];
+        used.add(String(target.id));
+        proposals[String(target.id)]={
+            shipped:String(qty),
+            bo:bo===null?'':String(bo)
+        };
+    });
+    return {proposals,rejected};
+};

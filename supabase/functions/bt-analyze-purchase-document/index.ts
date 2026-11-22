@@ -25,7 +25,7 @@ Deno.serve(async req=>{
  const siteId=String(form.get('site_id')||'');
  const kind=String(form.get('kind')||'order');
  if(!(file instanceof File)||!allowedDocumentMime(file.type,file.name) ||
-    file.size<1||file.size>7*1024*1024||!['order','delivery'].includes(kind))
+    file.size<1||file.size>7*1024*1024||!['order','delivery','budget'].includes(kind))
    return answer({error:'Unsupported document'},422);
  if(!/^[0-9a-f-]{36}$/i.test(companyId)||!/^\d+$/.test(siteId))
    return answer({error:'Invalid project'},422);
