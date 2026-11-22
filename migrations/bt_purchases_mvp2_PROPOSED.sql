@@ -65,7 +65,13 @@ ALTER TABLE public.bt_purchase_delivery_lines ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY bt_delivery_notes_read ON public.bt_purchase_delivery_notes
   FOR SELECT TO authenticated USING (
-    public.bt_stage2_is_admin(company_id) OR uploaded_by=(SELECT auth.uid())
+    public.bt_stage2_is_admin(company_id) OR (
+      uploaded_by=(SELECT auth.uid()) AND EXISTS (
+        SELECT 1 FROM public.company_users cu
+        WHERE cu.company_id=bt_purchase_delivery_notes.company_id
+          AND cu.user_id=(SELECT auth.uid())
+      )
+    )
   );
 CREATE POLICY bt_delivery_notes_insert ON public.bt_purchase_delivery_notes
   FOR INSERT TO authenticated WITH CHECK (
