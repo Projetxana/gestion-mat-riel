@@ -6,7 +6,7 @@ import { normalizeToken, parseDecimal } from './purchaseBudget.js';
 const head = value => normalizeToken(String(value || '').replace(/<[^>]*>/g, ''));
 const known = {
   item_code: ['CODECLIENT','ARTCLIENT','ARTICLECLIENT','ITEMCLIENT','CLIENTITEM','CLIENTCODE',
-    'CUSTOMERITEM','CUSTOMERITEMNO','ITEMCODE','PRODUCTCODE','CODEARTICLE','ARTICLENO',
+    'CUSTOMERITEM','CUSTOMERITEMNO','ITEMCLIE','ITEMCODE','PRODUCTCODE','CODEARTICLE','ARTICLENO',
     'ARTICLE','SKU','CODE','REF'],
   supplier_code: ['SUPPLIERCODE','VENDORITEM','VENDORCODE','ITEMNO','PRODUCTNO','FOURNISSEUR'],
   description: ['DESCRIPTION','DESIGNATION','PRODUIT','PRODUCT','ITEMDESCRIPTION',
@@ -101,7 +101,7 @@ export const extractSupplierTableLines=(markdown,{kind='order',maxLines=300}={})
      ? Math.round(quantity*unit_cost*100)/100 : null;
     // We do not silently correct supplier math or infer missing money values.
     const consistent=Number.isFinite(amount)&&Number.isFinite(computed)
-      ? Math.abs(amount-computed)<=Math.max(.02,amount*.02) : false;
+      ? Math.abs(amount-computed)<=.02 : false;
     const complete=quantity>0 && unit.length>0 &&
       Number.isFinite(unit_cost)&&Number.isFinite(amount);
     items.push({item_code:item_code||supplier_code,supplier_code,description,unit,
@@ -142,7 +142,7 @@ export const validateReviewedOrderRows = rows=>{
    throw new Error('Ligne '+(i+1)+' : référence, quantité, unité, prix ou montant invalide.');
   const computed=Math.round(quantity*price*100)/100;
   // Inconsistent costs must be corrected or explicitly understood; no silent overrides.
-  if(amount!==null&&Math.abs(computed-amount)>Math.max(.02,amount*.02))
+  if(amount!==null&&Math.abs(computed-amount)>.02)
     throw new Error('Ligne '+(i+1)+' : écart entre quantité × prix et montant. Corrigez la ligne.');
   return {item_code:code,description,quantity,unit,unit_cost:price,
    amount:amount===null?computed:amount};
