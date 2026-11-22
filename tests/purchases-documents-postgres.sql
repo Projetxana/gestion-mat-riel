@@ -70,6 +70,11 @@ SELECT public.bt_test_expect_error(
  company_id,site_id,uploaded_by,attachment_paths,fingerprint,status)
  VALUES('10000000-0000-0000-0000-000000000001',11,
  '00000000-0000-0000-0000-000000000001',ARRAY['x.jpg'],repeat('f',64),'sending')$sql$,'42501');
+SELECT storage.foldername('10000000-0000-0000-0000-000000000001/11/00000000-0000-0000-0000-000000000001/delivery_test.jpg') AS test_folder,
+ (SELECT auth.uid()) AS test_auth_id, current_user AS test_role,
+ EXISTS (SELECT 1 FROM public.sites s JOIN public.company_users cu ON cu.company_id=s.company_id
+ WHERE s.company_id::text='10000000-0000-0000-0000-000000000001'
+ AND s.id::text='11' AND s.status='active' AND cu.user_id=(SELECT auth.uid())) AS test_membership;
 INSERT INTO storage.objects(bucket_id,name) VALUES(
  'bt-delivery-private',
  '10000000-0000-0000-0000-000000000001/11/00000000-0000-0000-0000-000000000001/delivery_test.jpg');
