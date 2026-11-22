@@ -5,7 +5,8 @@ import {validateReviewedOrderRows} from '../utils/purchaseDocumentLines.js';
 const asText=value=>value==null?'':String(value);
 const prepare=lines=>(lines||[]).slice(0,300).map((line,index)=>({
  key:index,
- included:true,
+ included:line.included!==false,
+ pricing_note:asText(line.pricing_note),
  item_code:asText(line.item_code).trim(),
  description:asText(line.description).trim(),
  quantity:asText(line.quantity),
@@ -17,7 +18,7 @@ const prepare=lines=>(lines||[]).slice(0,300).map((line,index)=>({
 
 
 // Human review surface; no database writes and no automatic price or quantity acceptance.
-export default function PurchaseLineReview({lines,sourceName,onAccept}){
+export default function PurchaseLineReview({lines,sourceName,onAccept,disabled=false}){
  const [rows,setRows]=useState(()=>prepare(lines));
  const [confirmed,setConfirmed]=useState(false);
  const [error,setError]=useState('');
@@ -49,9 +50,10 @@ export default function PurchaseLineReview({lines,sourceName,onAccept}){
       <label className="flex items-center gap-2 text-sm">
        <input type="checkbox" checked={row.included}
         onChange={e=>update(row.key,'included',e.target.checked)}/>
-       Inclure dans la commande
+       Inclure dans le budget ou la commande
       </label>
       {row.included&&<>
+       {row.pricing_note && <p className="text-xs text-amber-300">{row.pricing_note}</p>}
        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {[['item_code','Code produit'],['description','Description']].map(([field,label])=>
           <label key={field} className="text-xs text-slate-300">{label}
@@ -76,7 +78,7 @@ export default function PurchaseLineReview({lines,sourceName,onAccept}){
    <span>J’ai comparé les articles, unités, quantités et prix proposés au document original.</span>
   </label>
   {error&&<p role="alert" className="text-red-300 text-xs">{error}</p>}
-  <button type="button" onClick={approve} disabled={!confirmed||included===0}
+  <button type="button" onClick={approve} disabled={!confirmed||included===0||disabled}
    className="min-h-11 w-full rounded-lg bg-blue-700 px-3 font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
    <Check size={16}/> Utiliser les lignes vérifiées
   </button>
