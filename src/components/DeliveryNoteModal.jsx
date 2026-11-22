@@ -13,6 +13,8 @@ const DeliveryNoteModal = ({ onClose }) => {
     const selectedSite = availableSites.find(site => String(site.id) === selectedSiteId);
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
+    const cameraStreamRef = useRef(null);
+    const photoUrlsRef = useRef([]);
     const [stream, setStream] = useState(null);
     const [photos, setPhotos] = useState([]); // Array of { blob, url }
     const [isUploading, setIsUploading] = useState(false);
@@ -22,7 +24,8 @@ const DeliveryNoteModal = ({ onClose }) => {
     useEffect(() => {
         startCamera();
         return () => {
-            stopCamera();
+            cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+            for (const url of photoUrlsRef.current) URL.revokeObjectURL(url);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -33,6 +36,7 @@ const DeliveryNoteModal = ({ onClose }) => {
                 video: { facingMode: 'environment' }, // Use back camera on mobile
                 audio: false
             });
+            cameraStreamRef.current = mediaStream;
             setStream(mediaStream);
             if (videoRef.current) {
                 videoRef.current.srcObject = mediaStream;
@@ -43,12 +47,9 @@ const DeliveryNoteModal = ({ onClose }) => {
         }
     };
 
-    const stopCamera = () => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            setStream(null);
-        }
-    };
+    useEffect(() => {
+        photoUrlsRef.current = photos.map(photo => photo.url);
+    }, [photos]);
 
     const takePhoto = () => {
         if (videoRef.current && canvasRef.current) {
@@ -65,6 +66,7 @@ const DeliveryNoteModal = ({ onClose }) => {
 
             // Get blob
             canvas.toBlob((blob) => {
+                if (!blob) { setDeliveryNotice('La prise de photo a échoué, recommencez.'); return; }
                 const url = URL.createObjectURL(blob);
                 setPhotos(prev => [...prev, { blob, url }]);
             }, 'image/jpeg', 0.8);
