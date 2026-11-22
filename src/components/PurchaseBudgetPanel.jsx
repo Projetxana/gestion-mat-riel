@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shippingProjectVerification } from '../utils/purchaseBudget';
 import DeliveryReviewPanel from './DeliveryReviewPanel';
+import PurchaseDocumentInbox from './PurchaseDocumentInbox';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
     style: 'currency', currency: 'CAD', minimumFractionDigits: 2,
@@ -186,7 +187,7 @@ export default function PurchaseBudgetPanel({ site }) {
             {notice && <p role="status" className="mb-3 rounded-lg border border-emerald-700 bg-emerald-950/40 p-3 text-sm text-emerald-200">{notice}</p>}
 
             <div className="flex gap-2 border-b border-slate-700 mb-4" role="tablist" aria-label="Suivi des achats">
-                {[['budget','Budget'],['orders','Commandes'],['deliveries','Livraisons / BO']].map(([key,label]) => (
+                {[['budget','Budget'],['orders','Commandes'],['documents','Documents'],['deliveries','Livraisons / BO']].map(([key,label]) => (
                     <button key={key} type="button" role="tab" aria-selected={tab === key}
                         onClick={() => { setTab(key); setError(''); }}
                         className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${tab === key ? 'border-blue-400 text-blue-200' : 'border-transparent text-slate-400'}`}>
@@ -319,7 +320,26 @@ export default function PurchaseBudgetPanel({ site }) {
                             </div>
                         ))}
                     </div>
-                    <p className="text-xs text-amber-300">À venir : lecture automatique des photos/PDF et réception des confirmations par courriel. Les bons envoyés sont traités après vérification des quantités.</p>
+                    <p className="text-xs text-slate-400">Les champs détectés dans Documents doivent être revus ici, avec les lignes de prix et quantités avant tout engagement budgétaire.</p>
+                </div>
+            )}
+            {tab === 'documents' && (
+                <div role="tabpanel">
+                    <PurchaseDocumentInbox
+                        site={site} companyId={currentCompanyId}
+                        onUseDraft={fields => {
+                            setOrder(previous => ({
+                                ...previous,
+                                poNumber: fields.poNumber,
+                                supplierNumber: fields.supplierNumber,
+                                shippingProject: fields.shippingProject,
+                            }));
+                            setShippingVerified(false);
+                            setShippingOverride('');
+                            setPendingOrder(null);
+                            setTab('orders');
+                            setNotice('Vérifiez le fournisseur, le PO, le chantier et importez les lignes de prix et quantités avant validation.');
+                        }}/>
                 </div>
             )}
             {tab === 'deliveries' && (
