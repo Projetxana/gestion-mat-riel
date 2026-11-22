@@ -1,13 +1,19 @@
 name = "buildtrack-documents"
 main = "index.js"
-compatibility_date = "2026-11-21"
+compatibility_date = "2026-11-22"
+
+# Fail-closed flags: no incoming email forwarding or AI usage until explicit pilot GO.
+[vars]
+ENABLE_INBOUND_EMAIL = "false"
+ENABLE_DOCUMENT_AI = "false"
 
 [ai]
 binding = "AI"
 
-# Set secrets using 'wrangler secret put INGEST_SECRET'.
-# Set non-secret vars in Cloudflare's Worker settings:
-# INBOUND_DOMAIN=achats.buildtrackapp.ca
-# INGEST_URL=https://<project>.supabase.co/functions/v1/bt-ingest-purchase-mail
-# ENABLE_DOCUMENT_AI=false (explicit opt-in after cost review).
-# Configure Email Routing subaddressing and the 'commandes' rule only after review.
+# Required only once a separate pilot Supabase/Cloudflare environment is authorized:
+# INBOUND_DOMAIN, INGEST_URL and PILOT_ALLOWED_SENDERS (exact mailboxes).
+# Secret INGEST_SECRET: set with `wrangler secret put INGEST_SECRET` in the pilot environment.
+# Cloudflare Email Routing rule: commandes@<pilot subdomain> -> this Worker,
+# with subaddressing enabled. Do NOT add an `addresses` field until approved;
+# Wrangler may otherwise create/modify mail routing on deploy.
+# Validate first with: npx wrangler deploy --dry-run --config workers/buildtrack-documents/wrangler.toml
