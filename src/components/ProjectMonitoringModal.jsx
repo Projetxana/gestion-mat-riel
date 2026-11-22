@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, AlertTriangle, ArrowLeft, ArrowUpRight, Clock3, Package, RefreshCw, X } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useCompanyPerformance } from '../hooks/useCompanyPerformance';
@@ -7,6 +7,7 @@ import { monitoringProjects } from '../utils/projectMonitoring';
 import { summarizePurchaseOverview } from '../utils/purchaseMonitoring';
 import SitePerformancePanel from './SitePerformancePanel';
 import PurchaseBudgetPanel from './PurchaseBudgetPanel';
+import ProjectDetailModal from './ProjectDetailModal';
 
 const decimal = (value, digits = 1) => Number(value).toLocaleString('fr-CA', {
     maximumFractionDigits: digits,
@@ -83,6 +84,7 @@ const ProjectMonitoringModal = ({ onClose }) => {
     // Project details stay inside Suivi des projets; no extra navigation layout.
     const [selectedProjectId, setSelectedProjectId] = useState(null);
     const [detailView, setDetailView] = useState('overview');
+    const closeDetail = useCallback(() => setDetailView('overview'), []);
     const [purchaseRefresh, setPurchaseRefresh] = useState(0);
     const [purchaseSummary, setPurchaseSummary] = useState({ status: 'loading' });
 
@@ -100,13 +102,13 @@ const ProjectMonitoringModal = ({ onClose }) => {
         closeRef.current?.focus();
         const oldOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
-        const onKeyDown = event => { if (event.key === 'Escape') onClose(); };
+        const onKeyDown = event => { if (event.key === 'Escape' && detailView === 'overview') onClose(); };
         document.addEventListener('keydown', onKeyDown);
         return () => {
             document.body.style.overflow = oldOverflow;
             document.removeEventListener('keydown', onKeyDown);
         };
-    }, [onClose]);
+    }, [onClose, detailView]);
 
     useEffect(() => {
         let cancelled = false;
@@ -206,7 +208,7 @@ const ProjectMonitoringModal = ({ onClose }) => {
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 sm:p-4"
              onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-            <div role="dialog" aria-modal="true" aria-labelledby="project-monitoring-title"
+            <div role="dialog" aria-modal="true" aria-hidden={detailView !== 'overview'} inert={detailView !== 'overview'} aria-labelledby="project-monitoring-title"
                 className="flex h-[100dvh] w-full min-w-0 flex-col overflow-hidden bg-slate-900 text-slate-100 shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:max-w-5xl sm:rounded-2xl sm:border sm:border-slate-700">
                 <header className="shrink-0 border-b border-slate-700 px-4 py-4 sm:px-6">
                     <div className="flex items-start justify-between gap-3">
@@ -316,10 +318,10 @@ const ProjectMonitoringModal = ({ onClose }) => {
 
                     {selectedProject && selectedSite && (
                         <div className="space-y-4" aria-label={`Suivi du chantier ${selectedProject.name}`}>
-                            <button type="button" onClick={detailView==='overview'?backToProjects:()=>setDetailView('overview')}
+                            <button type="button" onClick={backToProjects}
                                 className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-600 px-3 text-sm font-semibold text-blue-200">
                                 <ArrowLeft size={17}/>
-                                {detailView==='overview' ? 'Tous les projets' : 'Retour à la synthèse'}
+                                Tous les projets
                             </button>
                             <div className="rounded-xl border border-slate-700 bg-slate-800/80 p-4 sm:p-5">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -413,18 +415,7 @@ const ProjectMonitoringModal = ({ onClose }) => {
                                 </button>
                             </div>
 
-                            {detailView==='ipmo' && (
-                                canReadReports
-                                ? <SitePerformancePanel site={selectedSite}
-                                    onReportSaved={()=>setRefresh(v=>v+1)}/>
-                                : <p className="rounded-xl border border-slate-700 p-4 text-sm text-slate-300">
-                                    Le détail IPMO exige un accès administrateur et le module activé pour l’entreprise.
-                                  </p>
-                            )}
-                            {detailView==='achats' && canReadPurchases && (
-                                <PurchaseBudgetPanel site={selectedSite}
-                                    onPurchasesChanged={()=>setPurchaseRefresh(v=>v+1)}/>
-                            )}
+
                         </div>
                     )}
                 </main>
@@ -435,6 +426,24 @@ const ProjectMonitoringModal = ({ onClose }) => {
                     </p>
                 </footer>
             </div>
+            {detailView !== 'overview' && selectedSite && (
+                <ProjectDetailModal
+                    title={detailView === 'ipmo' ? 'Détail avancement / IPMO' : 'Détail des achats'}
+                    siteName={selectedSite.name}
+                    onClose={closeDetail}>
+                    {detailView === 'ipmo' ? (
+                        canReadReports
+                            ? <SitePerformancePanel site={selectedSite}
+                                onReportSaved={() => setRefresh(value => value + 1)}/>
+                            : <p className="rounded-xl border border-slate-700 p-4 text-sm">
+                                Le détail IPMO exige un accès administrateur et le module activé.
+                              </p>
+                    ) : canReadPurchases ? (
+                        <PurchaseBudgetPanel site={selectedSite}
+                            onPurchasesChanged={() => setPurchaseRefresh(value => value + 1)}/>
+                    ) : null}
+                </ProjectDetailModal>
+            )}
         </div>
     );
 };
