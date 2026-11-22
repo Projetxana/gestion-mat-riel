@@ -41,7 +41,10 @@ export const derivePdfImportEvidence = (readResult,{kind,site,supplier=''}) => {
     const unknownPriceUnits=isCd && rows.some(row=>row.source_price_unit &&
         !['CT','LG',row.unit].includes(row.source_price_unit));
     const warnings=[
-        ...(hints.line_warnings||[]).filter(warn=>!/^Budget estimatif :/.test(warn)),
+        ...(hints.line_warnings||[]).filter(warn=>
+            !/^Budget estimatif :/.test(warn) &&
+            !(isCd && !unknownPriceUnits && /unités de prix différentes/i.test(warn))
+        ),
         ...(boPresent?['Le montant Flocor exclut les articles en BO : rapprochement manuel requis']:[]),
         ...(unknownPriceUnits?['Base de prix non reconnue dans une ligne CD']:[]),
     ];
