@@ -3,9 +3,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2.90.0';
 import { workerExtract } from '../_shared/bt-document-signature.ts';
 import { allowedDocumentMime,extractDocumentHints,getDocumentSiteStatus } from '../../../src/utils/purchaseDocumentText.js';
 
-const HEADERS={'Content-Type':'application/json','Cache-Control':'no-store'};
+const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS'};
+const HEADERS={...CORS,'Content-Type':'application/json','Cache-Control':'no-store'};
 const answer=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:HEADERS});
 Deno.serve(async req=>{
+ if(req.method==='OPTIONS')return new Response('ok',{headers:CORS});
  if(req.method!=='POST')return answer({error:'Method not allowed'},405);
  const url=Deno.env.get('SUPABASE_URL');
  const anon=Deno.env.get('SUPABASE_ANON_KEY');
