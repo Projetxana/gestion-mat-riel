@@ -43,9 +43,9 @@ export default {
       return;
     }
     const domain=env.INBOUND_DOMAIN.toLowerCase();
-    const prefix='commandes+';
-    if (!recipient.endsWith('@'+domain) ||
-        !new RegExp('^'+prefix+'[a-f0-9]{32}@').test(recipient)) {
+    const local=recipient.endsWith('@'+domain)
+      ? recipient.slice(0,-1-domain.length) : '';
+    if (!/^commandes\+[0-9a-f]{32}$/.test(local)) {
       message.setReject('Unknown recipient');
       return;
     }
