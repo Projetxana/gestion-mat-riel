@@ -1,12 +1,14 @@
 import React,{useCallback,useEffect,useState} from 'react';
 import {FileSearch,Mail,FileText} from 'lucide-react';
 import {supabase} from '../supabaseClient';
+import PurchaseLineReview from './PurchaseLineReview';
 
 // All detected fields are untrusted suggestions, never auto-booked.
 export default function PurchaseDocumentInbox({site,companyId,onUseDraft}) {
  const [docs,setDocs]=useState([]);
  const [token,setToken]=useState('');
  const [draft,setDraft]=useState(null);
+ const [reviewingDocId,setReviewingDocId]=useState('');
  const [loading,setLoading]=useState(false);
  const [error,setError]=useState('');
  const [notice,setNotice]=useState('');
@@ -15,7 +17,7 @@ export default function PurchaseDocumentInbox({site,companyId,onUseDraft}) {
   setLoading(true);setError('');
   const [a,d]=await Promise.all([
    supabase.from('bt_purchase_inbox_aliases').select('alias_token').eq('company_id',companyId).eq('site_id',site.id).maybeSingle(),
-   supabase.from('bt_purchase_documents').select('id,po_hint,shipping_project_hint,original_filename,storage_path,created_at')
+   supabase.from('bt_purchase_documents').select('id,po_hint,shipping_project_hint,original_filename,storage_path,created_at,line_candidates,line_warnings')
     .eq('company_id',companyId).eq('site_id',site.id).order('created_at',{ascending:false}).limit(100)
   ]);
   if(a.error||d.error)setError('Boîte documentaire indisponible : vérifiez la migration MVP3.');
@@ -52,10 +54,11 @@ export default function PurchaseDocumentInbox({site,companyId,onUseDraft}) {
   const link=document.createElement('a');link.href=data.signedUrl;link.target='_blank';link.rel='noopener noreferrer';
   document.body.appendChild(link);link.click();link.remove();
  };
- const useHint=(source,filename)=>{
+ const useHint=(source,filename,verifiedLines=null)=>{
   onUseDraft({poNumber:source.po_number||source.po_hint||'',
    shippingProject:source.shipping_project_name||source.shipping_project_hint||'',
-   supplierNumber:source.supplier_order_number||'',sourceName:filename});
+   supplierNumber:source.supplier_order_number||'',sourceName:filename,
+   lines:verifiedLines});
   setNotice('Champs proposés. Vérifiez le PDF avant d’enregistrer une commande.');
  };
  const address=token?'commandes+'+token+'@'+(import.meta.env.VITE_PURCHASE_INBOX_DOMAIN||'achats.buildtrackapp.ca'):'';
@@ -71,7 +74,7 @@ export default function PurchaseDocumentInbox({site,companyId,onUseDraft}) {
   </section>
   <section className="rounded-lg border border-slate-700 p-3 space-y-2">
    <h3 className="font-semibold flex items-center gap-2"><FileSearch size={17}/> Lecture PDF / photo</h3>
-   <p className="text-xs text-slate-300">Extraction du PO et du chantier. Aucun prix ni quantité enregistré automatiquement.</p>
+   <p className="text-xs text-slate-300">Propositions du PO, du chantier et des articles. Rien ne sera enregistré sans vérification.</p>
    <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-lg border border-slate-600 p-3 text-sm text-blue-200">
     {loading?'Analyse…':'Choisir un document'}
     <input className="sr-only" disabled={loading} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
@@ -85,8 +88,18 @@ export default function PurchaseDocumentInbox({site,companyId,onUseDraft}) {
     </p>
     <details><summary className="cursor-pointer">Afficher le texte lu</summary>
      <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs">{draft.text_excerpt}</pre></details>
-    <button type="button" onClick={()=>useHint(draft,draft.origin_filename)}
-     className="min-h-11 w-full rounded-lg bg-blue-700">Préremplir une commande à valider</button>
+    {draft.line_warnings?.length>0&&(
+      <ul className="text-xs text-amber-200 list-disc pl-5">
+       {draft.line_warnings.map((warning,index)=><li key={index}>{warning}</li>)}
+      </ul>
+    )}
+    {draft.suggested_lines?.length>0?(
+      <PurchaseLineReview lines={draft.suggested_lines} sourceName={draft.origin_filename}
+       onAccept={(lines)=>useHint(draft,draft.origin_filename,lines)}/>
+    ):(
+      <button type="button" onClick={()=>useHint(draft,draft.origin_filename)}
+       className="min-h-11 w-full rounded-lg bg-blue-700">Préremplir le PO (articles à importer séparément)</button>
+    )}
    </div>}
   </section>
   <section className="space-y-2">
@@ -100,8 +113,22 @@ export default function PurchaseDocumentInbox({site,companyId,onUseDraft}) {
     <p className="text-xs text-slate-400">En attente de validation · {new Date(doc.created_at).toLocaleString('fr-CA')}</p>
     <div className="flex flex-wrap gap-2">
      <button type="button" onClick={()=>void openOriginal(doc)} className="min-h-11 rounded-lg border border-slate-600 px-3 text-sm">Voir le PDF privé</button>
-     <button type="button" onClick={()=>useHint(doc,doc.original_filename)} className="min-h-11 rounded-lg bg-blue-700 px-3 text-sm">Vérifier la commande</button>
+     <button type="button" onClick={()=>{setReviewingDocId(prev=>prev===doc.id?'':doc.id);}}
+       className="min-h-11 rounded-lg bg-blue-700 px-3 text-sm">Vérifier la commande</button>
     </div>
+    {reviewingDocId===doc.id&&(
+      (doc.line_candidates||[]).length>0?(
+       <PurchaseLineReview lines={doc.line_candidates} sourceName={doc.original_filename}
+        onAccept={(lines)=>useHint(doc,doc.original_filename,lines)}/>
+      ):(
+       <div className="rounded-lg border border-amber-700 p-3 text-xs space-y-2">
+        <p>Aucun tableau exploitable détecté : importer les lignes depuis Excel/CSV après avoir vérifié le PDF.</p>
+        <button type="button" className="min-h-11 rounded-lg bg-blue-700 px-3"
+         onClick={()=>useHint(doc,doc.original_filename)}>
+         Préremplir le PO seulement
+        </button>
+       </div>)
+    )}
    </article>)}
   </section>
   {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}
