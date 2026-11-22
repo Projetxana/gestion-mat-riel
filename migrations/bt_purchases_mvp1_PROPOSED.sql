@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS public.bt_purchase_orders (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS bt_purchase_unique_supplier_po
-    ON public.bt_purchase_orders (company_id, lower(btrim(supplier)), upper(regexp_replace(po_number, '\\s+', '', 'g')));
+    ON public.bt_purchase_orders (company_id, lower(btrim(supplier)), upper(regexp_replace(po_number, '[[:space:]]+', '', 'g')));
 CREATE INDEX IF NOT EXISTS bt_purchase_order_site_idx
     ON public.bt_purchase_orders (company_id, site_id, created_at DESC);
 
