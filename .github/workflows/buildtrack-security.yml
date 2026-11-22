@@ -38,6 +38,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: PDF and email Worker unit tests before database tests
+        run: npm run test:documents
       - name: PostgreSQL 17 RLS fixture (isolated)
         env:
           PGPASSWORD: fixture-only
