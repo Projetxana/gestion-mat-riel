@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import worker from '../workers/buildtrack-documents/index.js';
 
 const env={INGEST_URL:'https://ingest.example.test/mail',
- INBOUND_DOMAIN:'achats.buildtrackapp.ca',INGEST_SECRET:'test-shared-secret'};
+ INBOUND_DOMAIN:'achats.buildtrackapp.ca',INGEST_SECRET:'test-shared-secret',
+ ENABLE_INBOUND_EMAIL:'true',PILOT_ALLOWED_SENDERS:'orders@flocor.example,supplier@example.com'};
 
 const stream=content=>new ReadableStream({start(controller){
  controller.enqueue(new TextEncoder().encode(content));controller.close();
@@ -59,7 +60,8 @@ test('valid signed conversion returns draft text and never mutates a purchase',a
  const digest=[...new Uint8Array(sig)].map(b=>b.toString(16).padStart(2,'0')).join('');
  let calls=0;
  const ai={toMarkdown:async docs=>{
-  calls++;assert.equal(docs.name,name);return {format:'markdown',data:'Customer PO#: P02281'};
+  calls++;assert.equal(Array.isArray(docs),true);assert.equal(docs.length,1);
+  assert.equal(docs[0].name,name);return [{format:'markdown',data:'Customer PO#: P02281'}];
  }};
  const response=await worker.fetch(new Request('https://worker.test/internal/extract',{
   method:'POST',body:bytes,headers:{'Content-Type':mime,'X-BT-Document-Name':name,
@@ -70,4 +72,19 @@ test('valid signed conversion returns draft text and never mutates a purchase',a
  assert.equal(result.text,'Customer PO#: P02281');
  assert.equal(result.requires_review,true);
  assert.equal(calls,1);
+});
+
+test('no supplier emails accepted when pilot is disabled or sender is not approved',async()=>{
+ let rejected=0, forwarded=0;
+ const mock={to:'commandes+0123456789abcdef0123456789abcdef@achats.buildtrackapp.ca',
+  from:'attacker@other.example',rawSize:7,raw:stream('mail'),
+  headers:new Headers({'Authentication-Results':'mx.cloudflare.net; dmarc=pass'}),
+  setReject:()=>{rejected++;}};
+ const old=globalThis.fetch;
+ globalThis.fetch=async()=>{forwarded++;return new Response('ok');};
+ try{
+  await worker.email(mock,{...env,ENABLE_INBOUND_EMAIL:'false'});
+  await worker.email(mock,{...env,ENABLE_INBOUND_EMAIL:'true'});
+  assert.equal(rejected,2);assert.equal(forwarded,0);
+ } finally{globalThis.fetch=old;}
 });

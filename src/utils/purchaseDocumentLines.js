@@ -135,12 +135,12 @@ export const validateReviewedOrderRows = rows=>{
  return selected.map((row,i)=>{
   const quantity=safeSupplierNumber(row.quantity);
   const price=safeSupplierNumber(row.unit_cost);
-  const amount=row.amount.trim()?safeSupplierNumber(row.amount):null;
+  const amount=String(row.amount ?? '').trim()?safeSupplierNumber(row.amount):null;
   const code=String(row.item_code||'').trim();
   const description=String(row.description||'').trim();
   const unit=String(row.unit||'').trim().toUpperCase();
   if(!code||!description||!unit||!(quantity>0)||price===null||
-      (row.amount.trim()&&amount===null))
+      (String(row.amount ?? '').trim()&&amount===null))
    throw new Error('Ligne '+(i+1)+' : référence, quantité, unité, prix ou montant invalide.');
   const computed=Math.round(quantity*price*100)/100;
   // Inconsistent costs must be corrected or explicitly understood; no silent overrides.

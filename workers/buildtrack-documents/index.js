@@ -27,8 +27,14 @@ const okTime = value => Number.isInteger(Number(value)) &&
 
 export default {
   async email(message, env) {
-    if (!env.INGEST_URL || !env.INGEST_SECRET || !env.INBOUND_DOMAIN)
-      throw new Error('Email ingest is not configured');
+    // No mail is accepted before the selected pilot project and senders are configured.
+    if (env.ENABLE_INBOUND_EMAIL !== 'true') {
+      message.setReject('BuildTrack pilot intake is disabled');
+      return;
+    }
+    if (!env.INGEST_URL || !env.INGEST_SECRET || !env.INBOUND_DOMAIN ||
+        !env.PILOT_ALLOWED_SENDERS)
+      throw new Error('Email ingest pilot is not configured');
     if (message.rawSize > 12*1024*1024) {
       message.setReject('Message too large');
       return;
@@ -36,6 +42,12 @@ export default {
     const recipient=String(message.to).toLowerCase().trim();
     const from=String(message.from).toLowerCase().trim();
     const msgId=String(message.headers.get('message-id')||'').trim().slice(0,250);
+    const allowed=new Set(String(env.PILOT_ALLOWED_SENDERS).toLowerCase()
+      .split(',').map(s=>s.trim()).filter(Boolean));
+    if (!allowed.has(from)) {
+      message.setReject('Sender not enrolled for pilot');
+      return;
+    }
     // Cloudflare prepends the trusted Authentication-Results header; reject unauthenticated mail.
     const auth=String(message.headers.get('authentication-results')||'');
     if (!auth.toLowerCase().startsWith('mx.cloudflare.net;') || !/\bdmarc\s*=\s*pass\b/i.test(auth)) {
@@ -86,9 +98,9 @@ export default {
       return Response.json({error:'Forbidden'},{status:403});
     try {
       // One file only; no document may be auto-committed from this extraction result.
-      const output=await env.AI.toMarkdown({
+      const output=await env.AI.toMarkdown([{
         name:filename, blob:new Blob([bytes],{type:mime})
-      });
+      }]);
       const result=Array.isArray(output)?output[0]:output;
       if (!result || result.format==='error' || typeof result.data!=='string')
         throw new Error('Document conversion returned no text');
