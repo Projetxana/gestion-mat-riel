@@ -7,6 +7,7 @@ on:
     branches:
       - hotfix/admin-production
       - feature/buildtrack-purchases-mvp1-20261121
+      - feature/buildtrack-deliveries-mvp2-20261121
 
 permissions:
   contents: read
@@ -53,6 +54,12 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE buildtrack_deliveries_test"
           psql -h 127.0.0.1 -U postgres -d buildtrack_deliveries_test -v ON_ERROR_STOP=1 -f tests/purchases-deliveries-postgres.sql
+      - name: Private inbox and document RLS migration fixture (disposable)
+        env:
+          PGPASSWORD: fixture-only
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE buildtrack_documents_test"
+          psql -h 127.0.0.1 -U postgres -d buildtrack_documents_test -v ON_ERROR_STOP=1 -f tests/purchases-documents-postgres.sql
       - name: Validate operator backup script syntax
         run: bash -n scripts/backup-buildtrack-prod.sh
       - name: Recovery drill (local fabricated database only)
