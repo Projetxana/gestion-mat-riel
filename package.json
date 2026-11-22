@@ -19,7 +19,7 @@
     "test:deliveries": "node --test tests/delivery-reconciliation.test.mjs",
     "test:documents": "node --test tests/purchase-document-text.test.mjs tests/document-worker.test.mjs",
     "test:edge-syntax": "node tests/edge-syntax-check.mjs",
-    "test:document-lines": "node --test tests/purchase-document-lines.test.mjs tests/purchase-delivery-suggestions.test.mjs"
+    "test:document-lines": "node --test tests/purchase-document-lines.test.mjs tests/purchase-delivery-suggestions.test.mjs tests/flocor-layout-parser.test.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.3.0",
