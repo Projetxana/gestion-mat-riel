@@ -4,8 +4,9 @@ import nodemailer from 'npm:nodemailer@6.9.13';
 import {Buffer} from 'node:buffer';
 import {createClient} from 'npm:@supabase/supabase-js@2.90.0';
 
+const CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS'};
 const respond=(payload,status=200)=>new Response(JSON.stringify(payload),{
- status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'},
+ status,headers:{...CORS,'Content-Type':'application/json','Cache-Control':'no-store'},
 });
 const hex=bytes=>[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
 const sha=async bytes=>hex(await crypto.subtle.digest('SHA-256',bytes));
@@ -20,6 +21,7 @@ const sameFingerprint=async images=>{
 const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 Deno.serve(async req=>{
+ if(req.method==='OPTIONS')return new Response('ok',{headers:CORS});
  if(req.method!=='POST')return respond({error:'Method not allowed'},405);
  const url=Deno.env.get('SUPABASE_URL');
  const publicKey=Deno.env.get('SUPABASE_ANON_KEY');
