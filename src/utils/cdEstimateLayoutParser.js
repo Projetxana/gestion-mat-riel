@@ -32,7 +32,7 @@ export const extractCdEstimateLines=(text,{maxLines=500}={})=>{
     rejected++;continue;
    }
    if(items.length>=maxLines){warnings.push('Limite de lignes atteinte');break;}
-   const derivedPrice=Math.round(amount/quantity*10000)/10000;
+   const derivedPrice=Math.round(amount/quantity*1000000)/1000000;
    const nominal=priceBasis===unit?quotedPrice:
      priceBasis==='CT'&&unit==='UN'&&quotedPrice!==null?quotedPrice/100:null;
    const difference=nominal===null?0:Math.abs(nominal*quantity-amount);
