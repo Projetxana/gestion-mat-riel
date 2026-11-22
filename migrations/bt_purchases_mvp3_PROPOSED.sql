@@ -104,7 +104,7 @@ CREATE POLICY bt_purchase_private_admin_read ON storage.objects
    bucket_id='bt-purchase-private'
    AND EXISTS(
      SELECT 1 FROM public.company_users cu
-     WHERE cu.company_id::text=(storage.foldername(name))[1]
+     WHERE cu.company_id::text=(storage.foldername(storage.objects.name))[1]
        AND cu.role='admin' AND cu.user_id=(SELECT auth.uid())
    )
  );
@@ -115,12 +115,12 @@ CREATE POLICY bt_delivery_private_worker_upload ON storage.objects
  FOR INSERT TO authenticated
  WITH CHECK (
    bucket_id='bt-delivery-private'
-   AND (storage.foldername(name))[3]=(SELECT auth.uid())::text
+   AND (storage.foldername(storage.objects.name))[3]=(SELECT auth.uid())::text
    AND EXISTS(
      SELECT 1 FROM public.sites s
      JOIN public.company_users cu ON cu.company_id=s.company_id
-     WHERE s.company_id::text=(storage.foldername(name))[1]
-       AND s.id::text=(storage.foldername(name))[2]
+     WHERE s.company_id::text=(storage.foldername(storage.objects.name))[1]
+       AND s.id::text=(storage.foldername(storage.objects.name))[2]
        AND s.status='active'
        AND cu.user_id=(SELECT auth.uid())
    )
@@ -131,10 +131,10 @@ CREATE POLICY bt_delivery_private_read ON storage.objects
    AND EXISTS (
      SELECT 1 FROM public.sites s JOIN public.company_users cu
        ON cu.company_id=s.company_id
-     WHERE s.company_id::text=(storage.foldername(name))[1]
-       AND s.id::text=(storage.foldername(name))[2]
+     WHERE s.company_id::text=(storage.foldername(storage.objects.name))[1]
+       AND s.id::text=(storage.foldername(storage.objects.name))[2]
        AND cu.user_id=(SELECT auth.uid())
-       AND (cu.role='admin' OR (storage.foldername(name))[3]=(SELECT auth.uid())::text)
+       AND (cu.role='admin' OR (storage.foldername(storage.objects.name))[3]=(SELECT auth.uid())::text)
    )
  );
 
