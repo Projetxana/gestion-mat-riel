@@ -328,6 +328,25 @@ export default function PurchaseBudgetPanel({ site }) {
                     <PurchaseDocumentInbox
                         site={site} companyId={currentCompanyId}
                         onUseDraft={fields => {
+                            if(fields.kind==='budget'){
+                                if(budget){
+                                    setError('Le budget initial de ce chantier est déjà figé.');
+                                    setTab('budget');return;
+                                }
+                                if(!fields.lines?.length){
+                                    setError('Aucun article d’estimation vérifié.');
+                                    setTab('budget');return;
+                                }
+                                try{
+                                    const reviewed=parsePurchaseRows(fields.lines,{kind:'budget'});
+                                    setPendingBudget({rows:reviewed,sourceName:fields.sourceName||'estimation.pdf'});
+                                    setError('');
+                                    setNotice('Estimation PDF vérifiée : contrôlez le montant total du rapport avant de figer le budget.');
+                                }catch(err){
+                                    setPendingBudget(null);setError('Estimation non importée : '+err.message);
+                                }
+                                setTab('budget');return;
+                            }
                             setOrder(previous => ({
                                 ...previous,
                                 poNumber: fields.poNumber,
