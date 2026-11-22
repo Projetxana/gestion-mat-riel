@@ -61,3 +61,10 @@ test('CD estimate with grouped total but separate adjustments requires review',(
  assert.equal(result.status,'attention_required');
  assert.ok(result.issues.some(x=>x.code==='total'));
 });
+
+test('similar PDF layout without Flocor branding never auto-commits under false supplier',()=>{
+ const text=flocor.replace('FLOCOR DORVAL','AUTRE FOURNISSEUR');
+ const result=assessDigitalPdf(make(text),{kind:'order',site});
+ assert.equal(result.status,'attention_required');
+ assert.ok(result.issues.some(x=>x.code==='template'));
+});
