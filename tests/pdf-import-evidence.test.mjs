@@ -4,6 +4,7 @@ import {derivePdfImportEvidence,assessDigitalPdf} from '../src/utils/pdfImportEv
 
 const site={id:11,company_id:'c',name:'DJ4 S.E.C.',status:'active'};
 const flocor=[
+'FLOCOR DORVAL',
 'COMMANDE DE VTE',
 'CONFIRMATION',
 'CUSTOMER P.O. NUMBER.              JOB NAME',
