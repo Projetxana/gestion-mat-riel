@@ -2,6 +2,7 @@
 // These are *suggestions only*. No price or quantity may be committed without review.
 import { normalizeToken } from './purchaseBudget.js';
 import { extractSupplierTableLines } from './purchaseDocumentLines.js';
+import { extractFlocorHeader,extractFlocorLayoutLines } from './flocorLayoutParser.js';
 
 const field = (text, names) => {
   for (const name of names) {
@@ -16,25 +17,33 @@ const clean = value => String(value ?? '').trim().replace(/[^\p{L}\p{N}\s.'#&+/-
 
 export const extractDocumentHints = (input, type = 'order') => {
   const text = String(input ?? '').replace(/\r\n?/g, '\n').slice(0, 120000);
+  const flocorHeader = extractFlocorHeader(text);
   const poNumber = clean(field(text, [
     'customer\\s*po\\s*(?:no\\.?|number|#)?',
     'no\\.?\\s*commande\\s*client',
     'n[o°]\\s*de\\s*po',
     'po\\s*client', 'purchase\\s*order',
     'p\\.?o\\.?\\s*(?:number|#|no\\.?)'
-  ]));
+  ]) || flocorHeader?.po_number);
   const shippingProject = clean(field(text, [
     'job\\s*name', 'nom\\s*(?:du\\s*)?projet',
     'chantier\\s*(?:de\\s*livraison)?', 'ship\\s*to\\s*(?:project|job)',
     'adresse\\s*livraison', 'delivery\\s*address',
-  ]));
+  ]) || flocorHeader?.shipping_project_name);
   const supplierOrder = clean(field(text, [
     'supplier\\s*order\\s*(?:number|#|no\\.?)*',
     'commande\\s*fournisseur',
     'order\\s*confirmation\\s*(?:number|#|no\\.?)'
   ]));
   // Candidate quantities/prices come only from recognized tables and ALWAYS require review.
-  const lineSuggestions = extractSupplierTableLines(text, { kind: type === 'delivery' ? 'delivery' : 'order' });
+  let lineSuggestions = extractSupplierTableLines(text, { kind: type === 'delivery' ? 'delivery' : 'order' });
+  if(!lineSuggestions.items.length){
+    const flocor=extractFlocorLayoutLines(text,{kind:type === 'delivery' ? 'delivery' : 'order'});
+    if(flocor.matched_format)lineSuggestions={
+      items:flocor.items,
+      warnings:flocor.warnings,
+    };
+  }
   const numbers = text.match(/(?:B\/O|back.?order|en souffrance|ordered|shipped|expédiée|commandée)/ig) || [];
   return {
     type: type === 'delivery' ? 'delivery' : 'order',
