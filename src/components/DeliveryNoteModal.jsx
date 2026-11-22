@@ -2,11 +2,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Camera, Send, Trash2, RotateCcw, Check } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
+import { fingerprintDeliveryPhotos } from '../utils/deliveryReconciliation';
 
 const DeliveryNoteModal = ({ onClose }) => {
-    const { addLog, currentUser } = useAppContext();
+    const { addLog, currentUser, sites, currentCompanyId } = useAppContext();
+    const [selectedSiteId, setSelectedSiteId] = useState('');
+    const [deliveryNotice, setDeliveryNotice] = useState('');
+    const availableSites = (sites || []).filter(site =>
+        site.status === 'active' && String(site.company_id) === String(currentCompanyId));
+    const selectedSite = availableSites.find(site => String(site.id) === selectedSiteId);
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
+    const cameraStreamRef = useRef(null);
+    const photoUrlsRef = useRef([]);
     const [stream, setStream] = useState(null);
     const [photos, setPhotos] = useState([]); // Array of { blob, url }
     const [isUploading, setIsUploading] = useState(false);
@@ -16,7 +24,8 @@ const DeliveryNoteModal = ({ onClose }) => {
     useEffect(() => {
         startCamera();
         return () => {
-            stopCamera();
+            cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+            for (const url of photoUrlsRef.current) URL.revokeObjectURL(url);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -27,6 +36,7 @@ const DeliveryNoteModal = ({ onClose }) => {
                 video: { facingMode: 'environment' }, // Use back camera on mobile
                 audio: false
             });
+            cameraStreamRef.current = mediaStream;
             setStream(mediaStream);
             if (videoRef.current) {
                 videoRef.current.srcObject = mediaStream;
@@ -37,12 +47,9 @@ const DeliveryNoteModal = ({ onClose }) => {
         }
     };
 
-    const stopCamera = () => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            setStream(null);
-        }
-    };
+    useEffect(() => {
+        photoUrlsRef.current = photos.map(photo => photo.url);
+    }, [photos]);
 
     const takePhoto = () => {
         if (videoRef.current && canvasRef.current) {
@@ -59,6 +66,7 @@ const DeliveryNoteModal = ({ onClose }) => {
 
             // Get blob
             canvas.toBlob((blob) => {
+                if (!blob) { setDeliveryNotice('La prise de photo a échoué, recommencez.'); return; }
                 const url = URL.createObjectURL(blob);
                 setPhotos(prev => [...prev, { blob, url }]);
             }, 'image/jpeg', 0.8);
@@ -75,7 +83,12 @@ const DeliveryNoteModal = ({ onClose }) => {
     };
 
     const handleSend = async () => {
-        if (photos.length === 0) return;
+        if (photos.length === 0 || isUploading) return;
+        if (!selectedSite || !currentCompanyId) {
+            setDeliveryNotice('Sélectionnez le chantier inscrit sur le bon de livraison.');
+            return;
+        }
+        setDeliveryNotice('');
         setIsUploading(true);
         setUploadProgress(0);
 
@@ -84,6 +97,23 @@ const DeliveryNoteModal = ({ onClose }) => {
             const timestamp = Date.now();
             let successCount = 0;
             const userName = currentUser?.name || 'Utilisateur';
+            let fingerprint = null;
+            try {
+                fingerprint = await fingerprintDeliveryPhotos(photos);
+                // Avoid re-sending identical captured bytes to accounting where possible.
+                const existing = await supabase.from('bt_purchase_delivery_notes')
+                    .select('id').eq('company_id', currentCompanyId)
+                    .eq('fingerprint', fingerprint).limit(1);
+                if (!existing.error && existing.data?.length) {
+                    setDeliveryNotice('Ce scan identique a déjà été envoyé et enregistré. Aucun nouvel envoi effectué.');
+                    return;
+                }
+            } catch {
+                // The existing accounting flow must not depend on optional hash support.
+                fingerprint = null;
+            }
+            const escaped = value => String(value).replace(/[&<>"']/g, char =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
             for (let i = 0; i < photos.length; i++) {
                 const { blob } = photos[i];
@@ -125,10 +155,11 @@ const DeliveryNoteModal = ({ onClose }) => {
                 },
                 body: JSON.stringify({
                     recipient: recipientEmail,
-                    subject: `Bon de Livraison - ${userName} - ${dateStr}`,
+                    subject: `Bon de Livraison - ${selectedSite.name} - ${userName} - ${dateStr}`,
                     html: `
                         <h2>Nouveau Bon de Livraison</h2>
-                        <p><strong>Envoyé par :</strong> ${userName}</p>
+                        <p><strong>Envoyé par :</strong> ${escaped(userName)}</p>
+                        <p><strong>Chantier :</strong> ${escaped(selectedSite.name)}</p>
                         <p><strong>Date :</strong> ${dateStr}</p>
                         <p><strong>Nombre de photos :</strong> ${photos.length}</p>
                         <br/>
@@ -144,9 +175,34 @@ const DeliveryNoteModal = ({ onClose }) => {
                 throw new Error(result.error || "Erreur inconnue lors de l'envoi");
             }
 
-            addLog(`[EMAIL CONFIRMED] Bon de livraison envoyé par ${userName}`);
+            addLog(`[EMAIL CONFIRMED] Bon de livraison envoyé par ${userName} — ${selectedSite.name}`);
 
-            alert("Bon de livraison envoyé avec succès !");
+            // Insert only AFTER confirmed email delivery, so accounting never depends
+            // on a schema update or on OCR. The record awaits an administrator review.
+            let trackingSaved = false;
+            if (fingerprint) {
+                try {
+                    const { data: authData } = await supabase.auth.getUser();
+                    if (authData?.user?.id) {
+                        const { error: trackingError } = await supabase
+                            .from('bt_purchase_delivery_notes').insert({
+                                company_id: currentCompanyId,
+                                site_id: selectedSite.id,
+                                uploaded_by: authData.user.id,
+                                source_bucket: 'delivery-notes',
+                                attachment_paths: uploadedAttachments.map(item => item.filename),
+                                fingerprint,
+                                email_sent_at: new Date().toISOString(),
+                            });
+                        trackingSaved = !trackingError;
+                    }
+                } catch (trackingError) {
+                    console.warn('Delivery tracking insert unavailable:', trackingError);
+                }
+            }
+            alert(trackingSaved
+                ? 'Bon envoyé à la comptabilité et enregistré pour vérification sur le chantier.'
+                : 'Bon envoyé à la comptabilité. Attention : le suivi des quantités n’a pas été enregistré; avisez votre administrateur.');
             onClose();
 
         } catch (error) {
@@ -167,6 +223,18 @@ const DeliveryNoteModal = ({ onClose }) => {
                 </button>
             </div>
 
+            <div className="absolute top-16 left-3 right-3 z-20 rounded-xl border border-slate-700 bg-slate-900/95 px-3 py-2 text-white shadow-xl">
+                <label htmlFor="delivery-site" className="block text-xs font-semibold mb-1">
+                    Chantier indiqué sur le bon
+                </label>
+                <select id="delivery-site" value={selectedSiteId} disabled={isUploading}
+                    onChange={event => { setSelectedSiteId(event.target.value); setDeliveryNotice(''); }}
+                    className="min-h-11 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 text-sm text-white">
+                    <option value="">Choisir un chantier actif…</option>
+                    {availableSites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}
+                </select>
+                {deliveryNotice && <p role="status" className="mt-2 text-xs text-amber-200">{deliveryNotice}</p>}
+            </div>
             {/* Video Feed */}
             <div className="flex-1 flex items-center justify-center bg-black overflow-hidden relative">
                 <video
@@ -215,8 +283,8 @@ const DeliveryNoteModal = ({ onClose }) => {
                 {/* Send Button */}
                 <button
                     onClick={handleSend}
-                    disabled={photos.length === 0 || isUploading}
-                    className={`flex flex-col items-center gap-1 min-w-[60px] ${photos.length === 0 ? 'text-slate-600' : 'text-green-500 hover:text-green-400'}`}
+                    disabled={photos.length === 0 || isUploading || !selectedSite}
+                    className={`flex flex-col items-center gap-1 min-w-[60px] ${!selectedSite || photos.length === 0 ? 'text-slate-600' : 'text-green-500 hover:text-green-400'}`}
                 >
                     {isUploading ? (
                         <RotateCcw className="animate-spin" size={28} />

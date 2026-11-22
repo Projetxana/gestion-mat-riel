@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Package, RefreshCw } from
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shippingProjectVerification } from '../utils/purchaseBudget';
+import DeliveryReviewPanel from './DeliveryReviewPanel';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
     style: 'currency', currency: 'CAD', minimumFractionDigits: 2,
@@ -185,7 +186,7 @@ export default function PurchaseBudgetPanel({ site }) {
             {notice && <p role="status" className="mb-3 rounded-lg border border-emerald-700 bg-emerald-950/40 p-3 text-sm text-emerald-200">{notice}</p>}
 
             <div className="flex gap-2 border-b border-slate-700 mb-4" role="tablist" aria-label="Suivi des achats">
-                {[['budget','Budget'],['orders','Commandes']].map(([key,label]) => (
+                {[['budget','Budget'],['orders','Commandes'],['deliveries','Livraisons / BO']].map(([key,label]) => (
                     <button key={key} type="button" role="tab" aria-selected={tab === key}
                         onClick={() => { setTab(key); setError(''); }}
                         className={`min-h-11 px-3 text-sm font-semibold border-b-2 ${tab === key ? 'border-blue-400 text-blue-200' : 'border-transparent text-slate-400'}`}>
@@ -318,7 +319,13 @@ export default function PurchaseBudgetPanel({ site }) {
                             </div>
                         ))}
                     </div>
-                    <p className="text-xs text-amber-300">À venir : analyse des PDF par courriel, détection automatique du projet et rapprochement des bons/BO. Aucun bon de livraison n’est encore modifié.</p>
+                    <p className="text-xs text-amber-300">À venir : lecture automatique des photos/PDF et réception des confirmations par courriel. Les bons envoyés sont traités après vérification des quantités.</p>
+                </div>
+            )}
+            {tab === 'deliveries' && (
+                <div role="tabpanel">
+                    <DeliveryReviewPanel site={site} currentCompanyId={currentCompanyId}
+                        orders={orders} orderLines={orderLines}/>
                 </div>
             )}
         </section>
