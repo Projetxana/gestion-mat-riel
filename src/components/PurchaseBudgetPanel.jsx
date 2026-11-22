@@ -336,9 +336,22 @@ export default function PurchaseBudgetPanel({ site }) {
                             }));
                             setShippingVerified(false);
                             setShippingOverride('');
-                            setPendingOrder(null);
+                            try {
+                                // Only explicitly human-reviewed extracted rows may become a pending order.
+                                const reviewed = fields.lines?.length
+                                    ? parsePurchaseRows(fields.lines, {kind:'order'}) : null;
+                                setPendingOrder(reviewed ? {
+                                    rows:reviewed, sourceName:fields.sourceName || 'document.pdf'
+                                } : null);
+                                setError('');
+                                setNotice(reviewed
+                                    ? 'Lignes vérifiées chargées. Vérifiez le fournisseur, le PO et le chantier avant la validation finale.'
+                                    : 'PO proposé. Importez les lignes de prix et de quantités avant validation.');
+                            } catch (err) {
+                                setPendingOrder(null);
+                                setError('Lignes non importées : '+err.message);
+                            }
                             setTab('orders');
-                            setNotice('Vérifiez le fournisseur, le PO, le chantier et importez les lignes de prix et quantités avant validation.');
                         }}/>
                 </div>
             )}
