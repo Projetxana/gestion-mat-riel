@@ -28,6 +28,11 @@ const magicValid=(mime,bytes)=>{
 
 Deno.serve(async req=>{
  if(req.method!=='POST')return json({error:'Method not allowed'},405);
+ // The pilot is off until both a test tenant and site have been selected.
+ if(Deno.env.get('DOCUMENT_INBOUND_ENABLED')!=='true' ||
+    !Deno.env.get('PILOT_COMPANY_ID') ||
+    !Deno.env.get('PILOT_SITE_ID'))
+   return json({error:'Pilot email intake disabled'},503);
  const secret=Deno.env.get('DOCUMENT_INGEST_SECRET');
  const recipient=(req.headers.get('x-bt-recipient')||'').trim().toLowerCase();
  const sender=(req.headers.get('x-bt-sender')||'').trim().toLowerCase();
@@ -58,6 +63,9 @@ Deno.serve(async req=>{
     .select('id,name,company_id,status').eq('id',inbox.site_id)
     .eq('company_id',inbox.company_id).maybeSingle();
   if(siteError||site?.status!=='active')return json({error:'Inactive project'},422);
+  if(String(inbox.company_id)!==Deno.env.get('PILOT_COMPANY_ID') ||
+     String(inbox.site_id)!==Deno.env.get('PILOT_SITE_ID'))
+    return json({error:'Pilot routing is restricted to a test project'},403);
   const parsed=await PostalMime.parse(bytes);
   const attachments=(parsed.attachments||[]).filter(a=>a.content);
   if(!attachments.length||attachments.length>6)
