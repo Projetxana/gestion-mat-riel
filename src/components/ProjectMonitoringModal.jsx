@@ -94,6 +94,7 @@ const ProjectMonitoringModal = ({ onClose }) => {
     const activeIds = activeWithBudget.map(site => Number(site.id));
     const idsKey = activeIds.join(',');
     const canReadReports = !accessLoading && isAdmin && enabled;
+    const canReadPurchases = !accessLoading && isAdmin;
 
     useEffect(() => {
         closeRef.current?.focus();
@@ -155,7 +156,7 @@ const ProjectMonitoringModal = ({ onClose }) => {
 
     useEffect(() => {
         let cancelled = false;
-        if (!selectedSite || !canReadReports || !currentCompanyId) {
+        if (!selectedSite || !canReadPurchases || !currentCompanyId) {
             setPurchaseSummary({status:'unavailable'});
             return () => { cancelled = true; };
         }
@@ -190,7 +191,7 @@ const ProjectMonitoringModal = ({ onClose }) => {
         };
         void loadPurchaseSummary();
         return () => { cancelled = true; };
-    }, [selectedSite?.id, currentCompanyId, canReadReports, purchaseRefresh]);
+    }, [selectedSite?.id, currentCompanyId, canReadPurchases, purchaseRefresh]);
 
     const openProject = siteId => {
         setSelectedProjectId(siteId);
@@ -356,7 +357,7 @@ const ProjectMonitoringModal = ({ onClose }) => {
                                             <Package size={17} className="text-blue-300"/>
                                             <h4 className="text-sm font-semibold">Avancement des achats</h4>
                                         </div>
-                                        {!canReadReports ? (
+                                        {!canReadPurchases ? (
                                             <p className="text-xs text-slate-400">Montants réservés à l’administrateur.</p>
                                         ) : purchaseSummary.status==='loading' ? (
                                             <p role="status" className="text-xs text-slate-400">Chargement des achats…</p>
@@ -402,7 +403,7 @@ const ProjectMonitoringModal = ({ onClose }) => {
                                     <span className="mt-1 block text-xs font-normal text-slate-400">Pourcentage de chaque tâche · Valider un nouveau bilan</span>
                                 </button>
                                 <button type="button" onClick={()=>setDetailView('achats')}
-                                    disabled={!canReadReports}
+                                    disabled={!canReadPurchases}
                                     aria-pressed={detailView==='achats'}
                                     className={`min-h-14 rounded-xl border p-4 text-left text-sm font-semibold disabled:opacity-50 ${detailView==='achats'
                                         ? 'border-blue-500 bg-blue-950/30 text-blue-200'
@@ -420,7 +421,7 @@ const ProjectMonitoringModal = ({ onClose }) => {
                                     Le détail IPMO exige un accès administrateur et le module activé pour l’entreprise.
                                   </p>
                             )}
-                            {detailView==='achats' && canReadReports && (
+                            {detailView==='achats' && canReadPurchases && (
                                 <PurchaseBudgetPanel site={selectedSite}
                                     onPurchasesChanged={()=>setPurchaseRefresh(v=>v+1)}/>
                             )}
