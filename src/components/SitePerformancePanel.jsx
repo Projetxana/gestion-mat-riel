@@ -23,7 +23,7 @@ const statusColor = (index) => {
 // Admin-only, company-opted-in weekly physical progress validation.
 // Each save creates an immutable, timestamped snapshot of BOTH earned and actual
 // hours, so future punches cannot silently change a past productivity index.
-const SitePerformancePanel = ({ site }) => {
+const SitePerformancePanel = ({ site, onReportSaved }) => {
     const { projectTasks, timeSessions } = useAppContext();
     const { enabled, isAdmin, loading: accessLoading } = useCompanyPerformance();
     const [loading, setLoading] = useState(true);
@@ -138,6 +138,7 @@ const SitePerformancePanel = ({ site }) => {
                 return;
             }
             await loadReports();
+            onReportSaved?.();
             setShowValidation(false);
             setSuccess('Bilan enregistré. Les pointages futurs ne modifieront pas cet indice historique.');
         } catch (exception) {

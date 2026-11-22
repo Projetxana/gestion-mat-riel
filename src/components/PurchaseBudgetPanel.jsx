@@ -35,7 +35,7 @@ const downloadTemplate = () => {
     URL.revokeObjectURL(url);
 };
 
-export default function PurchaseBudgetPanel({ site }) {
+export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const { currentCompanyId, currentUser, companyRoleLoading } = useAppContext();
     const isAdmin = !companyRoleLoading && currentUser?.role === 'admin';
     const isCorrectTenant = String(site?.company_id) === String(currentCompanyId);
@@ -123,6 +123,7 @@ export default function PurchaseBudgetPanel({ site }) {
             setPendingBudget(null);
             setNotice('Budget initial enregistré et figé pour ce chantier.');
             setReloadIndex(value => value + 1);
+            onPurchasesChanged?.();
         } catch (e) { setError(e.message || 'Enregistrement du budget impossible.'); }
         finally { setBusy(false); }
     };
@@ -147,6 +148,7 @@ export default function PurchaseBudgetPanel({ site }) {
             setPendingOrder(null); setOrder(emptyOrder); setShippingVerified(false); setShippingOverride('');
             setNotice('Commande enregistrée dans le chantier sélectionné. Aucun montant de livraison ajouté.');
             setReloadIndex(value => value + 1);
+            onPurchasesChanged?.();
         } catch (e) {
             setError(e.code === '23505'
                 ? 'Ce PO existe déjà pour ce fournisseur. Aucune commande en double ajoutée.'
