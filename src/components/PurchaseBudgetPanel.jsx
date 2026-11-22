@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Package, RefreshCw } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
-import { calculatePurchaseBudget, parsePurchaseRows } from '../utils/purchaseBudget';
+import { calculatePurchaseBudget, parsePurchaseRows, shippingProjectVerification } from '../utils/purchaseBudget';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
     style: 'currency', currency: 'CAD', minimumFractionDigits: 2,
@@ -50,6 +50,7 @@ export default function PurchaseBudgetPanel({ site }) {
     const [pendingOrder, setPendingOrder] = useState(null);
     const [order, setOrder] = useState(emptyOrder);
     const [shippingVerified, setShippingVerified] = useState(false);
+    const [shippingOverride, setShippingOverride] = useState('');
     const [reloadIndex, setReloadIndex] = useState(0);
 
     const refresh = useCallback(async () => {
@@ -84,6 +85,7 @@ export default function PurchaseBudgetPanel({ site }) {
     useEffect(() => { void refresh(); }, [refresh, reloadIndex]);
 
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
+    const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, shippingOverride);
     const orderTotals = useMemo(() => new Map(orders.map(item => [
         item.id, orderLines.filter(line => line.order_id === item.id)
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
@@ -123,7 +125,7 @@ export default function PurchaseBudgetPanel({ site }) {
     };
 
     const saveOrder = async () => {
-        if (!pendingOrder || !shippingVerified || busy || !order.supplier.trim()
+        if (!pendingOrder || !shippingVerified || !shippingCheck.canAccept || busy || !order.supplier.trim()
             || !order.poNumber.trim() || !order.shippingProject.trim()) {
             setError('Fournisseur, numéro de PO, projet indiqué à la livraison et validation sont obligatoires.');
             return;
@@ -136,10 +138,10 @@ export default function PurchaseBudgetPanel({ site }) {
                 p_supplier_order_number: order.supplierNumber.trim(),
                 p_shipping_project_name: order.shippingProject.trim(),
                 p_order_date: order.date || null, p_source_name: pendingOrder.sourceName,
-                p_project_verified: shippingVerified, p_lines: pendingOrder.rows,
+                p_project_verified: shippingVerified, p_override_confirmation: shippingOverride.trim(), p_lines: pendingOrder.rows,
             });
             if (rpcError) throw rpcError;
-            setPendingOrder(null); setOrder(emptyOrder); setShippingVerified(false);
+            setPendingOrder(null); setOrder(emptyOrder); setShippingVerified(false); setShippingOverride('');
             setNotice('Commande enregistrée dans le chantier sélectionné. Aucun montant de livraison ajouté.');
             setReloadIndex(value => value + 1);
         } catch (e) {
@@ -242,7 +244,7 @@ export default function PurchaseBudgetPanel({ site }) {
                             <label key={key} className="text-sm text-slate-300">
                                 {label}
                                 <input type="text" maxLength={150} value={order[key]}
-                                    onChange={e => { setOrder(prev => ({...prev, [key]:e.target.value})); setShippingVerified(false); }}
+                                    onChange={e => { setOrder(prev => ({...prev, [key]:e.target.value})); setShippingVerified(false); setShippingOverride(''); }}
                                     placeholder={placeholder}
                                     className="mt-1 min-h-11 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 text-white"/>
                             </label>
@@ -259,12 +261,21 @@ export default function PurchaseBudgetPanel({ site }) {
                     {pendingOrder && (
                         <div className="rounded-xl border border-slate-600 p-3 text-sm space-y-3">
                             <p>{pendingOrder.sourceName} · {pendingOrder.rows.length} articles · {money(pendingOrder.rows.reduce((sum,line) => sum + line.amount,0))}</p>
+                            {shippingCheck.requiresOverride && (
+                                <div className="rounded-lg border border-amber-600/70 bg-amber-950/30 p-3 text-sm space-y-2">
+                                    <p className="text-amber-200">Le nom indiqué à la livraison ne correspond pas exactement à « {site.name} ». Vérifiez le document et confirmez manuellement le chantier.</p>
+                                    <label className="block">Retaper le nom du chantier sélectionné
+                                        <input type="text" value={shippingOverride} onChange={e => { setShippingOverride(e.target.value); setShippingVerified(false); }}
+                                            placeholder={site.name} autoComplete="off" className="mt-1 min-h-11 w-full rounded-lg border border-amber-700 bg-slate-900 px-3 text-white"/>
+                                    </label>
+                                </div>
+                            )}
                             <label className="flex items-start gap-2">
                                 <input type="checkbox" checked={shippingVerified}
                                     onChange={e => setShippingVerified(e.target.checked)} className="mt-1"/>
                                 <span>J’ai vérifié que le nom de chantier indiqué à la livraison correspond bien à <strong>{site.name}</strong>. Le numéro PO seul ne prouve pas le chantier.</span>
                             </label>
-                            <button type="button" onClick={saveOrder} disabled={busy || !shippingVerified || site.status !== 'active'}
+                            <button type="button" onClick={saveOrder} disabled={busy || !shippingVerified || !shippingCheck.canAccept || site.status !== 'active'}
                                 className="min-h-11 w-full rounded-lg bg-blue-600 font-semibold disabled:opacity-50">
                                 {busy ? 'Enregistrement…' : 'Valider la commande'}
                             </button>
