@@ -23,6 +23,11 @@ const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a
 Deno.serve(async req=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers:CORS});
  if(req.method!=='POST')return respond({error:'Method not allowed'},405);
+ // Keep real accounting out of the pilot until an explicit test-site and recipient gate.
+ if(Deno.env.get('DELIVERY_PILOT_ENABLED')!=='true' ||
+    !Deno.env.get('PILOT_COMPANY_ID') ||
+    !Deno.env.get('PILOT_SITE_ID'))
+   return respond({error:'Delivery pilot disabled'},503);
  const url=Deno.env.get('SUPABASE_URL');
  const publicKey=Deno.env.get('SUPABASE_ANON_KEY');
  const secretKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -40,6 +45,9 @@ Deno.serve(async req=>{
  const companyId=String(input?.company_id||'');
  const siteId=Number(input?.site_id);
  const paths=input?.paths;
+ if(companyId!==Deno.env.get('PILOT_COMPANY_ID') ||
+    String(siteId)!==Deno.env.get('PILOT_SITE_ID'))
+   return respond({error:'Only the selected pilot site may submit scans'},403);
  if(!UUID_RE.test(companyId)||!Number.isInteger(siteId)||siteId<=0||
     !Array.isArray(paths)||paths.length<1||paths.length>6||
     paths.some(p=>typeof p!=='string'||p.length>300))return respond({error:'Invalid delivery'},422);
@@ -83,7 +91,12 @@ Deno.serve(async req=>{
    return respond({error:reserveError?.code==='23505'?'Duplicate document':'Reservation failed'},409);
  const id=reserved.id;
  try{
-  const transporter=nodemailer.createTransport({service:'gmail',auth:{user:smtpUser,pass:smtpPass}});
+  // Supabase hosted Edge blocks outbound SMTP 25 and 587. Gmail TLS 465 is explicit.
+  const transporter=nodemailer.createTransport({
+    host:'smtp.gmail.com',port:465,secure:true,
+    auth:{user:smtpUser,pass:smtpPass},
+    connectionTimeout:12000,greetingTimeout:12000,socketTimeout:20000
+  });
   await transporter.sendMail({
     from:'BuildTrack – Bons de livraison <'+smtpUser+'>',
     to:accounting,
