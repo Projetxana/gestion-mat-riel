@@ -6,6 +6,17 @@ export const normalizeToken = value => String(value ?? '')
 
 export const normalizePurchaseOrder = value => normalizeToken(value);
 
+export const shippingProjectVerification = (shippingName, siteName, overrideSiteName = '') => {
+    const expected = normalizeToken(siteName);
+    const observed = normalizeToken(shippingName);
+    const match = expected.length >= 3 && expected === observed;
+    const manualOverride = !match && expected.length >= 3 &&
+        overrideSiteName.trim().toLocaleLowerCase('fr-CA') === String(siteName ?? '').trim().toLocaleLowerCase('fr-CA');
+    return { match, requiresOverride: !match, canAccept: match || manualOverride };
+};
+
+
+
 export const normalizeCatalogCode = value => {
     const raw = normalizeToken(value);
     return raw.replace(/^(CD|ART)(?=\d{4,})/, '');
