@@ -15,6 +15,16 @@ const digestHex=async bytes=>{
 const extFor=mime=>({
  'application/pdf':'pdf','image/jpeg':'jpg','image/png':'png','image/webp':'webp'
 })[mime];
+const magicValid=(mime,bytes)=>{
+ if(mime==='application/pdf')return bytes.length>=5 && String.fromCharCode(...bytes.slice(0,5))==='%PDF-';
+ if(mime==='image/jpeg')return bytes.length>=4 && bytes[0]===0xff && bytes[1]===0xd8;
+ if(mime==='image/png')return bytes.length>=8 && bytes[0]===137 && bytes[1]===80 &&
+  bytes[2]===78 && bytes[3]===71;
+ if(mime==='image/webp')return bytes.length>=12 &&
+  String.fromCharCode(...bytes.slice(0,4))==='RIFF' &&
+  String.fromCharCode(...bytes.slice(8,12))==='WEBP';
+ return false;
+};
 
 Deno.serve(async req=>{
  if(req.method!=='POST')return json({error:'Method not allowed'},405);
@@ -60,10 +70,12 @@ Deno.serve(async req=>{
     const payload=new Uint8Array(a.content);
     if(!payload.byteLength||payload.byteLength>7*1024*1024)
       return json({error:'Unsupported attachment size'},422);
+    if(!magicValid(a.mimeType,payload))
+      return json({error:'Attachment content does not match declared format'},422);
     const sha256=await digestHex(payload);
     const {data:existing}=await supabase.from('bt_purchase_documents')
       .select('id').eq('company_id',inbox.company_id)
-      .eq('sha256',sha256).maybeSingle();
+      .eq('site_id',inbox.site_id).eq('sha256',sha256).maybeSingle();
     if(existing){duplicates++;continue;}
     const mime=a.mimeType;
     const extension=extFor(mime);
