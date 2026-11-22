@@ -17,6 +17,8 @@ export default function DeliveryReviewPanel({ site, currentCompanyId, orders, or
     const [supplierSlipNumber, setSupplierSlipNumber] = useState('');
     const [reviewRows, setReviewRows] = useState({});
     const [confirmed, setConfirmed] = useState(false);
+    const [ocrBusy, setOcrBusy] = useState(false);
+    const [ocrHint, setOcrHint] = useState(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
     const reload = useCallback(async () => {
@@ -71,13 +73,37 @@ export default function DeliveryReviewPanel({ site, currentCompanyId, orders, or
             document.body.appendChild(link);link.click();link.remove();
         }
     };
+    const analyzeNote = async note => {
+        setOcrHint(null);
+        if (!note || note.source_bucket !== 'bt-delivery-private' || !note.attachment_paths?.length) {
+            setError('Le bon privé n’est pas disponible pour analyse.'); return;
+        }
+        setOcrBusy(true);setError('');
+        try {
+            const {data:blob,error:downloadError}=await supabase.storage
+                .from('bt-delivery-private').download(note.attachment_paths[0]);
+            if(downloadError||!blob)throw new Error('Photo indisponible');
+            const file=new File([blob],'bon_livraison.jpg',{type:'image/jpeg'});
+            const form=new FormData();form.append('file',file);
+            form.append('company_id',String(currentCompanyId));
+            form.append('site_id',String(site.id));form.append('kind','delivery');
+            const {data,error:rpcError}=await supabase.functions.invoke(
+                'bt-analyze-purchase-document',{body:form});
+            if(rpcError||!data||data.error)throw new Error('Extraction non disponible');
+            setOcrHint(data);
+            if(data.po_number && data.proposed_project_match==='candidate')
+                setPoRead(data.po_number);
+            setConfirmed(false);
+        }catch(err){setError('Analyse de photo impossible : '+(err.message||'réessayez plus tard'));}
+        finally{setOcrBusy(false);}
+    };
     const chooseNote = id => {
         setSelectedNoteId(id);
         setSelectedOrderId('');
         setPoRead('');
         setSupplierSlipNumber('');
         setReviewRows({});
-        setConfirmed(false);
+        setConfirmed(false);setOcrHint(null);
         setError('');setNotice('');
     };
     const updateLine = (id, field, value) => {
@@ -182,6 +208,21 @@ export default function DeliveryReviewPanel({ site, currentCompanyId, orders, or
                       className="min-h-11 rounded-lg border border-blue-700 px-3 text-sm text-blue-200">
                       Ouvrir les photos originales (liens temporaires)
                     </button>
+                    <button type="button" onClick={()=>void analyzeNote(selectedNote)} disabled={ocrBusy}
+                      className="min-h-11 rounded-lg border border-slate-600 px-3 text-sm text-blue-200 disabled:opacity-50">
+                      {ocrBusy ? 'Lecture de la photo…' : 'Reconnaître le PO sur la photo'}
+                    </button>
+                    {ocrHint && (
+                      <div className="rounded-lg border border-blue-600 p-3 text-xs space-y-1">
+                        <p>PO proposé : <strong>{ocrHint.po_number || 'Non détecté'}</strong></p>
+                        <p>Chantier lu : <strong>{ocrHint.shipping_project_name || 'Non détecté'}</strong></p>
+                        <p className={ocrHint.proposed_project_match==='candidate'?'text-green-300':'text-amber-300'}>
+                          {ocrHint.proposed_project_match==='candidate'
+                            ? 'Chantier cohérent à vérifier' : 'Nom de chantier absent ou différent : vérifier manuellement'}
+                        </p>
+                        <p>Aucune quantité n’est validée automatiquement.</p>
+                      </div>
+                    )}
                     <p className="text-xs text-amber-200 flex items-start gap-2">
                         <AlertTriangle size={15} className="shrink-0"/>
                         Comparez avec les photos originales et le courriel comptable. Les champs détectés automatiquement devront être validés avant toute réception.
