@@ -19,7 +19,7 @@ const rowAnchors = (text,kind) => {
 export const derivePdfImportEvidence = (readResult,{kind,site,supplier=''}) => {
     const text=String(readResult?.text||'');
     const hints=extractDocumentHints(text,kind);
-    const isFlocor=kind==='order' && Boolean(extractFlocorHeader(text));
+    const isFlocor=kind==='order' && Boolean(extractFlocorHeader(text)) && /\bFLOCOR\b/i.test(text.slice(0,3000));
     const isCd=kind==='budget' && Boolean(extractCdEstimateHeader(text));
     const parser_id=isFlocor?'flocor-layout-v1':isCd?'cd-estimate-v1':'unknown';
     let printed_material_total=null;
