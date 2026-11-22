@@ -32,7 +32,7 @@ test('both tabs provide a PDF import and still preserve Excel/CSV fallback',()=>
  assert.match(panel,/bt_purchase_import_budget/);
  assert.match(panel,/bt_purchase_create_order/);
  assert.match(panel,/setPdfIssues/);
- assert.match(panel,/Excel \\/ CSV/);
+ assert.ok(panel.includes('Excel / CSV'));
  assert.ok(transformSync(panel,{loader:'jsx'}).code.length>100);
 });
 test('PDF text extraction stays in a local bundled worker, never external OCR',()=>{
