@@ -7,6 +7,7 @@ import { ArrowLeft, MapPin, Hammer, ExternalLink, Clock, BarChart3, Trash2 } fro
 import MaterialDetailsModal from '../components/MaterialDetailsModal';
 import SiteFormModal from '../components/SiteFormModal';
 import SitePerformancePanel from '../components/SitePerformancePanel';
+import PurchaseBudgetPanel from '../components/PurchaseBudgetPanel';
 
 const SiteDetails = () => {
     const { id } = useParams();
@@ -132,6 +133,9 @@ const SiteDetails = () => {
 
 
             <SitePerformancePanel site={site} />
+
+            {/* Budget material lives beside the verified hours/IPMO on the project. */}
+            <PurchaseBudgetPanel site={site} />
 
             {/* Legacy global/theoretical progress cards were redundant and
                 could mistake hours consumed for physical completion.
