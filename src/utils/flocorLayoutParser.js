@@ -48,8 +48,11 @@ export const extractFlocorLayoutLines=(text,{kind='order',maxLines=300}={})=>{
   // Other continuation lines are descriptive only; never infer quantities.
  }
  if(!items.length)warnings.push('Aucune ligne produit Flocor reconnue');
- if(items.some(x=>!/^ART\d{4,}$/.test(x.item_code)))
-  warnings.push('Certains articles ne contiennent pas de code client : rapprochement manuel requis');
+ // An item without a customer ART code still has a unique supplier product code
+ // from the primary item row. That is sufficient to record the commitment;
+ // it simply will not auto-match a CD estimate line.
+ if(items.some(x=>!x.supplier_code || !x.item_code))
+  warnings.push('Article sans référence fournisseur exploitable');
  if(items.some(x=>x.arithmetic_warning))
   warnings.push('Montant net possiblement calculé sur les quantités expédiées (BO exclu) : valider le coût engagé');
  return {matched_format:true,items,warnings,rejected_rows:rejected,requires_review:true};
