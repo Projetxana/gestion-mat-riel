@@ -126,3 +126,26 @@ export const extractSupplierTableLines=(markdown,{kind='order',maxLines=300}={})
   warnings.push('Un ou plusieurs montants ne correspondent pas à quantité × prix unitaire');
  return {kind,items,table_count:tableCount,rejected_rows:rejectedRows,warnings,requires_review:true};
 };
+
+export const validateReviewedOrderRows = rows=>{
+ const selected=rows.filter(row=>row.included);
+ if(selected.length===0)throw new Error('Sélectionnez au moins un article.');
+ return selected.map((row,i)=>{
+  const quantity=safeSupplierNumber(row.quantity);
+  const price=safeSupplierNumber(row.unit_cost);
+  const amount=row.amount.trim()?safeSupplierNumber(row.amount):null;
+  const code=String(row.item_code||'').trim();
+  const description=String(row.description||'').trim();
+  const unit=String(row.unit||'').trim().toUpperCase();
+  if(!code||!description||!unit||!(quantity>0)||price===null||
+      (row.amount.trim()&&amount===null))
+   throw new Error('Ligne '+(i+1)+' : référence, quantité, unité, prix ou montant invalide.');
+  const computed=Math.round(quantity*price*100)/100;
+  // Inconsistent costs must be corrected or explicitly understood; no silent overrides.
+  if(amount!==null&&Math.abs(computed-amount)>Math.max(.02,amount*.02))
+    throw new Error('Ligne '+(i+1)+' : écart entre quantité × prix et montant. Corrigez la ligne.');
+  return {item_code:code,description,quantity,unit,unit_cost:price,
+   amount:amount===null?computed:amount};
+ });
+};
+
