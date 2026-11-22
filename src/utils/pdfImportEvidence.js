@@ -10,7 +10,7 @@ const amountFrom = raw => {
 };
 const rowAnchors = (text,kind) => {
     const rows=String(text||'').split(/\r?\n/);
-    if(kind==='budget')return rows.filter(row=>/^\s*CD\s+\d{4,5}\s+\S/i.test(row)).length;
+    if(kind==='budget')return rows.filter(row=>/^\s*CD\s*\d{4,5}\s+\S/i.test(row)).length;
     // All Flocor product rows start with a three-digit line number and
     // contain order/shipped/BO quantities in that same printed row.
     return rows.filter(row=>/^\s*\d{3}\s+\S+\s{2,}.*\s{2,}(?:UN|PI|FT|EA|PC)\s+\d+(?:[.,]\d+)?\s+\d+(?:[.,]\d+)?/i.test(row)).length;
@@ -31,7 +31,7 @@ export const derivePdfImportEvidence = (readResult,{kind,site,supplier=''}) => {
         // In the CD grouped estimate, a final "total du matériel" note is
         // followed by the estimated material total. This may differ from
         // other reports; never silently substitute a subtotal or add taxes.
-        const match=text.match(/total du mat[eé]riel[^\n]*?\s{3,}([\d \u00a0]+,\d{2})\s*$/im);
+        const match=text.match(/total du mat[eé]riel[^\n]*?rapports\.\s+([\d \u00a0]+,\d{2})\s*$/im);
         printed_material_total=match?amountFrom(match[1]):null;
     }
     const rows=hints.suggested_lines||[];
