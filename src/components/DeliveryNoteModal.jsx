@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Camera, Send, Trash2, RotateCcw, Check } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
-import { fingerprintDeliveryPhotos } from '../utils/deliveryReconciliation';
 
 const DeliveryNoteModal = ({ onClose }) => {
     const { addLog, currentUser, sites, currentCompanyId } = useAppContext();
@@ -83,131 +82,47 @@ const DeliveryNoteModal = ({ onClose }) => {
     };
 
     const handleSend = async () => {
-        if (photos.length === 0 || isUploading) return;
-        if (!selectedSite || !currentCompanyId) {
-            setDeliveryNotice('Sélectionnez le chantier inscrit sur le bon de livraison.');
-            return;
-        }
+        if (!photos.length || isUploading || !selectedSite || !currentCompanyId) return;
         setDeliveryNotice('');
         setIsUploading(true);
         setUploadProgress(0);
-
         try {
-            const uploadedAttachments = [];
-            const timestamp = Date.now();
-            let successCount = 0;
-            const userName = currentUser?.name || 'Utilisateur';
-            let fingerprint = null;
-            try {
-                fingerprint = await fingerprintDeliveryPhotos(photos);
-                // Avoid re-sending identical captured bytes to accounting where possible.
-                const existing = await supabase.from('bt_purchase_delivery_notes')
-                    .select('id').eq('company_id', currentCompanyId)
-                    .eq('fingerprint', fingerprint).limit(1);
-                if (!existing.error && existing.data?.length) {
-                    setDeliveryNotice('Ce scan identique a déjà été envoyé et enregistré. Aucun nouvel envoi effectué.');
-                    return;
-                }
-            } catch {
-                // The existing accounting flow must not depend on optional hash support.
-                fingerprint = null;
-            }
-            const escaped = value => String(value).replace(/[&<>"']/g, char =>
-                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
-
+            const { data: authData, error: authError } = await supabase.auth.getUser();
+            if (authError || !authData?.user?.id) throw new Error('Session expirée. Reconnectez-vous.');
+            const userId = authData.user.id;
+            const paths = [];
+            const submissionId = crypto.randomUUID();
             for (let i = 0; i < photos.length; i++) {
                 const { blob } = photos[i];
-                const fileName = `delivery_${timestamp}_${i + 1}.jpg`;
-
-                const { data, error } = await supabase.storage
-                    .from('delivery-notes')
-                    .upload(fileName, blob);
-
-                if (error) throw error;
-
-                const { data: publicUrlData } = supabase.storage
-                    .from('delivery-notes')
-                    .getPublicUrl(fileName);
-
-                uploadedAttachments.push({
-                    filename: fileName,
-                    path: publicUrlData.publicUrl
-                });
-
-                successCount++;
-                setUploadProgress(Math.round((successCount / photos.length) * 100));
+                if (blob.size > 3 * 1024 * 1024) throw new Error('Photo trop volumineuse. Réessayez.');
+                const path = String(currentCompanyId) + '/' + selectedSite.id + '/' + userId +
+                    '/delivery_' + submissionId + '_' + (i + 1) + '.jpg';
+                const { error: uploadError } = await supabase.storage
+                    .from('bt-delivery-private')
+                    .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+                if (uploadError) throw uploadError;
+                paths.push(path);
+                setUploadProgress(Math.round(((i + 1) / photos.length) * 65));
             }
-
-
-
-            // Send Email via Edge Function
-            const recipientEmail = "materiaux@cd.atoomerp.com";
-            const dateStr = new Date().toLocaleDateString('fr-FR');
-
-            const { data: { session } } = await supabase.auth.getSession();
-            const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    recipient: recipientEmail,
-                    subject: `Bon de Livraison - ${selectedSite.name} - ${userName} - ${dateStr}`,
-                    html: `
-                        <h2>Nouveau Bon de Livraison</h2>
-                        <p><strong>Envoyé par :</strong> ${escaped(userName)}</p>
-                        <p><strong>Chantier :</strong> ${escaped(selectedSite.name)}</p>
-                        <p><strong>Date :</strong> ${dateStr}</p>
-                        <p><strong>Nombre de photos :</strong> ${photos.length}</p>
-                        <br/>
-                        <p><em>Photos en pièces jointes.</em></p>
-                    `,
-                    attachments: uploadedAttachments
-                })
-            });
-
-            const result = await response.json();
-
-            if (!result.success) {
-                throw new Error(result.error || "Erreur inconnue lors de l'envoi");
-            }
-
-            addLog(`[EMAIL CONFIRMED] Bon de livraison envoyé par ${userName} — ${selectedSite.name}`);
-
-            // Insert only AFTER confirmed email delivery, so accounting never depends
-            // on a schema update or on OCR. The record awaits an administrator review.
-            let trackingSaved = false;
-            if (fingerprint) {
-                try {
-                    const { data: authData } = await supabase.auth.getUser();
-                    if (authData?.user?.id) {
-                        const { error: trackingError } = await supabase
-                            .from('bt_purchase_delivery_notes').insert({
-                                company_id: currentCompanyId,
-                                site_id: selectedSite.id,
-                                uploaded_by: authData.user.id,
-                                source_bucket: 'delivery-notes',
-                                attachment_paths: uploadedAttachments.map(item => item.filename),
-                                fingerprint,
-                                email_sent_at: new Date().toISOString(),
-                            });
-                        trackingSaved = !trackingError;
-                    }
-                } catch (trackingError) {
-                    console.warn('Delivery tracking insert unavailable:', trackingError);
+            const { data, error: callError } = await supabase.functions.invoke(
+                'bt-send-delivery-note', {
+                    body: { company_id: currentCompanyId, site_id: selectedSite.id, paths }
                 }
+            );
+            if (callError || !data?.sent) {
+                throw new Error(data?.error || 'Transmission impossible. Vérifiez avec la comptabilité avant de réessayer.');
             }
-            alert(trackingSaved
-                ? 'Bon envoyé à la comptabilité et enregistré pour vérification sur le chantier.'
-                : 'Bon envoyé à la comptabilité. Attention : le suivi des quantités n’a pas été enregistré; avisez votre administrateur.');
+            setUploadProgress(100);
+            addLog('Bon de livraison transmis pour le chantier ' + selectedSite.name);
+            alert(data.tracked
+                ? 'Bon transmis à la comptabilité et placé dans le suivi du chantier.'
+                : 'Bon transmis à la comptabilité, mais suivi à réconcilier. Ne le renvoyez pas.');
             onClose();
-
         } catch (error) {
-            console.error("Upload/Email error:", error);
-            alert(`Erreur lors de l'envoi : ${error.message}`);
+            // A network failure can follow a successful SMTP send.
+            // Do not automatically resubmit; server fingerprint guards duplicates.
+            setDeliveryNotice('Envoi non confirmé : ' + (error.message || 'erreur réseau') +
+                ' — vérifiez le statut auprès de la comptabilité avant de recommencer.');
         } finally {
             setIsUploading(false);
         }
