@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Package, RefreshCw } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
-import { calculatePurchaseBudget, parsePurchaseRows, shippingProjectVerification } from '../utils/purchaseBudget';
+import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shippingProjectVerification } from '../utils/purchaseBudget';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
     style: 'currency', currency: 'CAD', minimumFractionDigits: 2,
@@ -65,7 +65,7 @@ export default function PurchaseBudgetPanel({ site }) {
                 selectProject('bt_purchase_budgets', 'id, source_name, created_at').maybeSingle(),
                 selectProject('bt_purchase_budget_lines', 'id, item_code, description, quantity, unit, unit_cost, amount').order('id'),
                 selectProject('bt_purchase_orders', 'id, po_number, supplier, supplier_order_number, shipping_project_name, created_at, order_date').order('created_at', { ascending: false }),
-                selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, amount').order('id'),
+                selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, unit, amount').order('id'),
             ]);
             const failure = [budgetResult, budgetItemsResult, ordersResult, itemsResult].find(result => result.error);
             if (failure) throw failure.error;
@@ -86,6 +86,7 @@ export default function PurchaseBudgetPanel({ site }) {
 
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
     const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, shippingOverride);
+    const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines), [budgetLines, orderLines]);
     const orderTotals = useMemo(() => new Map(orders.map(item => [
         item.id, orderLines.filter(line => line.order_id === item.id)
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
@@ -207,6 +208,29 @@ export default function PurchaseBudgetPanel({ site }) {
                                 ))}
                             </div>
                             {budgetLines.length > 25 && <p className="text-xs text-slate-400">25 premières lignes affichées sur {budgetLines.length}.</p>}
+                            {orderLines.length > 0 && (
+                                <details className="rounded-lg border border-slate-700 p-3">
+                                    <summary className="cursor-pointer min-h-11 text-sm font-semibold text-blue-200">Comparer les quantités estimées et commandées</summary>
+                                    <p className="text-xs text-slate-400 my-2">Rapprochement par code client et unité. Une description seule ne suffit jamais.</p>
+                                    <div className="space-y-1">
+                                        {comparisons.matched.slice(0, 40).map(row => (
+                                            <div key={row.key} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 py-2 text-xs">
+                                                <span className="break-words min-w-0 flex-1">{row.item_code} · {row.description}</span>
+                                                <span className={row.exceeded ? 'text-red-300 tabular-nums' : 'text-slate-300 tabular-nums'}>
+                                                    {row.orderedQty} / {row.estimatedQty} {row.unit}
+                                                </span>
+                                                <span className="text-slate-400 tabular-nums">Reste {row.remainingQty}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {comparisons.matched.length > 40 && <p className="text-xs text-slate-400">40 articles affichés sur {comparisons.matched.length}.</p>}
+                                    {comparisons.unmatched.length > 0 && (
+                                        <p role="status" className="mt-3 text-xs text-amber-200">
+                                            {comparisons.unmatched.length} ligne(s) commandée(s) sans code client/unité correspondant à l’estimation : vérification nécessaire. Les coûts restent engagés.
+                                        </p>
+                                    )}
+                                </details>
+                            )}
                         </>
                     ) : (
                         <>
