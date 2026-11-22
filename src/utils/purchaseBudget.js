@@ -107,3 +107,50 @@ export const calculatePurchaseBudget = (budgetLines = [], orderLines = []) => {
         uncommitted: Math.max(0, budgetCents - committedCents) / 100,
     };
 };
+
+const normalizedUnit = value => {
+    const unit = normalizeToken(value);
+    return ['FT', 'PI', 'PIED', 'PIEDS'].includes(unit) ? 'PI' : unit;
+};
+
+export const comparePurchaseItems = (budgetLines = [], orderLines = []) => {
+    const keyOf = line => {
+        const code = normalizeCatalogCode(line.item_code);
+        return code ? code + ':' + normalizedUnit(line.unit) : null;
+    };
+    const budgetByKey = new Map();
+    const orderedByKey = new Map();
+    const unmatched = [];
+    for (const line of budgetLines) {
+        const key = keyOf(line);
+        if (!key) continue;
+        const entry = budgetByKey.get(key) || {
+            key, description: line.description, item_code: line.item_code,
+            unit: normalizedUnit(line.unit), estimatedQty: 0, orderedQty: 0,
+            estimatedAmount: 0, orderedAmount: 0,
+        };
+        entry.estimatedQty += Number(line.quantity || 0);
+        entry.estimatedAmount += Number(line.amount || 0);
+        budgetByKey.set(key, entry);
+    }
+    for (const line of orderLines) {
+        const key = keyOf(line);
+        if (!key || !budgetByKey.has(key)) {
+            unmatched.push(line);
+            continue;
+        }
+        const entry = orderedByKey.get(key) || { quantity: 0, amount: 0 };
+        entry.quantity += Number(line.quantity || 0);
+        entry.amount += Number(line.amount || 0);
+        orderedByKey.set(key, entry);
+    }
+    const matched = [...budgetByKey.values()].map(entry => {
+        const order = orderedByKey.get(entry.key) || { quantity: 0, amount: 0 };
+        return {
+            ...entry, orderedQty: order.quantity, orderedAmount: order.amount,
+            remainingQty: Math.max(0, entry.estimatedQty - order.quantity),
+            exceeded: order.quantity > entry.estimatedQty,
+        };
+    });
+    return { matched, unmatched };
+};
