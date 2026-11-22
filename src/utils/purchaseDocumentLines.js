@@ -43,8 +43,10 @@ const normalizedCell = value => String(value ?? '')
  .trim();
 // Never silently turn ambiguous "1,000" into 1.000 or 1000.
 export const safeSupplierNumber = raw => {
- const value = normalizedCell(raw);
+ let value = normalizedCell(raw);
  if (!value || !/^-?[\d., ]+$/.test(value)) return null;
+ // Flocor prints small decimals as .00 and .3200.
+ value=value.replace(/^(\s*)([.,])(?=\d)/,'$10$2');
  const compact = value.replace(/ /g,'');
  if (/^-?\d{1,3}[.,]\d{3}$/.test(compact)) return null;
  const result = parseDecimal(value);
