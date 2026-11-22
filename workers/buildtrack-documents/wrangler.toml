@@ -1,0 +1,13 @@
+name = "buildtrack-documents"
+main = "index.js"
+compatibility_date = "2026-11-21"
+
+[ai]
+binding = "AI"
+
+# Set secrets using 'wrangler secret put INGEST_SECRET'.
+# Set non-secret vars in Cloudflare's Worker settings:
+# INBOUND_DOMAIN=achats.buildtrackapp.ca
+# INGEST_URL=https://<project>.supabase.co/functions/v1/bt-ingest-purchase-mail
+# ENABLE_DOCUMENT_AI=false (explicit opt-in after cost review).
+# Configure Email Routing subaddressing and the 'commandes' rule only after review.

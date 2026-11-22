@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run test:hours && npm run test:weekly-approval && npm run test:duration-correction && npm run test:task-performance && npm run test:performance-trends && npm run test:project-monitoring && npm run test:employee-worksites && npm run test:purchases && npm run test:deliveries && vite build",
+    "build": "npm run test:hours && npm run test:weekly-approval && npm run test:duration-correction && npm run test:task-performance && npm run test:performance-trends && npm run test:project-monitoring && npm run test:employee-worksites && npm run test:purchases && npm run test:deliveries && npm run test:documents && npm run test:edge-syntax && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:hours": "node --test tests/quarter-hours.test.mjs",
@@ -16,7 +16,9 @@
     "test:project-monitoring": "node --test tests/project-monitoring.test.mjs",
     "test:employee-worksites": "node --test tests/current-employee-sites.test.mjs",
     "test:purchases": "node --test tests/purchase-budget.test.mjs",
-    "test:deliveries": "node --test tests/delivery-reconciliation.test.mjs"
+    "test:deliveries": "node --test tests/delivery-reconciliation.test.mjs",
+    "test:documents": "node --test tests/purchase-document-text.test.mjs tests/document-worker.test.mjs",
+    "test:edge-syntax": "node tests/edge-syntax-check.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.3.0",

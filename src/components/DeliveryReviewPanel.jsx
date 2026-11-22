@@ -17,6 +17,8 @@ export default function DeliveryReviewPanel({ site, currentCompanyId, orders, or
     const [supplierSlipNumber, setSupplierSlipNumber] = useState('');
     const [reviewRows, setReviewRows] = useState({});
     const [confirmed, setConfirmed] = useState(false);
+    const [ocrBusy, setOcrBusy] = useState(false);
+    const [ocrHint, setOcrHint] = useState(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
     const reload = useCallback(async () => {
@@ -24,7 +26,7 @@ export default function DeliveryReviewPanel({ site, currentCompanyId, orders, or
         setLoading(true);
         setError('');
         const notesResult = await supabase.from('bt_purchase_delivery_notes')
-            .select('id,company_id,site_id,order_id,po_number,supplier,status,created_at,verified_at')
+            .select('id,company_id,site_id,order_id,po_number,supplier,status,source_bucket,attachment_paths,created_at,verified_at')
             .eq('company_id', currentCompanyId).eq('site_id',site.id)
             .order('created_at',{ascending:false});
         const linesResult = await supabase.from('bt_purchase_delivery_lines')
@@ -50,16 +52,58 @@ export default function DeliveryReviewPanel({ site, currentCompanyId, orders, or
     const summary = useMemo(() => summarizeDeliveries(orderLines,notes,deliveryLines),
         [orderLines,notes,deliveryLines]);
     const pending = notes.filter(note => note.status === 'pending_review');
+    const mailWarnings = notes.filter(note => note.status === 'sending' || note.status === 'send_failed');
     const supplierBoCount = summary.filter(line => line.status === 'supplier_bo').length;
     const remainingCount = summary.filter(line => line.remainingQty > 0).length;
 
+    const viewAttachments = async note => {
+        if(note?.source_bucket!=='bt-delivery-private') {
+            setError('Ancien bon : consultez le courriel archivé à la comptabilité.');
+            return;
+        }
+        const paths=note.attachment_paths||[];
+        if(!paths.length) {setError('Aucune photo associée.');return;}
+        setError('');
+        for(const path of paths){
+            const {data,error:e}=await supabase.storage.from('bt-delivery-private')
+                .createSignedUrl(path,60);
+            if(e||!data?.signedUrl){setError('Accès à la photo refusé.');return;}
+            const link=document.createElement('a');
+            link.href=data.signedUrl;link.target='_blank';link.rel='noopener noreferrer';
+            document.body.appendChild(link);link.click();link.remove();
+        }
+    };
+    const analyzeNote = async note => {
+        setOcrHint(null);
+        if (!note || note.source_bucket !== 'bt-delivery-private' || !note.attachment_paths?.length) {
+            setError('Le bon privé n’est pas disponible pour analyse.'); return;
+        }
+        setOcrBusy(true);setError('');
+        try {
+            const {data:blob,error:downloadError}=await supabase.storage
+                .from('bt-delivery-private').download(note.attachment_paths[0]);
+            if(downloadError||!blob)throw new Error('Photo indisponible');
+            const file=new File([blob],'bon_livraison.jpg',{type:'image/jpeg'});
+            const form=new FormData();form.append('file',file);
+            form.append('company_id',String(currentCompanyId));
+            form.append('site_id',String(site.id));form.append('kind','delivery');
+            const {data,error:rpcError}=await supabase.functions.invoke(
+                'bt-analyze-purchase-document',{body:form});
+            if(rpcError||!data||data.error)throw new Error('Extraction non disponible');
+            setOcrHint(data);
+            if(data.po_number && data.proposed_project_match==='candidate')
+                setPoRead(data.po_number);
+            setConfirmed(false);
+        }catch(err){setError('Analyse de photo impossible : '+(err.message||'réessayez plus tard'));}
+        finally{setOcrBusy(false);}
+    };
     const chooseNote = id => {
         setSelectedNoteId(id);
         setSelectedOrderId('');
         setPoRead('');
         setSupplierSlipNumber('');
         setReviewRows({});
-        setConfirmed(false);
+        setConfirmed(false);setOcrHint(null);
         setError('');setNotice('');
     };
     const updateLine = (id, field, value) => {
@@ -136,6 +180,11 @@ export default function DeliveryReviewPanel({ site, currentCompanyId, orders, or
             {loading && <p role="status" className="text-sm text-blue-200">Chargement des livraisons…</p>}
             {error && <p role="alert" className="rounded-lg border border-red-700 bg-red-950/30 p-3 text-sm text-red-200">{error}</p>}
             {notice && <p role="status" className="rounded-lg border border-green-700 bg-green-950/30 p-3 text-sm text-green-200">{notice}</p>}
+            {mailWarnings.length>0 && (
+              <p role="alert" className="text-sm text-amber-300">
+                {mailWarnings.length} envoi(s) de bon non confirmé(s) : vérifier auprès de la comptabilité avant toute nouvelle transmission.
+              </p>
+            )}
             <div>
                 <h4 className="text-sm font-semibold mb-2">Bons envoyés en attente de rapprochement</h4>
                 {pending.length === 0 && <p className="text-xs text-slate-400">Aucun bon à vérifier.</p>}
@@ -155,10 +204,28 @@ export default function DeliveryReviewPanel({ site, currentCompanyId, orders, or
             {selectedNote && (
                 <div className="rounded-xl border border-blue-700/60 bg-slate-900 p-3 space-y-3">
                     <h4 className="font-semibold">Vérification du bon sélectionné</h4>
+                    <button type="button" onClick={()=>void viewAttachments(selectedNote)}
+                      className="min-h-11 rounded-lg border border-blue-700 px-3 text-sm text-blue-200">
+                      Ouvrir les photos originales (liens temporaires)
+                    </button>
+                    <button type="button" onClick={()=>void analyzeNote(selectedNote)} disabled={ocrBusy}
+                      className="min-h-11 rounded-lg border border-slate-600 px-3 text-sm text-blue-200 disabled:opacity-50">
+                      {ocrBusy ? 'Lecture de la photo…' : 'Reconnaître le PO sur la photo'}
+                    </button>
+                    {ocrHint && (
+                      <div className="rounded-lg border border-blue-600 p-3 text-xs space-y-1">
+                        <p>PO proposé : <strong>{ocrHint.po_number || 'Non détecté'}</strong></p>
+                        <p>Chantier lu : <strong>{ocrHint.shipping_project_name || 'Non détecté'}</strong></p>
+                        <p className={ocrHint.proposed_project_match==='candidate'?'text-green-300':'text-amber-300'}>
+                          {ocrHint.proposed_project_match==='candidate'
+                            ? 'Chantier cohérent à vérifier' : 'Nom de chantier absent ou différent : vérifier manuellement'}
+                        </p>
+                        <p>Aucune quantité n’est validée automatiquement.</p>
+                      </div>
+                    )}
                     <p className="text-xs text-amber-200 flex items-start gap-2">
                         <AlertTriangle size={15} className="shrink-0"/>
-                        Vérifiez le bon original dans le courriel transmis à la comptabilité.
-                        La reconnaissance automatique des photos n’est pas encore activée.
+                        Comparez avec les photos originales et le courriel comptable. Les champs détectés automatiquement devront être validés avant toute réception.
                     </p>
                     <label className="block text-sm">Numéro de PO lu sur le bon
                         <input type="text" value={poRead} onChange={e=>{setPoRead(e.target.value);setConfirmed(false);}}
