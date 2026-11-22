@@ -75,6 +75,14 @@ SELECT storage.foldername('10000000-0000-0000-0000-000000000001/11/00000000-0000
  EXISTS (SELECT 1 FROM public.sites s JOIN public.company_users cu ON cu.company_id=s.company_id
  WHERE s.company_id::text='10000000-0000-0000-0000-000000000001'
  AND s.id::text='11' AND s.status='active' AND cu.user_id=(SELECT auth.uid())) AS test_membership;
+SELECT
+  'bt-delivery-private'='bt-delivery-private' AS bucket_check,
+  (storage.foldername('10000000-0000-0000-0000-000000000001/11/00000000-0000-0000-0000-000000000001/delivery_test.jpg'))[3]=(SELECT auth.uid())::text AS owner_check,
+  EXISTS(SELECT 1 FROM public.sites s JOIN public.company_users cu ON cu.company_id=s.company_id
+   WHERE s.company_id::text=(storage.foldername('10000000-0000-0000-0000-000000000001/11/00000000-0000-0000-0000-000000000001/delivery_test.jpg'))[1]
+     AND s.id::text=(storage.foldername('10000000-0000-0000-0000-000000000001/11/00000000-0000-0000-0000-000000000001/delivery_test.jpg'))[2]
+     AND s.status='active' AND cu.user_id=(SELECT auth.uid())) AS membership_check;
+SELECT policyname,cmd,with_check,qual FROM pg_policies WHERE schemaname='storage' AND tablename='objects';
 INSERT INTO storage.objects(bucket_id,name) VALUES(
  'bt-delivery-private',
  '10000000-0000-0000-0000-000000000001/11/00000000-0000-0000-0000-000000000001/delivery_test.jpg');
