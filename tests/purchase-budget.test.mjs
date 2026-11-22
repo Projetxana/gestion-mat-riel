@@ -7,6 +7,7 @@ import {
     parseDecimal,
     parsePurchaseRows,
     projectFromShippingName,
+    shippingProjectVerification,
 } from '../src/utils/purchaseBudget.js';
 
 test('Canadian currency formats are handled without changing values', () => {
@@ -57,4 +58,11 @@ test('budget accounting uses confirmed orders only; receptions have no cost effe
     const orderedLines = [{amount:180}, {amount:100}];
     const totals = calculatePurchaseBudget(budgetLines, orderedLines);
     assert.deepEqual(totals, {initial:500, committed:280, varianceCommitted:-220, uncommitted:220});
+});
+
+test('mismatched shipping site is blocked without explicit site-name override', () => {
+    assert.equal(shippingProjectVerification('DJ4 S.E.C.', 'DJ4 SEC').canAccept, true);
+    assert.equal(shippingProjectVerification('Orélis Jarry', 'DJ4 S.E.C.').canAccept, false);
+    assert.equal(shippingProjectVerification('Orélis Jarry', 'DJ4 S.E.C.', 'DJ4 S.E.C.').canAccept, true);
+    assert.equal(shippingProjectVerification('Orélis Jarry', 'DJ4 S.E.C.', 'Orélis Jarry').canAccept, false);
 });
