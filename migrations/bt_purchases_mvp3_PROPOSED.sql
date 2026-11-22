@@ -32,7 +32,7 @@ CREATE TABLE public.bt_purchase_documents (
   created_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY(inbox_alias_id,company_id,site_id)
     REFERENCES public.bt_purchase_inbox_aliases(id,company_id,site_id),
-  UNIQUE(company_id,sha256)
+  UNIQUE(company_id,site_id,sha256)
 );
 
 CREATE INDEX bt_purchase_documents_site ON public.bt_purchase_documents
@@ -137,6 +137,13 @@ CREATE POLICY bt_delivery_private_read ON storage.objects
        AND (cu.role='admin' OR (storage.foldername(name))[3]=(SELECT auth.uid())::text)
    )
  );
+
+-- Duplicate physical delivery note detected by supplier + supplier slip number,
+-- even when different photographs produce different hashes. Blank numbers stay reviewable.
+CREATE UNIQUE INDEX bt_delivery_unique_supplier_slip
+ ON public.bt_purchase_delivery_notes(
+   company_id, lower(btrim(supplier)), upper(btrim(supplier_note_number)))
+ WHERE status='verified' AND supplier_note_number<>'';
 
 -- New delivery flow: enforce private storage and server-confirmed accounting email.
 -- Old public delivery-notes must be migrated separately before final public launch.
