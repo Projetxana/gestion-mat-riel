@@ -46,6 +46,12 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE buildtrack_purchases_test"
           psql -h 127.0.0.1 -U postgres -d buildtrack_purchases_test -v ON_ERROR_STOP=1 -f tests/purchases-rls-postgres.sql
+      - name: Delivery receipts PostgreSQL 17 RLS and PO fixtures (disposable)
+        env:
+          PGPASSWORD: fixture-only
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE buildtrack_deliveries_test"
+          psql -h 127.0.0.1 -U postgres -d buildtrack_deliveries_test -v ON_ERROR_STOP=1 -f tests/purchases-deliveries-postgres.sql
       - name: Validate operator backup script syntax
         run: bash -n scripts/backup-buildtrack-prod.sh
       - name: Recovery drill (local fabricated database only)
