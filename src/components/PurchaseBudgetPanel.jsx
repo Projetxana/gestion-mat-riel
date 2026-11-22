@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Package, RefreshCw } from
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shippingProjectVerification } from '../utils/purchaseBudget';
+import { assessDigitalPdf } from '../utils/pdfImportEvidence';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
     style: 'currency', currency: 'CAD', minimumFractionDigits: 2,
@@ -52,6 +53,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const [shippingVerified, setShippingVerified] = useState(false);
     const [shippingOverride, setShippingOverride] = useState('');
     const [reloadIndex, setReloadIndex] = useState(0);
+    const [pdfIssues, setPdfIssues] = useState([]);
 
     const refresh = useCallback(async () => {
         if (!site?.id || !currentCompanyId || !isAdmin || !isCorrectTenant) return;
@@ -96,6 +98,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         if (!file) return;
         setError('');
         setNotice('');
+        setPdfIssues([]);
         try {
             const rows = parsePurchaseRows(await readSheet(file), { kind: mode });
             if (mode === 'budget') setPendingBudget({ rows, sourceName: file.name });
@@ -107,6 +110,77 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             if (mode === 'budget') setPendingBudget(null); else setPendingOrder(null);
             setError(e.message || 'Import du document impossible.');
         }
+    };
+
+    const importDigitalPdf = async (file, mode) => {
+        if (!file || busy) return;
+        if (!isAdmin || !isCorrectTenant || site?.status !== 'active') {
+            setError('Seul un administrateur peut importer un document sur un chantier actif.');
+            return;
+        }
+        setBusy(true);
+        setError(''); setNotice(''); setPdfIssues([]);
+        try {
+            // Lazy-load bundled PDF.js only after the administrator selects a file.
+            const { readDigitalPdf } = await import('../utils/digitalPdfReader');
+            const pdf = await readDigitalPdf(file);
+            const parsed = assessDigitalPdf(pdf, {
+                kind:mode,site,previousOrders:orders,hasExistingBudget:Boolean(budget),
+            });
+            const rows = parsed.verified_rows;
+            if(parsed.status === 'auto_commit' && rows.length){
+                const args = mode === 'budget' ? {
+                    p_company_id:currentCompanyId,p_site_id:site.id,
+                    p_source_name:file.name.slice(0,150),p_lines:rows,
+                } : {
+                    p_company_id:currentCompanyId,p_site_id:site.id,
+                    p_po_number:parsed.hints.po_number,
+                    p_supplier:parsed.supplier,
+                    p_supplier_order_number:parsed.hints.supplier_order_number||'',
+                    p_shipping_project_name:parsed.hints.shipping_project_name,
+                    p_order_date:null,p_source_name:file.name.slice(0,150),
+                    p_project_verified:true,p_override_confirmation:'',p_lines:rows,
+                };
+                const functionName=mode==='budget'
+                    ? 'bt_purchase_import_budget':'bt_purchase_create_order';
+                const {error:rpcError}=await supabase.rpc(functionName,args);
+                if(rpcError)throw rpcError;
+                if(mode==='budget')setPendingBudget(null);
+                else {setPendingOrder(null);setOrder(emptyOrder);setShippingVerified(false);}
+                setReloadIndex(value=>value+1);
+                onPurchasesChanged?.();
+                setNotice(`PDF enregistré automatiquement : ${rows.length} article(s) · ${money(rows.reduce((sum,row)=>sum+row.amount,0))}. Aucune validation nécessaire.`);
+                return;
+            }
+            // Fail closed: never save a partial budget/PO. Provide the existing
+            // manual verification path only when all individual lines parse.
+            const issues=parsed.issues?.map(issue=>issue.message) || [];
+            setPdfIssues(issues.length ? issues : ['Document à vérifier avant enregistrement.']);
+            let tentative=null;
+            try {
+                const source=parsed.hints?.suggested_lines?.filter(line=>line.included!==false)||[];
+                tentative=source.length?parsePurchaseRows(source,{kind:mode}):null;
+            } catch { tentative=null; }
+            if(mode==='budget'){
+                setPendingBudget(!budget&&tentative
+                    ? {rows:tentative,sourceName:file.name}:null);
+            } else {
+                setPendingOrder(tentative ? {rows:tentative,sourceName:file.name}:null);
+                setOrder({
+                    supplier:parsed.supplier||'',
+                    poNumber:parsed.hints?.po_number||'',
+                    supplierNumber:parsed.hints?.supplier_order_number||'',
+                    shippingProject:parsed.hints?.shipping_project_name||'',
+                    date:'',
+                });
+                setShippingVerified(false);setShippingOverride('');
+            }
+        } catch(err) {
+            setError(err?.code==='23505'
+                ? 'Ce budget ou ce PO est déjà enregistré. Aucune écriture en double.'
+                : err?.message || 'Lecture PDF impossible.');
+            setPdfIssues([]);
+        } finally { setBusy(false); }
     };
 
     const saveBudget = async () => {
@@ -185,6 +259,15 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             {loading && <p role="status" className="mb-3 text-sm text-blue-200">Actualisation…</p>}
             {error && <p role="alert" className="mb-3 rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
             {notice && <p role="status" className="mb-3 rounded-lg border border-emerald-700 bg-emerald-950/40 p-3 text-sm text-emerald-200">{notice}</p>}
+            {pdfIssues.length>0 && (
+                <div role="alert" className="mb-3 rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-100">
+                    <p className="font-semibold">PDF à vérifier : aucun enregistrement automatique.</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5">
+                        {pdfIssues.slice(0,8).map((issue,index)=><li key={index}>{issue}</li>)}
+                    </ul>
+                    <p className="mt-2 text-xs">Si les lignes sont lisibles, utilisez le formulaire de confirmation existant ci-dessous.</p>
+                </div>
+            )}
 
             <div className="flex gap-2 border-b border-slate-700 mb-4" role="tablist" aria-label="Suivi des achats">
                 {[['budget','Budget'],['orders','Commandes']].map(([key,label]) => (
@@ -236,7 +319,13 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                         </>
                     ) : (
                         <>
-                            <p className="text-sm text-slate-300">Importer une seule fois la liste d’achats initiale du chantier en Excel ou CSV.</p>
+                            <p className="text-sm text-slate-300">Importer la liste d’achats du chantier. Un PDF numérique cohérent est enregistré automatiquement, sans vérification ligne par ligne.</p>
+                            <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-blue-600 bg-blue-950/30 p-3 text-sm font-semibold text-blue-100">
+                                <FileSpreadsheet size={19}/> Importer le budget PDF automatiquement
+                                <input type="file" accept=".pdf,application/pdf" className="sr-only"
+                                    disabled={busy} onChange={event=>{void importDigitalPdf(event.target.files?.[0],'budget');event.target.value='';}}/>
+                            </label>
+                            <p className="text-xs text-slate-400">PDF avec texte sélectionnable seulement · Analyse locale sans frais IA · Excel/CSV en secours.</p>
                             <button type="button" onClick={downloadTemplate} className="text-sm underline text-blue-300">Télécharger le modèle CSV</button>
                             <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-600 p-3 text-sm text-blue-200">
                                 <FileSpreadsheet size={19}/> Choisir une liste Excel / CSV
@@ -252,7 +341,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                     </button>
                                 </div>
                             )}
-                            <p className="text-xs text-amber-300 flex items-start gap-2"><AlertTriangle size={16} className="shrink-0"/> Ne pas importer les lignes de main-d’œuvre ou les ajustements forfaitaires dans le budget matériel. Le lecteur PDF arrive dans une prochaine étape.</p>
+                            <p className="text-xs text-amber-300 flex items-start gap-2"><AlertTriangle size={16} className="shrink-0"/> Les lignes non matérielles et les totaux non concordants sont signalés avant toute écriture.</p>
                         </>
                     )}
                 </div>
@@ -260,6 +349,12 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             {tab === 'orders' && (
                 <div role="tabpanel" className="space-y-3">
                     <p className="text-sm text-slate-300">Une confirmation engage le budget. Le bon de livraison ne crée jamais de nouvel achat.</p>
+                    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-blue-600 bg-blue-950/30 p-3 text-sm font-semibold text-blue-100">
+                        <FileSpreadsheet size={19}/> Importer une confirmation PDF automatiquement
+                        <input type="file" accept=".pdf,application/pdf" className="sr-only"
+                            disabled={busy} onChange={event=>{void importDigitalPdf(event.target.files?.[0],'order');event.target.value='';}}/>
+                    </label>
+                    <p className="text-xs text-slate-400">Chantier, fournisseur, PO, lignes et total contrôlés automatiquement. Exception uniquement en cas d’écart.</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {[
                             ['supplier','Fournisseur','Flocor'],
@@ -320,7 +415,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             </div>
                         ))}
                     </div>
-                    <p className="text-xs text-amber-300">À venir : analyse des PDF par courriel, détection automatique du projet et rapprochement des bons/BO. Aucun bon de livraison n’est encore modifié.</p>
+                    <p className="text-xs text-slate-400">Le PDF numérique est lu localement. L’import des courriels et le rapprochement des bons restent indépendants.</p>
                 </div>
             )}
         </section>
