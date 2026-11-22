@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     calculatePurchaseBudget,
+    comparePurchaseItems,
     normalizePurchaseOrder,
     normalizeCatalogCode,
     parseDecimal,
@@ -65,4 +66,21 @@ test('mismatched shipping site is blocked without explicit site-name override', 
     assert.equal(shippingProjectVerification('Orélis Jarry', 'DJ4 S.E.C.').canAccept, false);
     assert.equal(shippingProjectVerification('Orélis Jarry', 'DJ4 S.E.C.', 'DJ4 S.E.C.').canAccept, true);
     assert.equal(shippingProjectVerification('Orélis Jarry', 'DJ4 S.E.C.', 'Orélis Jarry').canAccept, false);
+});
+
+test('order lines reconcile only on verified catalog code and compatible unit', () => {
+    const estimate = [
+        { item_code: 'CD 00429', description: 'Té CPVC', unit: 'UN', quantity: 100, amount: 380 },
+        { item_code: 'CD 00159', description: 'Tuyau CPVC', unit: 'PI', quantity: 700, amount: 900 },
+    ];
+    const ordered = [
+        { item_code: 'ART00429', description: 'Té CPVC', unit: 'UN', quantity: 35, amount: 140 },
+        { item_code: 'ART00159', description: 'Tuyau CPVC', unit: 'FT', quantity: 150, amount: 200 },
+        { item_code: 'FL999', description: 'Té CPVC', unit: 'UN', quantity: 40, amount: 100 },
+        { item_code: 'ART00429', description: 'Té CPVC', unit: 'PI', quantity: 3, amount: 50 },
+    ];
+    const {matched, unmatched} = comparePurchaseItems(estimate, ordered);
+    assert.equal(matched.find(row => row.key === '00429:UN')?.remainingQty, 65);
+    assert.equal(matched.find(row => row.key === '00159:PI')?.remainingQty, 550);
+    assert.equal(unmatched.length, 2);
 });
