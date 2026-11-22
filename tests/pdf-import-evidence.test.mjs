@@ -39,3 +39,24 @@ test('quantity on backorder forces an exception because supplier net excludes BO
  assert.equal(result.status,'attention_required');
  assert.ok(result.issues.some(x=>x.code==='exception')||result.issues.some(x=>x.code==='amount'));
 });
+
+test('supplier stock code is enough when no optional ART client cross-reference exists',()=>{
+ const text=flocor.replace('        No Item Client..          ART00540\n','');
+ const result=assessDigitalPdf(make(text),{kind:'order',site});
+ assert.equal(result.status,'auto_commit',JSON.stringify(result.issues));
+ assert.equal(result.verified_rows[0].item_code,'ADBLZ105RS2');
+});
+test('CD estimate with grouped total but separate adjustments requires review',()=>{
+ const text=[
+ '2026-056 Cash and Carry [ MULTI-SCÉNARIO ]',
+ 'Description   Quantité  Prix  Esc%  Coût net  Matériel',
+ 'BOULONNERIE ET ANCRAGES BÉTON',
+ 'CD 00402 ANCRAGE A BETON KH-EZ-I 3/8"   6474 UN   159,56 / CT   0   159,56 / CT   10 329,91',
+ 'N.B. Comme les quantités sont groupées, le total du matériel peut différer quelque peu de celui des autres rapports. 12 000,00',
+ ].join('\n');
+ const result=assessDigitalPdf(make(text),{kind:'budget',site:{...site,name:'Cash and Carry'}});
+ assert.equal(result.document.source_line_count,1);
+ assert.equal(result.document.printed_material_total,12000);
+ assert.equal(result.status,'attention_required');
+ assert.ok(result.issues.some(x=>x.code==='total'));
+});
