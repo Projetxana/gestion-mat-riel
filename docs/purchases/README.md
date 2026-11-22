@@ -12,7 +12,8 @@
 - Purchase budget panel embedded in `/sites/:id` (reachable from **Suivi des projets**).
 - Template-based **CSV/XLS/XLSX import** of baseline material lines and confirmation lines.
 - Preview totals, atomic budget import and immutable baseline UI.
-- Supplier + PO + order number + shipping project manual verification and duplicate PO prevention.
+- Supplier + PO + order number + shipping project manual verification, mandatory typed project-name override if mismatched, and duplicate PO prevention.
+- Article-by-article ordered/estimated quantity comparison by normalized CD/ART client codes and compatible units (PI/FT). Unmatched supplier items stay in review.
 - Read-only committed amount, baseline amount and uncommitted budget.
 - SQL proposal: four isolated RLS-protected purchase tables and two atomic invoker RPCs.
 - Unit tests for monetary parsing, tenant-scoped project matching, aliases, PO normalization, invalid rows and totals.
