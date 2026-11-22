@@ -34,7 +34,7 @@ const cellsOf = row => String(row).trim()
  .split(/(?<!\\)\|/g).map(cell => cell.replace(/\\\|/g,'|').trim().replace(/\*\*/g,''));
 const isSeparator = row => /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(row);
 const isSummary = description =>
- /^(?:SUBTOTAL|TOTAL|TOTALHT|TOTALTAXES|TAXES|TPS|TVQ|GST|QST|FREIGHT|TRANSPORT|SHIPPING|MAINDOEUVRE|LABOUR|LABOR|SOUSPRESTATION|SOUSCONTRAT|FIXEDPRICE|PRIXFIXE)$/i
+ /^(?:SUBTOTAL|SOUSTOTAL|TOTAL|TOTALHT|TOTALTAXES|TAXES|TPS|TVQ|GST|QST|FREIGHT|TRANSPORT|SHIPPING|MAINDOEUVRE|LABOUR|LABOR|SOUSPRESTATION|SOUSCONTRAT|FIXEDPRICE|PRIXFIXE)$/i
   .test(head(description));
 
 const normalizedCell = value => String(value ?? '')
