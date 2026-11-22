@@ -104,7 +104,7 @@ GRANT UPDATE (order_id, po_number, supplier, supplier_note_number, status, verif
 GRANT SELECT,INSERT ON public.bt_purchase_delivery_lines TO authenticated;
 GRANT USAGE,SELECT ON SEQUENCE public.bt_purchase_delivery_lines_id_seq TO authenticated;
 
--- Verification is a single immutable transaction. An order row lock serializes
+-- Verification is a single immutable transaction. An advisory PO lock serializes
 -- concurrent delivery confirmations to prevent cumulative overdelivery races.
 CREATE OR REPLACE FUNCTION public.bt_purchase_verify_delivery(
   p_company_id uuid,
@@ -131,9 +131,13 @@ BEGIN
     RAISE EXCEPTION 'Bon absent ou déjà vérifié' USING ERRCODE='23514';
   END IF;
 
+  -- An advisory transaction lock serializes PO receipts without granting
+  -- UPDATE permissions on immutable purchase orders.
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_order_id::text, 75023));
   SELECT * INTO v_order FROM public.bt_purchase_orders
   WHERE id=p_order_id AND company_id=p_company_id
-    AND site_id=v_note.site_id FOR UPDATE;
+    AND site_id=v_note.site_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Le PO ne correspond pas au chantier du bon' USING ERRCODE='23514';
   END IF;
