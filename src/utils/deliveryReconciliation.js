@@ -66,9 +66,9 @@ export const deliveryReviewPayload = rows => {
         const supplierBo = row.supplier_bo_qty == null || row.supplier_bo_qty === ''
             ? null : Number(row.supplier_bo_qty);
         if (!/^\d+$/.test(key) || seen.has(key) ||
-            !Number.isFinite(shipped) || shipped < 0 || Math.round(shipped * 1000) !== shipped * 1000 ||
+            !Number.isFinite(shipped) || shipped < 0 || Math.abs(shipped * 1000 - Math.round(shipped * 1000)) > 1e-7 ||
             (supplierBo !== null && (!Number.isFinite(supplierBo) || supplierBo < 0 ||
-            Math.round(supplierBo * 1000) !== supplierBo * 1000)) ||
+            Math.abs(supplierBo * 1000 - Math.round(supplierBo * 1000)) > 1e-7)) ||
             !(shipped > 0 || supplierBo > 0)) {
             throw new Error('Une ligne de livraison est invalide ou présente en double.');
         }
