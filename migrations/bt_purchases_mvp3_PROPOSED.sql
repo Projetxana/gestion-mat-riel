@@ -138,4 +138,28 @@ CREATE POLICY bt_delivery_private_read ON storage.objects
    )
  );
 
+-- New delivery flow: enforce private storage and server-confirmed accounting email.
+-- Old public delivery-notes must be migrated separately before final public launch.
+ALTER TABLE public.bt_purchase_delivery_notes
+  DROP CONSTRAINT bt_purchase_delivery_notes_source_bucket_check,
+  DROP CONSTRAINT bt_purchase_delivery_notes_status_check,
+  DROP CONSTRAINT bt_delivery_note_verified_consistency;
+ALTER TABLE public.bt_purchase_delivery_notes
+  ALTER COLUMN email_sent_at DROP NOT NULL,
+  ALTER COLUMN source_bucket SET DEFAULT 'bt-delivery-private',
+  ALTER COLUMN status SET DEFAULT 'sending',
+  ADD CONSTRAINT bt_delivery_note_bucket_allowed CHECK (
+    source_bucket IN ('delivery-notes','bt-delivery-private')),
+  ADD CONSTRAINT bt_delivery_note_status_allowed CHECK (
+    status IN ('sending','send_failed','pending_review','verified')),
+  ADD CONSTRAINT bt_delivery_note_verified_consistency CHECK (
+    (status IN ('sending','send_failed') AND email_sent_at IS NULL AND verified_at IS NULL AND order_id IS NULL)
+    OR (status='pending_review' AND email_sent_at IS NOT NULL AND verified_at IS NULL AND order_id IS NULL)
+    OR (status='verified' AND email_sent_at IS NOT NULL AND verified_at IS NOT NULL AND order_id IS NOT NULL)
+  );
+-- Only the authenticated Edge Function (service role) may reserve and finalize a
+-- delivery email record; a browser must not assert that accounting got an email.
+DROP POLICY bt_delivery_notes_insert ON public.bt_purchase_delivery_notes;
+REVOKE INSERT ON public.bt_purchase_delivery_notes FROM authenticated;
+
 COMMIT;
