@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run test:hours && npm run test:weekly-approval && npm run test:duration-correction && npm run test:task-performance && npm run test:performance-trends && npm run test:project-monitoring && npm run test:employee-worksites && vite build",
+    "build": "npm run test:hours && npm run test:weekly-approval && npm run test:duration-correction && npm run test:task-performance && npm run test:performance-trends && npm run test:project-monitoring && npm run test:employee-worksites && npm run test:purchases && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:hours": "node --test tests/quarter-hours.test.mjs",
@@ -13,8 +13,9 @@
     "test:duration-correction": "node --test tests/session-duration-correction.test.mjs",
     "test:task-performance": "node --test tests/task-performance.test.mjs",
     "test:performance-trends": "node --test tests/performance-trends.test.mjs",
-    "test:project-monitoring": "node --test tests/project-monitoring.test.mjs",
-    "test:employee-worksites": "node --test tests/current-employee-sites.test.mjs"
+    "test:project-monitoring": "node --test tests/project-monitoring.test.mjs tests/purchase-monitoring.test.mjs tests/project-monitoring-navigation.test.mjs",
+    "test:employee-worksites": "node --test tests/current-employee-sites.test.mjs",
+    "test:purchases": "node --test tests/purchase-budget.test.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.3.0",
