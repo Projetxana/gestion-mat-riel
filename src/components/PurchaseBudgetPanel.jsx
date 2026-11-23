@@ -7,6 +7,9 @@ import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shipp
 import { assessDigitalPdf } from '../utils/pdfImportEvidence';
 import PurchaseLineReconciliation from './PurchaseLineReconciliation';
 import PurchaseBudgetRevisions from './PurchaseBudgetRevisions';
+import SupplierPriceReferencePanel from './SupplierPriceReferencePanel';
+import SupplierPriceAlertsPanel from './SupplierPriceAlertsPanel';
+import {compareSupplierPrices,activeSupplierQuotes} from '../utils/supplierPriceWatch';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
     style: 'currency', currency: 'CAD', minimumFractionDigits: 2,
@@ -59,6 +62,11 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const [shippingOverride, setShippingOverride] = useState('');
     const [reloadIndex, setReloadIndex] = useState(0);
     const [pdfIssues, setPdfIssues] = useState([]);
+    const [priceQuotes,setPriceQuotes] = useState([]);
+    const [priceQuoteLines,setPriceQuoteLines] = useState([]);
+    const [priceLinks,setPriceLinks] = useState([]);
+    const [priceReferenceEnabled,setPriceReferenceEnabled] = useState(true);
+    const [priceRiskAcknowledged,setPriceRiskAcknowledged] = useState(false);
 
     const refresh = useCallback(async () => {
         if (!site?.id || !currentCompanyId || !isAdmin || !isCorrectTenant) return;
@@ -68,7 +76,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             const conditions = ['company_id', 'site_id'];
             const selectProject = (table, cols) =>
                 supabase.from(table).select(cols).eq(conditions[0], currentCompanyId).eq(conditions[1], site.id);
-            const [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult, linkResult] = await Promise.all([
+            const [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult, linkResult,
+                quotesResult, quoteLinesResult, priceLinksResult] = await Promise.all([
                 selectProject('bt_purchase_budgets', 'id, source_name, created_at').maybeSingle(),
                 supabase.rpc('bt_purchase_effective_budget_lines', {
                     p_company_id:currentCompanyId,p_site_id:site.id
@@ -77,8 +86,14 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     'id, revision_no, kind, label, source_name, file_sha256, line_count, total_amount, created_at')
                     .order('revision_no', { ascending: false }),
                 selectProject('bt_purchase_orders', 'id, po_number, supplier, supplier_order_number, shipping_project_name, created_at, order_date').order('created_at', { ascending: false }),
-                selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, unit, amount').order('id'),
+                selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, unit, unit_cost, amount').order('id'),
                 selectProject('bt_purchase_line_links', 'order_line_id, budget_line_id, disposition'),
+                selectProject('bt_supplier_price_quotes',
+                    'id, supplier, quote_number, quote_date, source_name, file_sha256, line_count, total_amount, created_at')
+                    .order('created_at', { ascending: false }),
+                selectProject('bt_supplier_price_lines',
+                    'id, quote_id, item_code, customer_alias, description, unit, quantity, unit_cost, amount'),
+                selectProject('bt_supplier_price_line_links', 'order_line_id, quote_line_id'),
             ]);
             const failure = [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult].find(result => result.error);
             if (failure) throw failure.error;
@@ -89,6 +104,11 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             setOrderLines(itemsResult.data || []);
             setPurchaseLinks(linkResult.error ? [] : (linkResult.data || []));
             setLinkingEnabled(!linkResult.error);
+            const pricesAvailable=!quotesResult.error&&!quoteLinesResult.error&&!priceLinksResult.error;
+            setPriceReferenceEnabled(pricesAvailable);
+            setPriceQuotes(pricesAvailable?(quotesResult.data||[]):[]);
+            setPriceQuoteLines(pricesAvailable?(quoteLinesResult.data||[]):[]);
+            setPriceLinks(pricesAvailable?(priceLinksResult.data||[]):[]);
         } catch (e) {
             setError(e.code === '42P01'
                 ? 'Les tables du module Achats ne sont pas encore activées dans Supabase.'
@@ -103,6 +123,22 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
     const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, shippingOverride);
     const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines, purchaseLinks), [budgetLines, orderLines, purchaseLinks]);
+    const savedPriceComparison=useMemo(()=>compareSupplierPrices({
+        quotes:priceQuotes,quoteLines:priceQuoteLines,orders,orderLines,links:priceLinks,
+    }),[priceQuotes,priceQuoteLines,orders,orderLines,priceLinks]);
+    const pendingPriceComparison=useMemo(()=>pendingOrder?compareSupplierPrices({
+        quotes:priceQuotes,quoteLines:priceQuoteLines,
+        orders:[{id:'pending',supplier:order.supplier,po_number:order.poNumber}],
+        orderLines:pendingOrder.rows.map((line,index)=>({
+            ...line,id:'draft-'+index,order_id:'pending'
+        })),
+    }):null,[pendingOrder,order,priceQuotes,priceQuoteLines]);
+    const supplierHasQuote=Boolean(activeSupplierQuotes(priceQuotes).find(
+        quote=>quote.supplier&&quote.supplier.trim().toLowerCase()===order.supplier.trim().toLowerCase()));
+    const pendingPriceNeedsReview=Boolean(pendingOrder&&(
+        !supplierHasQuote ||
+        pendingPriceComparison?.overpriceCount>0 ||
+        pendingPriceComparison?.needsReview.length>0));
     const orderTotals = useMemo(() => new Map(orders.map(item => [
         item.id, orderLines.filter(line => line.order_id === item.id)
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
