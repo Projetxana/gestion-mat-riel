@@ -472,6 +472,41 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     {pendingOrder && (
                         <div className="rounded-xl border border-slate-600 p-3 text-sm space-y-3">
                             <p>{pendingOrder.sourceName} · {pendingOrder.rows.length} articles · {money(pendingOrder.rows.reduce((sum,line) => sum + line.amount,0))}</p>
+                            {pendingPriceComparison && (
+                                <div className="rounded-lg border border-amber-700/70 p-3 text-sm space-y-2">
+                                    <p className="font-semibold">Vérification des prix avant engagement</p>
+                                    {!supplierHasQuote&&<p className="text-amber-200 text-xs">
+                                        Aucune soumission de référence active pour {order.supplier||'ce fournisseur'}.
+                                        Importez-la dans Budget pour contrôler les prix.
+                                    </p>}
+                                    {pendingPriceComparison.overpriceCount>0&&<div role="alert"
+                                        className="text-red-200 text-xs space-y-1">
+                                        <p className="font-semibold">
+                                            {pendingPriceComparison.overpriceCount} dépassement(s) :
+                                            {' '}{money(pendingPriceComparison.impact)} HT
+                                        </p>
+                                        {pendingPriceComparison.overpriced.map(row=>
+                                            <p key={row.id}>{row.item_code} ·
+                                                soumission {money(row.referenceUnitCost)} / {row.unit} →
+                                                confirmé {money(row.unit_cost)} / {row.unit} ·
+                                                écart {money(row.impact)} HT</p>
+                                        )}
+                                    </div>}
+                                    {pendingPriceComparison.needsReview.length>0&&<p className="text-amber-200 text-xs">
+                                        {pendingPriceComparison.needsReview.length} ligne(s) sans rapprochement fiable :
+                                        vérifier les codes et unités après enregistrement.
+                                    </p>}
+                                    {pendingPriceNeedsReview&&<label className="flex items-start gap-2 text-xs">
+                                        <input type="checkbox" checked={priceRiskAcknowledged}
+                                            onChange={e=>setPriceRiskAcknowledged(e.target.checked)}/>
+                                        Je reconnais les écarts ou les références manquantes et autorise
+                                        l’enregistrement de cette commande sans modifier les prix de la soumission.
+                                    </label>}
+                                    {!pendingPriceNeedsReview&&<p className="text-emerald-200 text-xs">
+                                        Tous les prix reconnus respectent la soumission fournisseur.
+                                    </p>}
+                                </div>
+                            )}
                             {shippingCheck.requiresOverride && (
                                 <div className="rounded-lg border border-amber-600/70 bg-amber-950/30 p-3 text-sm space-y-2">
                                     <p className="text-amber-200">Le nom indiqué à la livraison ne correspond pas exactement à « {site.name} ». Vérifiez le document et confirmez manuellement le chantier.</p>
@@ -486,7 +521,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                     onChange={e => setShippingVerified(e.target.checked)} className="mt-1"/>
                                 <span>J’ai vérifié que le nom de chantier indiqué à la livraison correspond bien à <strong>{site.name}</strong>. Le numéro PO seul ne prouve pas le chantier.</span>
                             </label>
-                            <button type="button" onClick={saveOrder} disabled={busy || !shippingVerified || !shippingCheck.canAccept || site.status !== 'active'}
+                            <button type="button" onClick={saveOrder} disabled={busy || !shippingVerified || !shippingCheck.canAccept ||
+                                    (pendingPriceNeedsReview&&!priceRiskAcknowledged) || site.status !== 'active'}
                                 className="min-h-11 w-full rounded-lg bg-blue-600 font-semibold disabled:opacity-50">
                                 {busy ? 'Enregistrement…' : 'Valider la commande'}
                             </button>
