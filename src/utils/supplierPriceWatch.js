@@ -56,7 +56,10 @@ export const compareSupplierPrices = ({
    if(source)candidates=priced.filter(line=>source===code(line.item_code)||
     (line.customer_alias&&source===code(line.customer_alias)));
   }
-  if(!candidates.length){result.push({...base,status:'unmatched'});continue;}
+  // A product absent from the original quotation is not a failed SKU match:
+  // it is a separately identifiable, already committed purchase for which
+  // no negotiated unit-price baseline exists.
+  if(!candidates.length){result.push({...base,status:'not_in_quote'});continue;}
   const compatible=candidates.filter(line=>unitKey(line.unit)===unitKey(orderLine.unit));
   if(!compatible.length){
    result.push({...base,status:'unit_mismatch',candidateCount:candidates.length});continue;
@@ -81,9 +84,15 @@ export const compareSupplierPrices = ({
  }
  const overpriced=result.filter(line=>line.status==='above');
  const needsReview=result.filter(line=>[
-  'unmatched','ambiguous','unit_mismatch','stale_link','unpriced',
+  'ambiguous','unit_mismatch','stale_link','unpriced',
  ].includes(line.status));
- return {lines:result,overpriced,needsReview,
+ const notInQuote=result.filter(line=>line.status==='not_in_quote');
+ return {lines:result,overpriced,needsReview,notInQuote,
+  notInQuoteCount:notInQuote.length,
+  notInQuoteAmount:notInQuote.reduce((sum,row)=>{
+   const committed=numeric(row.amount);
+   return sum+(committed!==null?cents(committed):cents((numeric(row.quantity)||0)*(numeric(row.unit_cost)||0)));
+  },0)/100,
   overpriceCount:overpriced.length,
   impact:overpriced.reduce((sum,row)=>sum+cents(row.impact),0)/100};
 };
