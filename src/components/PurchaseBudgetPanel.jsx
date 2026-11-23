@@ -135,7 +135,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const pendingPriceNeedsReview=Boolean(pendingOrder&&(
         !supplierHasQuote ||
         pendingPriceComparison?.overpriceCount>0 ||
-        pendingPriceComparison?.needsReview.length>0));
+        pendingPriceComparison?.needsReview.length>0 ||
+        pendingPriceComparison?.notInQuoteCount>0));
     const orderTotals = useMemo(() => new Map(orders.map(item => [
         item.id, orderLines.filter(line => line.order_id === item.id)
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
@@ -185,7 +186,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 orderLines:rows.map((row,index)=>({...row,id:'draft-'+index,order_id:'pending'})),
             }):null;
             const priceReview=mode==='order'&&(!matchingQuote||
-                pricePreview?.overpriceCount>0||pricePreview?.needsReview.length>0);
+                pricePreview?.overpriceCount>0||
+                pricePreview?.needsReview.length>0||pricePreview?.notInQuoteCount>0);
             if(parsed.status === 'auto_commit' && rows.length&&!priceReview){
                 const args = mode === 'budget' ? {
                     p_company_id:currentCompanyId,p_site_id:site.id,
@@ -217,7 +219,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 issues.unshift(pricePreview?.overpriceCount
                     ? 'ALERTE PRIX : '+pricePreview.overpriceCount+' article(s) dépassent la soumission ('+
                       money(pricePreview.impact)+' HT). Confirmez avant enregistrement.'
-                    : 'Prix de référence absent ou produit non rapproché : validation requise avant commande.');
+                    : pricePreview?.notInQuoteCount
+                      ? pricePreview.notInQuoteCount+' article(s) commandés non inclus dans la soumission : '+
+                        'confirmez ces achats additionnels avant enregistrement.'
+                      : 'Prix de référence absent ou correspondance incertaine : validation requise avant commande.');
             }
             setPdfIssues(issues.length ? issues : ['Document à vérifier avant enregistrement.']);
             let tentative=null;
@@ -489,9 +494,15 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                                 écart {money(row.impact)} HT</p>
                                         )}
                                     </div>}
+                                    {pendingPriceComparison.notInQuoteCount>0&&<p className="text-amber-200 text-xs">
+                                        {pendingPriceComparison.notInQuoteCount} article(s) de cette commande
+                                        ne figurent pas dans la soumission fournisseur :
+                                        { ' ' }{money(pendingPriceComparison.notInQuoteAmount)} HT engagés
+                                        sans prix soumissionné. Vérifiez s’il s’agit d’un achat additionnel.
+                                    </p>}
                                     {pendingPriceComparison.needsReview.length>0&&<p className="text-amber-200 text-xs">
-                                        {pendingPriceComparison.needsReview.length} ligne(s) sans rapprochement fiable :
-                                        vérifier les codes et unités après enregistrement.
+                                        {pendingPriceComparison.needsReview.length} ligne(s) avec
+                                        une correspondance incertaine : vérifier les codes et unités.
                                     </p>}
                                     {pendingPriceNeedsReview&&<label className="flex items-start gap-2 text-xs">
                                         <input type="checkbox" checked={priceRiskAcknowledged}
