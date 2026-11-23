@@ -61,6 +61,13 @@ BEGIN
  IF (SELECT count(*) FROM public.bt_purchase_line_links WHERE disposition='outside_budget')<>1
  THEN RAISE EXCEPTION 'Admin unable to mark purchased extra'; END IF;
 END $check$;
+-- Preserve a real order_line id for security rejection test; a subselect
+-- run under member RLS would return zero rows and falsely "pass" an INSERT.
+SELECT set_config('bt.fixture_order_line_id',(
+ SELECT min(o.id)::text FROM public.bt_purchase_order_lines o
+ JOIN public.bt_purchase_orders po ON po.id=o.order_id
+ WHERE po.po_number='P02281'
+),false);
 RESET ROLE;
 
 SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000001';
@@ -72,8 +79,8 @@ BEGIN
 END $check$;
 SELECT public.bt_test_expect_error(
  $sql$INSERT INTO public.bt_purchase_line_links(order_line_id,budget_line_id,company_id,site_id,disposition,created_by)
- SELECT id,NULL,company_id,site_id,'outside_budget',auth.uid()
- FROM public.bt_purchase_order_lines WHERE site_id=11 LIMIT 1$sql$,'42501');
+ VALUES(current_setting('bt.fixture_order_line_id')::bigint,NULL,
+ '10000000-0000-0000-0000-000000000001',11,'outside_budget',auth.uid())$sql$,'42501');
 RESET ROLE;
 
 SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000006';
