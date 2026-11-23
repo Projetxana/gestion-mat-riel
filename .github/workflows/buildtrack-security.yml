@@ -58,6 +58,12 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE buildtrack_startup_hours_test"
           psql -h 127.0.0.1 -U postgres -d buildtrack_startup_hours_test -v ON_ERROR_STOP=1 -f tests/manual-startup-hours-postgres.sql
+      - name: Budget replacement and extension history (PostgreSQL 17 isolated)
+        env:
+          PGPASSWORD: fixture-only
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE buildtrack_budget_revisions_test"
+          psql -h 127.0.0.1 -U postgres -d buildtrack_budget_revisions_test -v ON_ERROR_STOP=1 -f tests/purchases-budget-revisions-postgres.sql
       - name: Validate operator backup script syntax
         run: bash -n scripts/backup-buildtrack-prod.sh
       - name: Recovery drill (local fabricated database only)
