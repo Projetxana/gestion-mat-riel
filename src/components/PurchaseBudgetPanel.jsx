@@ -66,6 +66,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const [priceQuoteLines,setPriceQuoteLines] = useState([]);
     const [priceLinks,setPriceLinks] = useState([]);
     const [priceReferenceEnabled,setPriceReferenceEnabled] = useState(true);
+    const [priceRiskAcknowledged,setPriceRiskAcknowledged] = useState(false);
 
     const refresh = useCallback(async () => {
         if (!site?.id || !currentCompanyId || !isAdmin || !isCorrectTenant) return;
@@ -131,13 +132,12 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     }):null,[pendingOrder,order,priceQuotes,priceQuoteLines]);
     const supplierHasQuote=Boolean(activeSupplierQuotes(priceQuotes).find(
         quote=>quote.supplier&&quote.supplier.trim().toLowerCase()===order.supplier.trim().toLowerCase()));
-    // For a project where a supplier quotation replaced the initial budget,
-    // track global commitments without forcing every PO SKU into that quote.
+    // Extra purchases count in global spend without requiring catalogue pairing.
     const quoteBasedBudget=priceQuotes.length>0&&budgetRevisions.some(
         revision=>revision.kind==='replacement');
-    const pendingPriceWarning=Boolean(pendingPriceComparison&&(
-        pendingPriceComparison.overpriceCount>0 ||
-        pendingPriceComparison.needsReview.length>0));
+    const pendingPriceNeedsReview=Boolean(pendingOrder&&(
+        pendingPriceComparison?.overpriceCount>0 ||
+        pendingPriceComparison?.needsReview.length>0));
     const orderTotals = useMemo(() => new Map(orders.map(item => [
         item.id, orderLines.filter(line => line.order_id === item.id)
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
@@ -148,6 +148,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         setError('');
         setNotice('');
         setPdfIssues([]);
+        setPriceRiskAcknowledged(false);
         try {
             const rows = parsePurchaseRows(await readSheet(file), { kind: mode });
             if (mode === 'budget') setPendingBudget({ rows, sourceName: file.name });
@@ -169,6 +170,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         }
         setBusy(true);
         setError(''); setNotice(''); setPdfIssues([]);
+        setPriceRiskAcknowledged(false);
         try {
             // Lazy-load bundled PDF.js only after the administrator selects a file.
             const { readDigitalPdf } = await import('../utils/digitalPdfReader');
@@ -182,8 +184,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 orders:[{id:'pending',supplier:parsed.supplier,po_number:parsed.hints?.po_number}],
                 orderLines:rows.map((row,index)=>({...row,id:'draft-'+index,order_id:'pending'})),
             }):null;
-            // Products outside the quote are accepted as additional expenses.
-            // Only actual price discrepancies merit a manual preview.
+            // Unquoted products are automatically included in committed costs.
+            // Only genuine pricing uncertainty or overprice requires a preview.
             const priceReview=mode==='order'&&(
                 pricePreview?.overpriceCount>0||
                 pricePreview?.needsReview.length>0);
@@ -217,8 +219,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             if(priceReview){
                 issues.unshift(pricePreview?.overpriceCount
                     ? 'ALERTE PRIX : '+pricePreview.overpriceCount+' article(s) dépassent la soumission ('+
-                      money(pricePreview.impact)+' HT). Vérifiez le montant.'
-                    : 'Prix de référence ambigu ou unités différentes : consulter la ligne.');
+                      money(pricePreview.impact)+' HT). Confirmez après examen.'
+                    : 'Prix de référence ambigu ou unités différentes : vérifier la ligne.');
             }
             setPdfIssues(issues.length ? issues : ['Document à vérifier avant enregistrement.']);
             let tentative=null;
@@ -266,7 +268,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     };
 
     const saveOrder = async () => {
-        // Price monitoring never blocks entry; document and site checks remain required.
+        if(pendingPriceNeedsReview&&!priceRiskAcknowledged){
+            setError('Confirmez avoir examiné les alertes ou les références de prix manquantes.');
+            return;
+        }
         if (!pendingOrder || !shippingVerified || !shippingCheck.canAccept || busy || !order.supplier.trim()
             || !order.poNumber.trim() || !order.shippingProject.trim()) {
             setError('Fournisseur, numéro de PO, projet indiqué à la livraison et validation sont obligatoires.');
@@ -284,7 +289,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             });
             if (rpcError) throw rpcError;
             setPendingOrder(null); setOrder(emptyOrder); setShippingVerified(false);
-            setShippingOverride('');
+            setShippingOverride('');setPriceRiskAcknowledged(false);
             setNotice('Commande enregistrée dans le chantier sélectionné. Aucun montant de livraison ajouté.');
             setReloadIndex(value => value + 1);
             onPurchasesChanged?.();
@@ -376,9 +381,9 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                 <details className="rounded-lg border border-slate-700 p-3">
                                     <summary className="cursor-pointer min-h-11 text-sm font-semibold text-blue-200">Comparer les quantités estimées et commandées</summary>
                                     <p className="text-xs text-slate-400 my-2">
-                                        Comparaison indicative des quantités pour les références reconnues.
-                                        Les achats absents de la soumission restent inclus dans les
-                                        dépenses totales, sans obligation d’associer les produits.
+                                        Les quantités sont indicatives pour les codes reconnus.
+                                        Tous les achats, y compris les produits absents de la soumission,
+                                        restent comptabilisés dans les dépenses totales.
                                     </p>
                                     <div className="space-y-1 max-h-80 overflow-y-auto">
                                         {comparisons.matched.map(row => (
@@ -454,7 +459,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                 <input type="text" maxLength={150} value={order[key]}
                                     onChange={e => { setOrder(prev => ({...prev, [key]:e.target.value}));
                                       setShippingVerified(false); setShippingOverride('');
-                                      }}
+                                      setPriceRiskAcknowledged(false); }}
                                     placeholder={placeholder}
                                     className="mt-1 min-h-11 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 text-white"/>
                             </label>
@@ -492,20 +497,24 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                         )}
                                     </div>}
                                     {pendingPriceComparison.notInQuoteCount>0&&<p className="text-slate-300 text-xs">
-                                        {pendingPriceComparison.notInQuoteCount} article(s) hors soumission :
-                                        {' '}{money(pendingPriceComparison.notInQuoteAmount)} HT inclus
-                                        dans le total engagé. Aucun rapprochement nécessaire.
+                                        {pendingPriceComparison.notInQuoteCount} article(s) hors soumission ·
+                                        {' '}{money(pendingPriceComparison.notInQuoteAmount)} HT
+                                        comptabilisés dans les dépenses globales.
+                                        Aucune correspondance n’est demandée.
                                     </p>
                                     {pendingPriceComparison.needsReview.length>0&&<p className="text-amber-200 text-xs">
                                         {pendingPriceComparison.needsReview.length} ligne(s) avec
                                         une correspondance incertaine : vérifier les codes et unités.
                                     </p>}
-                                    {pendingPriceWarning&&<p role="status" className="text-amber-200 text-xs">
-                                        Les alertes de prix restent visibles sans bloquer la saisie de la commande.
-                                    </p>}
-                                    {!pendingPriceWarning&&supplierHasQuote&&<p className="text-emerald-200 text-xs">
+                                    {pendingPriceNeedsReview&&<label className="flex items-start gap-2 text-xs">
+                                        <input type="checkbox" checked={priceRiskAcknowledged}
+                                            onChange={e=>setPriceRiskAcknowledged(e.target.checked)}/>
+                                        J’ai pris connaissance des écarts de prix réels ou des unités ambiguës.
+                                        La commande peut être enregistrée sans modifier les prix de référence.
+                                    </label>}
+                                    {!pendingPriceNeedsReview&&<p className="text-emerald-200 text-xs">
                                         Aucun dépassement détecté parmi les produits rapprochés.
-                                    </p>
+                                    </p>}
                                 </div>
                             )}
                             {shippingCheck.requiresOverride && (
@@ -523,7 +532,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                 <span>J’ai vérifié que le nom de chantier indiqué à la livraison correspond bien à <strong>{site.name}</strong>. Le numéro PO seul ne prouve pas le chantier.</span>
                             </label>
                             <button type="button" onClick={saveOrder} disabled={busy || !shippingVerified || !shippingCheck.canAccept ||
-                                    site.status !== 'active'}
+                                    (pendingPriceNeedsReview&&!priceRiskAcknowledged) || site.status !== 'active'}
                                 className="min-h-11 w-full rounded-lg bg-blue-600 font-semibold disabled:opacity-50">
                                 {busy ? 'Enregistrement…' : 'Valider la commande'}
                             </button>
