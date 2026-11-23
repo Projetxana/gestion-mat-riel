@@ -37,8 +37,10 @@ export const assessPdfAutoImport = ({
     if (!Number.isInteger(document.source_line_count) || document.source_line_count < 1)
         add('coverage','Nombre total de lignes du document non confirmé.');
 
-    if (kind === 'budget' && document.parser_id === 'flocor-quotation-v1')
-        add('quotation','Soumission fournisseur, pas une commande : valider manuellement avant toute révision du budget.');
+    if (document.document_type === 'supplier_quotation')
+        add('quotation',kind==='order'
+            ? 'Ce PDF est une SOUMISSION, pas une confirmation de commande : utilisez le volet Budget ou une véritable commande fournisseur.'
+            : 'Soumission fournisseur, pas une commande : valider manuellement avant toute révision du budget.');
     if (kind === 'budget' && hasExistingBudget)
         add('duplicate','Budget initial déjà enregistré : il ne doit pas être remplacé.');
     if (kind === 'order') {
