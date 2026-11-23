@@ -33,10 +33,10 @@ const TaskPerformanceBars = ({ rows, snapshotRows, validatedAt, historyMode }) =
                     <span className="flex items-center gap-1"><span className="h-2.5 w-4 rounded bg-red-500" /> Dépassé</span>
                 </div>
             </div>
-            {historyMode === 'unverified' && (
+            {rows.some(task=>task.overlapUnverified) && (
                 <p className="text-xs text-amber-200 flex items-start gap-2" role="status">
                     <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                    Heures historiques non rapprochées : les heures réellement consommées de certaines tâches ne peuvent pas encore être comparées.
+                    Certaines tâches combinent saisie manuelle et pointages. Leur total n’est pas calculé tant que leurs sources ne sont pas distinguées dans les paramètres du chantier.
                 </p>
             )}
             <div className="space-y-2">
@@ -59,14 +59,22 @@ const TaskPerformanceBars = ({ rows, snapshotRows, validatedAt, historyMode }) =
                                     <div className="flex items-center justify-between gap-2 text-xs tabular-nums">
                                         <span className="text-slate-300">Prévu : <strong>{fmt(task.budget)} h</strong></span>
                                         <span className={bar.overBudget ? 'text-red-300' : 'text-slate-300'}>
-                                            Réalisé : <strong>{bar.known ? fmt(task.actual, 2) + ' h' : 'À confirmer'}</strong>
+                                            Total réalisé : <strong>{bar.known ? fmt(task.actual, 2) + ' h' : 'Sources à distinguer'}</strong>
                                         </span>
                                     </div>
-                                    <div role="img" aria-label={`${task.name} : ${fmt(task.budget)} heures prévues, ${bar.known ? fmt(task.actual,2) + ' heures réalisées' : 'heures à confirmer'}`}
+                                    <div role="img" aria-label={`${task.name} : ${fmt(task.budget)} heures prévues, ${bar.known ? fmt(task.actual,2) + ' heures réalisées' : 'total à préciser'}`}
                                         className="relative h-3.5 rounded-full bg-slate-500 overflow-hidden">
                                         {bar.known && <div className={`absolute inset-y-0 left-0 rounded-full ${bar.overBudget ? 'bg-red-500' : 'bg-blue-500'}`}
                                             style={{ width: `${bar.width}%` }} />}
                                     </div>
+                                    {(task.historical > 0 || task.sessionsHours > 0) && (
+                                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-300">
+                                            {task.historical > 0 &&
+                                                <span>Heures manuelles : <strong>{fmt(task.historical,2)} h</strong></span>}
+                                            {task.sessionsHours > 0 &&
+                                                <span>Pointages employés : <strong>{fmt(task.sessionsHours,2)} h</strong></span>}
+                                        </div>
+                                    )}
                                     {bar.overBudget && (
                                         <p className="text-xs text-red-300 font-medium">
                                             Dépassement de {fmt(task.actual - task.budget, 2)} h
