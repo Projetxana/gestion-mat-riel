@@ -32,8 +32,37 @@ test('exact SKU or customer alias joins but fuzzy descriptions never do',()=>{
  ]});
  assert.equal(r.lines[0].matchType,'alias');
  assert.equal(r.lines[0].status,'ok');
- assert.equal(r.lines[1].status,'unmatched');
- assert.equal(r.needsReview.length,1);
+ assert.equal(r.lines[1].status,'not_in_quote');
+ assert.equal(r.notInQuoteCount,1);
+ assert.equal(r.needsReview.length,0);
+});
+test('Flocor P02294 products absent from quote are purchases, not false overprice alerts',()=>{
+ const extras=[
+  ['50F.2105',1,11.68],['50F.105102',1,12.74],
+  ['009V.102',3,7.49],['50F.2102',3,11.35],
+  ['F05139',2,3.50],['FLGFITKIT8',3,43.08],
+ ];
+ const lines=extras.map(([sku,qty,unitPrice],index)=>({
+  id:index+1,order_id:'order1',item_code:sku,description:sku,
+  unit:'UN',quantity:qty,unit_cost:unitPrice,
+  amount:Math.round(qty*unitPrice*100)/100,
+ }));
+ const r=compare({orderLines:lines});
+ assert.equal(r.notInQuoteCount,6);
+ assert.equal(r.notInQuoteAmount,217.18);
+ assert.equal(r.needsReview.length,0);
+ assert.equal(r.overpriceCount,0);
+ assert.deepEqual(r.notInQuote.map(x=>x.status),Array(6).fill('not_in_quote'));
+});
+test('manually identified equivalent product returns to the negotiated price check',()=>{
+ const row={id:22,order_id:'order1',item_code:'50F.2105',unit:'UN',
+  quantity:1,unit_cost:11.68,amount:11.68};
+ const baseline=compare({orderLines:[row]});
+ assert.equal(baseline.notInQuoteCount,1);
+ const mapped=compare({orderLines:[row],links:[{order_line_id:22,quote_line_id:501}]});
+ assert.equal(mapped.notInQuoteCount,0);
+ assert.equal(mapped.overpriceCount,1);
+ assert.equal(mapped.overpriced[0].impact,3.75);
 });
 test('FT and PI are compatible; incompatible and ambiguous prices need review',()=>{
  const good=compare({orderLines:[{id:2,order_id:'order1',item_code:'G1460310',
@@ -93,6 +122,9 @@ test('UI compares prices in both pre-import confirmation and recorded order view
  assert.match(panel,/pendingPriceComparison/);
  assert.match(panel,/priceRiskAcknowledged/);
  assert.match(alerts,/overpriceCount/);
+ assert.match(alerts,/Articles commandés hors soumission/);
+ assert.match(alerts,/Aucune hausse détectée sur les lignes/);
+ assert.match(panel,/pendingPriceComparison\.notInQuoteCount/);
  assert.match(alerts,/bt_supplier_price_line_links/);
  assert.match(reference,/bt_supplier_price_register/);
  for(const source of [panel,alerts,reference])assert.ok(transformSync(source,{loader:'jsx'}).code.length>100);
