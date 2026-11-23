@@ -17,13 +17,13 @@ export default function StartupHoursPolicyPanel({site}) {
         if(busy||loading)return;
         const next=!manualHoursDistinct;
         if(next && !window.confirm(
-          'Confirmez que les heures saisies manuellement dans ce chantier sont distinctes des pointages employés. Elles seront additionnées aux pointages pour le suivi des heures, sans modifier l’IPMO.'
+          'Confirmez que les heures de démarrage sont distinctes des pointages automatiques des employés. Les entrées manuelles des feuilles de temps resteront séparées lorsqu’un doublon est possible. Aucun calcul IPMO ne sera modifié.'
         ))return;
         setBusy(true);setSaveError('');setMessage('');
         try{
             await save(next);
             setMessage(next
-                ? 'Heures de démarrage reconnues comme distinctes des pointages. Aucun bilan IPMO créé.'
+                ? 'Heures de démarrage reconnues comme distinctes des pointages automatiques. Les feuilles de temps manuelles sont protégées contre les doublons. Aucun bilan IPMO créé.'
                 : 'Cumul automatique désactivé. Les heures manuelles restent enregistrées.');
         }catch(err){setSaveError(err?.message||'Enregistrement impossible.');}
         finally{setBusy(false);}
@@ -45,10 +45,9 @@ export default function StartupHoursPolicyPanel({site}) {
           onChange={()=>void change()}
           className="mt-1 h-5 w-5 accent-blue-500"/>
         <span>
-          <strong>Ces heures manuelles ne figurent pas dans les pointages.</strong>
+          <strong>Ces heures de démarrage sont distinctes des pointages automatiques des employés.</strong>
           <span className="block text-xs text-slate-400">
-            Les additionner aux pointages pour afficher les heures totales réalisées.
-            Cela ne valide aucun pourcentage de travaux et ne touche pas à l’IPMO.
+            Additionner uniquement les pointages automatiques. Les heures saisies manuellement dans les feuilles de temps restent séparées en cas de doublon possible. Cela ne valide aucun pourcentage de travaux et ne touche pas à l’IPMO.
           </span>
         </span>
       </label>
