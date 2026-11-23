@@ -170,7 +170,9 @@ const ProjectMonitoringModal = ({ onClose }) => {
                 .eq('company_id',currentCompanyId).eq('site_id',selectedSite.id);
             const [baseline, budgetLines, orderLines] = await Promise.all([
                 query('bt_purchase_budgets','id').limit(1),
-                query('bt_purchase_budget_lines','amount'),
+                supabase.rpc('bt_purchase_effective_budget_lines', {
+                    p_company_id:currentCompanyId,p_site_id:selectedSite.id
+                }),
                 query('bt_purchase_order_lines','amount'),
             ]);
             if (cancelled) return;
