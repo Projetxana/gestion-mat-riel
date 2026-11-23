@@ -6,6 +6,7 @@ import { useAppContext } from '../context/AppContext';
 import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shippingProjectVerification } from '../utils/purchaseBudget';
 import { assessDigitalPdf } from '../utils/pdfImportEvidence';
 import PurchaseLineReconciliation from './PurchaseLineReconciliation';
+import PurchaseBudgetRevisions from './PurchaseBudgetRevisions';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
     style: 'currency', currency: 'CAD', minimumFractionDigits: 2,
@@ -41,6 +42,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const isCorrectTenant = String(site?.company_id) === String(currentCompanyId);
     const [budget, setBudget] = useState(null);
     const [budgetLines, setBudgetLines] = useState([]);
+    const [budgetRevisions, setBudgetRevisions] = useState([]);
     const [orders, setOrders] = useState([]);
     const [orderLines, setOrderLines] = useState([]);
     const [purchaseLinks, setPurchaseLinks] = useState([]);
@@ -66,17 +68,23 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             const conditions = ['company_id', 'site_id'];
             const selectProject = (table, cols) =>
                 supabase.from(table).select(cols).eq(conditions[0], currentCompanyId).eq(conditions[1], site.id);
-            const [budgetResult, budgetItemsResult, ordersResult, itemsResult, linkResult] = await Promise.all([
+            const [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult, linkResult] = await Promise.all([
                 selectProject('bt_purchase_budgets', 'id, source_name, created_at').maybeSingle(),
-                selectProject('bt_purchase_budget_lines', 'id, item_code, description, quantity, unit, unit_cost, amount').order('id'),
+                supabase.rpc('bt_purchase_effective_budget_lines', {
+                    p_company_id:currentCompanyId,p_site_id:site.id
+                }),
+                selectProject('bt_purchase_budget_revisions',
+                    'id, revision_no, kind, label, source_name, file_sha256, line_count, total_amount, created_at')
+                    .order('revision_no', { ascending: false }),
                 selectProject('bt_purchase_orders', 'id, po_number, supplier, supplier_order_number, shipping_project_name, created_at, order_date').order('created_at', { ascending: false }),
                 selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, unit, amount').order('id'),
                 selectProject('bt_purchase_line_links', 'order_line_id, budget_line_id, disposition'),
             ]);
-            const failure = [budgetResult, budgetItemsResult, ordersResult, itemsResult].find(result => result.error);
+            const failure = [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult].find(result => result.error);
             if (failure) throw failure.error;
             setBudget(budgetResult.data);
             setBudgetLines(budgetItemsResult.data || []);
+            setBudgetRevisions(revisionResult.data || []);
             setOrders(ordersResult.data || []);
             setOrderLines(itemsResult.data || []);
             setPurchaseLinks(linkResult.error ? [] : (linkResult.data || []));
@@ -251,7 +259,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
                 {[
-                    { label: 'Budget matériel initial', value: budget ? money(totals.initial) : 'Non importé' },
+                    { label: 'Budget matériel actualisé', value: budget ? money(totals.initial) : 'Non importé' },
                     { label: 'Commandes engagées', value: money(totals.committed) },
                     { label: 'Solde non engagé', value: budget ? money(totals.uncommitted) : '—' },
                 ].map(item => (
@@ -289,7 +297,12 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 <div role="tabpanel" className="space-y-3">
                     {budget ? (
                         <>
-                            <p className="flex items-center gap-2 text-emerald-300 text-sm"><CheckCircle2 size={16}/> Budget figé depuis {budget.source_name} · {budgetLines.length} article(s)</p>
+                            <p className="flex items-center gap-2 text-emerald-300 text-sm"><CheckCircle2 size={16}/>
+                                Budget actif · {budgetLines.length} article(s) (estimation de base + avenants éventuels)
+                             </p>
+                             <PurchaseBudgetRevisions site={site} companyId={currentCompanyId}
+                                budget={budget} budgetLines={budgetLines} revisions={budgetRevisions}
+                                onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
                             <div className="max-h-56 overflow-auto rounded-lg border border-slate-700">
                                 {budgetLines.slice(0, 25).map(item => (
                                     <div key={item.id} className="flex justify-between gap-3 border-b border-slate-700 p-2 text-xs">
