@@ -76,3 +76,36 @@ test('DJ3 hours can be summed for operational reporting without validating IPMO'
  assert.equal('physical_percent' in distinct[0],false);
  assert.equal('performance_index' in distinct[0],false);
 });
+
+test('DJ3 manually entered time-sheet sessions are never silently added twice',()=>{
+ const tasks=[{id:107,planned_hours:280,completed_hours:229},
+  {id:106,planned_hours:272,completed_hours:222}];
+ const sessions=[{id:101,site_id:8,section_id:107,manual_entry:true,
+  punch_start_at:'2026-11-16T13:00:00Z',punch_end_at:'2026-11-16T21:00:00Z'},
+ {id:102,site_id:8,section_id:107,manual_entry:true,
+  punch_start_at:'2026-11-17T13:00:00Z',punch_end_at:'2026-11-17T21:00:00Z'}];
+ const result=computeTaskHours({tasks,sessions,siteId:8,
+  historyMode:'unverified',manualHoursDistinct:true});
+ assert.equal(result[0].historical,229);
+ assert.equal(result[0].manualSessionHours,16);
+ assert.equal(result[0].employeePunchHours,0);
+ assert.equal(result[0].actual,229);
+ assert.equal(result[0].manualSessionOverlap,true);
+ assert.equal(result[1].actual,222);
+ // If real employee punches begin, count only those automatically.
+ const appended=[...sessions,{id:103,site_id:8,section_id:107,manual_entry:false,
+  punch_start_at:'2026-11-18T13:00:00Z',punch_end_at:'2026-11-18T21:00:00Z'}];
+ const after=computeTaskHours({tasks,sessions:appended,siteId:8,
+  historyMode:'unverified',manualHoursDistinct:true});
+ assert.equal(after[0].actual,237);
+ assert.equal(after[0].manualSessionOverlap,true);
+ assert.equal(after[0].employeePunchHours,8);
+});
+test('manual time-sheet entries alone are real hours without project baseline',()=>{
+ const rows=computeTaskHours({tasks:[{id:107,planned_hours:280,completed_hours:0}],
+ sessions:[{site_id:8,section_id:107,manual_entry:true,
+ punch_start_at:'2026-11-16T13:00:00Z',punch_end_at:'2026-11-16T21:00:00Z'}],
+ siteId:8,historyMode:'unverified',manualHoursDistinct:true});
+ assert.equal(rows[0].actual,8);
+ assert.equal(rows[0].manualSessionOverlap,false);
+});
