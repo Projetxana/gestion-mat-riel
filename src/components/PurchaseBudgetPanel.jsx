@@ -177,8 +177,6 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 kind:mode,site,previousOrders:orders,hasExistingBudget:Boolean(budget),
             });
             const rows = parsed.verified_rows;
-            const matchingQuote=activeSupplierQuotes(priceQuotes).some(q=>
-                q.supplier&&q.supplier.trim().toLowerCase()===String(parsed.supplier||'').trim().toLowerCase());
             const pricePreview=mode==='order'&&rows.length?compareSupplierPrices({
                 quotes:priceQuotes,quoteLines:priceQuoteLines,
                 orders:[{id:'pending',supplier:parsed.supplier,po_number:parsed.hints?.po_number}],
