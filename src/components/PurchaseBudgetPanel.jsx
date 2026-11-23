@@ -341,6 +341,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 </div>
             )}
 
+            <SupplierPriceAlertsPanel site={site} companyId={currentCompanyId}
+                quotes={priceQuotes} quoteLines={priceQuoteLines} orders={orders}
+                orderLines={orderLines} links={priceLinks} enabled={priceReferenceEnabled}
+                onUpdated={refresh}/>
             <div className="flex gap-2 border-b border-slate-700 mb-4" role="tablist" aria-label="Suivi des achats">
                 {[['budget','Budget'],['orders','Commandes']].map(([key,label]) => (
                     <button key={key} type="button" role="tab" aria-selected={tab === key}
@@ -358,6 +362,9 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             <p className="flex items-center gap-2 text-emerald-300 text-sm"><CheckCircle2 size={16}/>
                                 Budget actif · {budgetLines.length} article(s) (estimation de base + avenants éventuels)
                              </p>
+                             <SupplierPriceReferencePanel site={site} companyId={currentCompanyId}
+                                 quotes={priceQuotes} enabled={priceReferenceEnabled}
+                                 onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
                              <PurchaseBudgetRevisions site={site} companyId={currentCompanyId}
                                 budget={budget} budgetLines={budgetLines} revisions={budgetRevisions}
                                 onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
