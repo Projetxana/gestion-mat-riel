@@ -1,13 +1,13 @@
 import {supabase} from '../supabaseClient';
-import {normalizeToken} from './purchaseBudget';
+import {validatePurchasePdfEvidence} from './purchasePdfEvidence';
 import {assessDigitalPdf} from './pdfImportEvidence';
 
 export const PURCHASE_DOCUMENT_BUCKET='bt-purchase-pdfs';
-const LIMIT=15*1024*1024;
+const LIMIT=12*1024*1024;
 
 const verifyFileHeader=async file=>{
  if(!file||file.size<10||file.size>LIMIT||!String(file.name).toLowerCase().endsWith('.pdf'))
-  throw new Error('Sélectionnez un PDF de 15 Mo maximum.');
+  throw new Error('Sélectionnez un PDF de 12 Mo maximum.');
  const first=new TextDecoder().decode(await file.slice(0,5).arrayBuffer());
  if(first!=='%PDF-')throw new Error('Ce document n’est pas un PDF valide.');
 };
@@ -22,21 +22,7 @@ export const verifyPurchasePdf=async(file,{kind,source,site})=>{
   throw new Error('PDF incomplet, scanné sans texte ou illisible.');
  const parsed=assessDigitalPdf(pdf,{kind:kind==='quote'?'budget':'order',
   site,previousOrders:[],hasExistingBudget:false});
- if(kind==='quote'){
-  if(parsed.document?.document_type!=='supplier_quotation'||
-   normalizeToken(parsed.hints?.quote_number)!==normalizeToken(source.quote_number)||
-   normalizeToken(parsed.hints?.shipping_project_name)!==normalizeToken(site.name)||
-   Number(parsed.document?.detected_line_count)!==Number(source.line_count)||
-   Math.abs(Number(parsed.document?.printed_material_total)-Number(source.total_amount))>0.02)
-   throw new Error('Cette soumission ne correspond pas au devis archivé : numéro, chantier, lignes ou total différent.');
- }else{
-  if(normalizeToken(parsed.hints?.po_number)!==normalizeToken(source.po_number)||
-   normalizeToken(parsed.hints?.shipping_project_name)!==normalizeToken(site.name)||
-   normalizeToken(parsed.supplier)!==normalizeToken(source.supplier))
-   throw new Error('Ce PDF ne correspond pas à cette commande : fournisseur, numéro PO ou chantier différent.');
-  // The confirmation was already registered: validate the document identity,
-  // not a new import. No order is created by the archive operation.
- }
+ validatePurchasePdfEvidence(parsed,{kind,source,site});
  return {sha:pdf.sha256,parsed};
 };
 
