@@ -30,7 +30,14 @@ export function useSiteManualHourPolicy(site) {
             configured:!!data,error:''});
     },[siteId,companyId]);
 
-    useEffect(()=>{void refresh();},[refresh]);
+    useEffect(()=>{
+        void refresh();
+        const changed=event=>{
+            if(String(event.detail?.siteId)===String(siteId))void refresh();
+        };
+        window.addEventListener('buildtrack:manual-hours-policy-changed',changed);
+        return ()=>window.removeEventListener('buildtrack:manual-hours-policy-changed',changed);
+    },[refresh,siteId]);
 
     const save=useCallback(async(value)=>{
         if(!siteId||!companyId)throw new Error('Chantier ou entreprise manquants.');
@@ -44,6 +51,7 @@ export function useSiteManualHourPolicy(site) {
             },{onConflict:'site_id'});
         if(error)throw error;
         await refresh();
+        window.dispatchEvent(new CustomEvent('buildtrack:manual-hours-policy-changed',{detail:{siteId}}));
     },[siteId,companyId,refresh]);
 
     return {...policy,refresh,save};
