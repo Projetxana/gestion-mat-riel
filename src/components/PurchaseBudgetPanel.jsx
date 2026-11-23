@@ -7,6 +7,7 @@ import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shipp
 import { assessDigitalPdf } from '../utils/pdfImportEvidence';
 import PurchaseLineReconciliation from './PurchaseLineReconciliation';
 import PurchaseBudgetRevisions from './PurchaseBudgetRevisions';
+import PurchaseItemsOverview from './PurchaseItemsOverview';
 import SupplierPriceReferencePanel from './SupplierPriceReferencePanel';
 import SupplierPriceAlertsPanel from './SupplierPriceAlertsPanel';
 import {compareSupplierPrices,activeSupplierQuotes} from '../utils/supplierPriceWatch';
@@ -387,44 +388,20 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                              <PurchaseBudgetRevisions site={site} companyId={currentCompanyId}
                                 budget={budget} budgetLines={budgetLines} revisions={budgetRevisions}
                                 onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
-                            <div className="max-h-56 overflow-auto rounded-lg border border-slate-700">
-                                {budgetLines.slice(0, 25).map(item => (
-                                    <div key={item.id} className="flex justify-between gap-3 border-b border-slate-700 p-2 text-xs">
-                                        <span className="min-w-0 break-words">{item.item_code} {item.description}</span>
-                                        <strong className="shrink-0 tabular-nums">{money(item.amount)}</strong>
-                                    </div>
-                                ))}
-                            </div>
-                            {budgetLines.length > 25 && <p className="text-xs text-slate-400">25 premières lignes affichées sur {budgetLines.length}.</p>}
-                            {orderLines.length > 0 && (
+                            <PurchaseItemsOverview
+                                budgetLines={budgetLines}
+                                comparisons={comparisons}
+                            />
+                            {!quoteBasedBudget&&orderLines.length>0&&(
                                 <details className="rounded-lg border border-slate-700 p-3">
-                                    <summary className="cursor-pointer min-h-11 text-sm font-semibold text-blue-200">Comparer les quantités estimées et commandées</summary>
-                                    <p className="text-xs text-slate-400 my-2">
-                                        Les quantités sont indicatives pour les codes reconnus.
-                                        Tous les achats, y compris les produits absents de la soumission,
-                                        restent comptabilisés dans les dépenses totales.
-                                    </p>
-                                    <div className="space-y-1 max-h-80 overflow-y-auto">
-                                        {comparisons.matched.map(row => (
-                                            <div key={row.key} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 py-2 text-xs">
-                                                <span className="break-words min-w-0 flex-1">{row.item_code} · {row.description}</span>
-                                                <span className={row.exceeded ? 'text-red-300 tabular-nums' : 'text-slate-300 tabular-nums'}>
-                                                    Rapproché : {row.orderedQty} / {row.estimatedQty} {row.unit}
-                                                </span>
-                                                <span className="text-slate-400 tabular-nums">Reste théorique {row.remainingQty}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <p className="mt-2 text-xs text-slate-400">
-                                        {comparisons.matched.length} article(s) estimé(s) affiché(s).
-                                        {comparisons.outsideBudget.length > 0 &&
-                                            ' · ' + comparisons.outsideBudget.length + ' ligne(s) classée(s) hors estimation.'}
-                                    </p>
-                                    {!quoteBasedBudget&&<PurchaseLineReconciliation
+                                    <summary className="cursor-pointer min-h-11 text-sm font-semibold text-blue-200">
+                                        Gérer les correspondances manuelles (autres estimations)
+                                    </summary>
+                                    <PurchaseLineReconciliation
                                         site={site} companyId={currentCompanyId} budgetLines={budgetLines}
                                         orders={orders} comparisons={comparisons} links={purchaseLinks}
                                         enabled={linkingEnabled} onUpdated={refresh}
-                                    />}
+                                    />
                                 </details>
                             )}
                         </>
