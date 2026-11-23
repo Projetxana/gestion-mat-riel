@@ -52,6 +52,12 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE buildtrack_purchase_reconciliation_test"
           psql -h 127.0.0.1 -U postgres -d buildtrack_purchase_reconciliation_test -v ON_ERROR_STOP=1 -f tests/purchases-reconciliation-postgres.sql
+      - name: Manual startup hours RLS and tenant isolation (PostgreSQL 17)
+        env:
+          PGPASSWORD: fixture-only
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE buildtrack_startup_hours_test"
+          psql -h 127.0.0.1 -U postgres -d buildtrack_startup_hours_test -v ON_ERROR_STOP=1 -f tests/manual-startup-hours-postgres.sql
       - name: Validate operator backup script syntax
         run: bash -n scripts/backup-buildtrack-prod.sh
       - name: Recovery drill (local fabricated database only)
