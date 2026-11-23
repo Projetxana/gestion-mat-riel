@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shippingProjectVerification } from '../utils/purchaseBudget';
 import { assessDigitalPdf } from '../utils/pdfImportEvidence';
+import PurchaseLineReconciliation from './PurchaseLineReconciliation';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
     style: 'currency', currency: 'CAD', minimumFractionDigits: 2,
@@ -42,6 +43,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const [budgetLines, setBudgetLines] = useState([]);
     const [orders, setOrders] = useState([]);
     const [orderLines, setOrderLines] = useState([]);
+    const [purchaseLinks, setPurchaseLinks] = useState([]);
+    const [linkingEnabled, setLinkingEnabled] = useState(true);
     const [tab, setTab] = useState('budget');
     const [busy, setBusy] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -63,11 +66,12 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             const conditions = ['company_id', 'site_id'];
             const selectProject = (table, cols) =>
                 supabase.from(table).select(cols).eq(conditions[0], currentCompanyId).eq(conditions[1], site.id);
-            const [budgetResult, budgetItemsResult, ordersResult, itemsResult] = await Promise.all([
+            const [budgetResult, budgetItemsResult, ordersResult, itemsResult, linkResult] = await Promise.all([
                 selectProject('bt_purchase_budgets', 'id, source_name, created_at').maybeSingle(),
                 selectProject('bt_purchase_budget_lines', 'id, item_code, description, quantity, unit, unit_cost, amount').order('id'),
                 selectProject('bt_purchase_orders', 'id, po_number, supplier, supplier_order_number, shipping_project_name, created_at, order_date').order('created_at', { ascending: false }),
                 selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, unit, amount').order('id'),
+                selectProject('bt_purchase_line_links', 'order_line_id, budget_line_id, disposition'),
             ]);
             const failure = [budgetResult, budgetItemsResult, ordersResult, itemsResult].find(result => result.error);
             if (failure) throw failure.error;
@@ -75,6 +79,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             setBudgetLines(budgetItemsResult.data || []);
             setOrders(ordersResult.data || []);
             setOrderLines(itemsResult.data || []);
+            setPurchaseLinks(linkResult.error ? [] : (linkResult.data || []));
+            setLinkingEnabled(!linkResult.error);
         } catch (e) {
             setError(e.code === '42P01'
                 ? 'Les tables du module Achats ne sont pas encore activées dans Supabase.'
@@ -88,7 +94,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
 
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
     const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, shippingOverride);
-    const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines), [budgetLines, orderLines]);
+    const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines, purchaseLinks), [budgetLines, orderLines, purchaseLinks]);
     const orderTotals = useMemo(() => new Map(orders.map(item => [
         item.id, orderLines.filter(line => line.order_id === item.id)
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
@@ -296,24 +302,28 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             {orderLines.length > 0 && (
                                 <details className="rounded-lg border border-slate-700 p-3">
                                     <summary className="cursor-pointer min-h-11 text-sm font-semibold text-blue-200">Comparer les quantités estimées et commandées</summary>
-                                    <p className="text-xs text-slate-400 my-2">Rapprochement par code client et unité. Une description seule ne suffit jamais.</p>
-                                    <div className="space-y-1">
-                                        {comparisons.matched.slice(0, 40).map(row => (
+                                    <p className="text-xs text-slate-400 my-2">Quantités rapprochées entre articles estimés et commandes importées. Un « 0 » ne prouve pas que l’article n’a pas été acheté : des codes fournisseurs peuvent différer.</p>
+                                    <div className="space-y-1 max-h-80 overflow-y-auto">
+                                        {comparisons.matched.map(row => (
                                             <div key={row.key} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 py-2 text-xs">
                                                 <span className="break-words min-w-0 flex-1">{row.item_code} · {row.description}</span>
                                                 <span className={row.exceeded ? 'text-red-300 tabular-nums' : 'text-slate-300 tabular-nums'}>
-                                                    {row.orderedQty} / {row.estimatedQty} {row.unit}
+                                                    Rapproché : {row.orderedQty} / {row.estimatedQty} {row.unit}
                                                 </span>
-                                                <span className="text-slate-400 tabular-nums">Reste {row.remainingQty}</span>
+                                                <span className="text-slate-400 tabular-nums">{comparisons.unmatched.length ? "Écart provisoire" : "Reste estimatif " + row.remainingQty}</span>
                                             </div>
                                         ))}
                                     </div>
-                                    {comparisons.matched.length > 40 && <p className="text-xs text-slate-400">40 articles affichés sur {comparisons.matched.length}.</p>}
-                                    {comparisons.unmatched.length > 0 && (
-                                        <p role="status" className="mt-3 text-xs text-amber-200">
-                                            {comparisons.unmatched.length} ligne(s) commandée(s) sans code client/unité correspondant à l’estimation : vérification nécessaire. Les coûts restent engagés.
-                                        </p>
-                                    )}
+                                    <p className="mt-2 text-xs text-slate-400">
+                                        {comparisons.matched.length} article(s) estimé(s) affiché(s).
+                                        {comparisons.outsideBudget.length > 0 &&
+                                            ' · ' + comparisons.outsideBudget.length + ' ligne(s) classée(s) hors estimation.'}
+                                    </p>
+                                    <PurchaseLineReconciliation
+                                        site={site} companyId={currentCompanyId} budgetLines={budgetLines}
+                                        orders={orders} comparisons={comparisons} links={purchaseLinks}
+                                        enabled={linkingEnabled} onUpdated={refresh}
+                                    />
                                 </details>
                             )}
                         </>
