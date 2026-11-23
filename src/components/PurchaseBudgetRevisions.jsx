@@ -228,6 +228,21 @@ export default function PurchaseBudgetRevisions({
      <h4 className="font-semibold text-amber-100 flex items-center gap-2">
       <AlertTriangle size={17}/> Validation manuelle du PDF
      </h4>
+     {pending.review.documentType==='supplier_quotation'&&
+      <div className="rounded-md border border-blue-500/60 bg-blue-950/30 p-3 text-xs space-y-1">
+       <p className="font-semibold text-blue-100">
+        Soumission fournisseur Flocor {pending.review.quoteNumber
+         ? 'nº '+pending.review.quoteNumber : ''}
+        {pending.review.quotationDate?' · '+pending.review.quotationDate:''}
+       </p>
+       <p className="text-slate-200">Il s’agit d’une soumission, pas d’une commande.
+        Son import met uniquement à jour le budget matériel : aucune dépense engagée
+        ni commande fournisseur ne sera créée.</p>
+       {pending.kind==='replacement'&&<p className="text-amber-100">
+        Attention : cette soumission remplacera l’estimation de base. Vérifiez qu’elle
+        couvre bien tout le matériel du projet, et non seulement une partie des achats.
+       </p>}
+      </div>}
      <p className="text-xs text-slate-200">Les lignes ci-dessous sont des propositions non vérifiées.
       Comparez-les au PDF original. Les cases décochées sont exclues du budget.</p>
      {issues.length>0&&<div className="text-xs text-amber-200" role="status">
@@ -237,9 +252,11 @@ export default function PurchaseBudgetRevisions({
       </ul>
      </div>}
      <p className="text-xs text-slate-300">
-      {pending.review.genericCandidates>0
-       ? pending.review.genericCandidates+' ligne(s) candidates retrouvées dans un format non reconnu.'
-       : 'Aucune détection générique supplémentaire. Complétez les articles manquants si nécessaire.'}
+      {pending.review.documentType==='supplier_quotation'
+       ? 'Format Flocor reconnu : '+pending.rows.length+' ligne(s) de matériel proposées. Vérifiez leur exhaustivité.'
+       : pending.review.genericCandidates>0
+         ? pending.review.genericCandidates+' ligne(s) candidates retrouvées dans un format non reconnu.'
+         : 'Aucune détection générique supplémentaire. Complétez les articles manquants si nécessaire.'}
      </p>
      {normalizeToken(pending.review.extractedProject)!==normalizeToken(site.name)&&
       <label className="block text-xs text-amber-100">
