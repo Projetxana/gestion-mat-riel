@@ -79,6 +79,9 @@ export const prepareReviewedBudgetPdf = (parsed, site, text = '') => {
             included: row.included !== false,
         })),
         genericCandidates: !suggested.length ? selected.length : 0,
+        documentType: document.document_type || 'budget',
+        quoteNumber: String(parsed?.hints?.quote_number || ''),
+        quotationDate: String(parsed?.hints?.quotation_date || ''),
         extractedProject: String(parsed?.hints?.shipping_project_name || ''),
         printedMaterialTotal: Number.isFinite(Number(document.printed_material_total)) &&
             document.printed_material_total !== null ? Number(document.printed_material_total) : null,
