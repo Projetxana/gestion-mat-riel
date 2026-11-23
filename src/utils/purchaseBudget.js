@@ -181,7 +181,7 @@ export const suggestBudgetCorrespondences = (orderLine, budgetLines = []) => {
             .replace(/[\u0300-\u036f]/g, '').toUpperCase()
             .replace(/(\d+)\s*(?:"|PO\b|POUCE[S]?\b)/g, '$1PO')
             .replace(/[^A-Z0-9]+/g, ' ').trim().split(/\s+/);
-        return new Set(tokens.filter(t=>t.length>=2 && ![
+        return new Set(normalized.filter(t=>t.length>=2 && ![
             'DE','DES','DU','LE','LA','LES','EN','ET','AVEC','NOIR','GALV','STD'
         ].includes(t)));
     };
