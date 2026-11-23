@@ -83,7 +83,7 @@ export default function PurchaseLineReconciliation({
    const preferred=high?String(best.id):'';
    const value=String(draft[line.id]??preferred);
    const candidate=suggestions.filter(b=>b.score>0).slice(0,10);
-   const rest=budgetLines.filter(b=>!candidate.some(c=>String(c.id)===String(b.id)));
+   const rest=suggestions.filter(b=>!candidate.some(c=>String(c.id)===String(b.id)));
    return <article key={line.id} className="rounded-lg border border-slate-700 bg-slate-900/50 p-3 space-y-2">
     <p className="text-xs font-semibold break-words">{line.item_code} · {line.description}</p>
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300">
