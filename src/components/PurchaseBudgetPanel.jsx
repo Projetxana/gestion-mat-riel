@@ -123,9 +123,6 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
     const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, shippingOverride);
     const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines, purchaseLinks), [budgetLines, orderLines, purchaseLinks]);
-    const savedPriceComparison=useMemo(()=>compareSupplierPrices({
-        quotes:priceQuotes,quoteLines:priceQuoteLines,orders,orderLines,links:priceLinks,
-    }),[priceQuotes,priceQuoteLines,orders,orderLines,priceLinks]);
     const pendingPriceComparison=useMemo(()=>pendingOrder?compareSupplierPrices({
         quotes:priceQuotes,quoteLines:priceQuoteLines,
         orders:[{id:'pending',supplier:order.supplier,po_number:order.poNumber}],
