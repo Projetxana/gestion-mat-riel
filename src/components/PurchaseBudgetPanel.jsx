@@ -58,8 +58,6 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const [pendingBudget, setPendingBudget] = useState(null);
     const [pendingOrder, setPendingOrder] = useState(null);
     const [order, setOrder] = useState(emptyOrder);
-    const [shippingVerified, setShippingVerified] = useState(false);
-    const [shippingOverride, setShippingOverride] = useState('');
     const [reloadIndex, setReloadIndex] = useState(0);
     const [pdfIssues, setPdfIssues] = useState([]);
     const [priceQuotes,setPriceQuotes] = useState([]);
@@ -121,7 +119,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     useEffect(() => { void refresh(); }, [refresh, reloadIndex]);
 
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
-    const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, shippingOverride);
+    const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name);
     const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines, purchaseLinks), [budgetLines, orderLines, purchaseLinks]);
     const pendingPriceComparison=useMemo(()=>pendingOrder?compareSupplierPrices({
         quotes:priceQuotes,quoteLines:priceQuoteLines,
@@ -143,22 +141,17 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
     ])), [orders, orderLines]);
 
+    // Orders cannot be created with typed fields. Spreadsheets remain available
+    // only for the initial budget; supplier orders require their source PDF.
     const selectFile = async (file, mode) => {
-        if (!file) return;
-        setError('');
-        setNotice('');
-        setPdfIssues([]);
-        setPriceRiskAcknowledged(false);
+        if (!file || mode !== 'budget') return;
+        setError(''); setNotice(''); setPdfIssues([]);
         try {
-            const rows = parsePurchaseRows(await readSheet(file), { kind: mode });
-            if (mode === 'budget') setPendingBudget({ rows, sourceName: file.name });
-            else {
-                setPendingOrder({ rows, sourceName: file.name });
-                setShippingVerified(false);
-            }
+            const rows = parsePurchaseRows(await readSheet(file), { kind: 'budget' });
+            setPendingBudget({rows, sourceName:file.name});
         } catch (e) {
-            if (mode === 'budget') setPendingBudget(null); else setPendingOrder(null);
-            setError(e.message || 'Import du document impossible.');
+            setPendingBudget(null);
+            setError(e.message || 'Import du budget impossible.');
         }
     };
 
@@ -171,25 +164,28 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         setBusy(true);
         setError(''); setNotice(''); setPdfIssues([]);
         setPriceRiskAcknowledged(false);
+        // A newly selected file must invalidate any prior confirmation draft.
+        if (mode === 'order') {
+            setPendingOrder(null);
+            setOrder(emptyOrder);
+        }
         try {
-            // Lazy-load bundled PDF.js only after the administrator selects a file.
             const { readDigitalPdf } = await import('../utils/digitalPdfReader');
             const pdf = await readDigitalPdf(file);
             const parsed = assessDigitalPdf(pdf, {
-                kind:mode,site,previousOrders:orders,hasExistingBudget:Boolean(budget),
+                kind:mode, site, previousOrders:orders, hasExistingBudget:Boolean(budget),
             });
             const rows = parsed.verified_rows;
-            const pricePreview=mode==='order'&&rows.length?compareSupplierPrices({
+            const issues = parsed.issues?.map(issue=>issue.message)||[];
+            const pricePreview=mode==='order' && rows.length?compareSupplierPrices({
                 quotes:priceQuotes,quoteLines:priceQuoteLines,
                 orders:[{id:'pending',supplier:parsed.supplier,po_number:parsed.hints?.po_number}],
                 orderLines:rows.map((row,index)=>({...row,id:'draft-'+index,order_id:'pending'})),
             }):null;
-            // Unquoted products are automatically included in committed costs.
-            // Only genuine pricing uncertainty or overprice requires a preview.
             const priceReview=mode==='order'&&(
-                pricePreview?.overpriceCount>0||
+                pricePreview?.overpriceCount>0 ||
                 pricePreview?.needsReview.length>0);
-            if(parsed.status === 'auto_commit' && rows.length&&!priceReview){
+            if(parsed.status === 'auto_commit' && rows.length && !priceReview){
                 const args = mode === 'budget' ? {
                     p_company_id:currentCompanyId,p_site_id:site.id,
                     p_source_name:file.name.slice(0,150),p_lines:rows,
@@ -207,41 +203,62 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 const {error:rpcError}=await supabase.rpc(functionName,args);
                 if(rpcError)throw rpcError;
                 if(mode==='budget')setPendingBudget(null);
-                else {setPendingOrder(null);setOrder(emptyOrder);setShippingVerified(false);}
+                else {setPendingOrder(null);setOrder(emptyOrder);}
                 setReloadIndex(value=>value+1);
                 onPurchasesChanged?.();
-                setNotice(`PDF enregistré automatiquement : ${rows.length} article(s) · ${money(rows.reduce((sum,row)=>sum+row.amount,0))}. Aucune validation nécessaire.`);
+                setNotice('PDF enregistré automatiquement : '+rows.length+
+                    ' article(s) · '+money(rows.reduce((sum,row)=>sum+row.amount,0))+
+                    '. Les achats hors soumission restent inclus dans les dépenses.');
                 return;
             }
-            // A fully parsed PO with a price issue is NOT auto-committed:
-            // show the administrator the offending lines before saving.
-            const issues=parsed.issues?.map(issue=>issue.message) || [];
-            if(priceReview){
-                issues.unshift(pricePreview?.overpriceCount
-                    ? 'ALERTE PRIX : '+pricePreview.overpriceCount+' article(s) dépassent la soumission ('+
-                      money(pricePreview.impact)+' HT). Confirmez après examen.'
-                    : 'Prix de référence ambigu ou unités différentes : vérifier la ligne.');
+
+            // No hand-entered order metadata or line items are accepted.
+            // Any incomplete, duplicate, wrong-site, or unrecognized document
+            // needs a corrected PDF, not a form that bypasses the PDF checks.
+            if(mode==='order'){
+                if(parsed.status!=='auto_commit' || !rows.length){
+                    setPdfIssues(issues.length?issues:[
+                        'Le PDF ne fournit pas une confirmation complète et fiable.'
+                    ]);
+                    setError('Import non enregistré. Fournissez une confirmation PDF complète '+
+                        'et correspondant exactement au chantier. Aucune saisie manuelle de commande.');
+                    return;
+                }
+                const metadata={
+                    supplier:parsed.supplier||'',
+                    poNumber:parsed.hints.po_number||'',
+                    supplierNumber:parsed.hints.supplier_order_number||'',
+                    shippingProject:parsed.hints.shipping_project_name||'',
+                    date:'',
+                };
+                if(!shippingProjectVerification(metadata.shippingProject,site?.name).canAccept ||
+                    !metadata.supplier || !metadata.poNumber){
+                    setError('Import non enregistré : informations de commande ou chantier non confirmées.');
+                    return;
+                }
+                setOrder(metadata);
+                setPendingOrder({
+                    rows,sourceName:file.name.slice(0,150),verifiedPdf:true,
+                    fingerprint:parsed.document_fingerprint,
+                });
+                setPdfIssues(pricePreview?.overpriceCount>0
+                    ? ['ALERTE PRIX : '+pricePreview.overpriceCount+
+                       ' article(s) au-dessus de la soumission ('+money(pricePreview.impact)+
+                       ' HT). Vérifiez avant de confirmer cet import.']
+                    : ['Certaines unités ou références de prix sont ambiguës. '+
+                       'Vous pouvez confirmer la commande sans modifier la soumission.']);
+                return;
             }
-            setPdfIssues(issues.length ? issues : ['Document à vérifier avant enregistrement.']);
+
+            // Initial budget keeps its existing import review fallback.
+            setPdfIssues(issues.length?issues:['Document à vérifier avant enregistrement.']);
             let tentative=null;
             try {
                 const source=parsed.hints?.suggested_lines?.filter(line=>line.included!==false)||[];
-                tentative=source.length?parsePurchaseRows(source,{kind:mode}):null;
+                tentative=source.length?parsePurchaseRows(source,{kind:'budget'}):null;
             } catch { tentative=null; }
-            if(mode==='budget'){
-                setPendingBudget(!budget&&tentative
-                    ? {rows:tentative,sourceName:file.name}:null);
-            } else {
-                setPendingOrder(tentative ? {rows:tentative,sourceName:file.name}:null);
-                setOrder({
-                    supplier:parsed.supplier||'',
-                    poNumber:parsed.hints?.po_number||'',
-                    supplierNumber:parsed.hints?.supplier_order_number||'',
-                    shippingProject:parsed.hints?.shipping_project_name||'',
-                    date:'',
-                });
-                setShippingVerified(false);setShippingOverride('');
-            }
+            setPendingBudget(!budget&&tentative
+                ? {rows:tentative,sourceName:file.name}:null);
         } catch(err) {
             setError(err?.code==='23505'
                 ? 'Ce budget ou ce PO est déjà enregistré. Aucune écriture en double.'
@@ -268,13 +285,14 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     };
 
     const saveOrder = async () => {
-        if(pendingPriceNeedsReview&&!priceRiskAcknowledged){
-            setError('Confirmez avoir examiné les alertes ou les références de prix manquantes.');
+        if (!pendingOrder?.verifiedPdf || !shippingCheck.canAccept || busy ||
+            site.status!=='active' || !order.supplier.trim() || !order.poNumber.trim() ||
+            !order.shippingProject.trim()) {
+            setError('La commande doit provenir d’un PDF complet vérifié pour ce chantier.');
             return;
         }
-        if (!pendingOrder || !shippingVerified || !shippingCheck.canAccept || busy || !order.supplier.trim()
-            || !order.poNumber.trim() || !order.shippingProject.trim()) {
-            setError('Fournisseur, numéro de PO, projet indiqué à la livraison et validation sont obligatoires.');
+        if (pendingPriceNeedsReview && !priceRiskAcknowledged) {
+            setError('Veuillez prendre connaissance de l’alerte de prix avant de confirmer l’import.');
             return;
         }
         setBusy(true); setError(''); setNotice('');
@@ -284,19 +302,20 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 p_po_number: order.poNumber.trim(), p_supplier: order.supplier.trim(),
                 p_supplier_order_number: order.supplierNumber.trim(),
                 p_shipping_project_name: order.shippingProject.trim(),
-                p_order_date: order.date || null, p_source_name: pendingOrder.sourceName,
-                p_project_verified: shippingVerified, p_override_confirmation: shippingOverride.trim(), p_lines: pendingOrder.rows,
+                p_order_date: null, p_source_name: pendingOrder.sourceName,
+                p_project_verified: true, p_override_confirmation: '',
+                p_lines: pendingOrder.rows,
             });
             if (rpcError) throw rpcError;
-            setPendingOrder(null); setOrder(emptyOrder); setShippingVerified(false);
-            setShippingOverride('');setPriceRiskAcknowledged(false);
-            setNotice('Commande enregistrée dans le chantier sélectionné. Aucun montant de livraison ajouté.');
+            setPendingOrder(null); setOrder(emptyOrder);
+            setPriceRiskAcknowledged(false);
+            setNotice('Confirmation PDF enregistrée. Les dépenses du chantier sont mises à jour.');
             setReloadIndex(value => value + 1);
             onPurchasesChanged?.();
         } catch (e) {
             setError(e.code === '23505'
                 ? 'Ce PO existe déjà pour ce fournisseur. Aucune commande en double ajoutée.'
-                : e.message || 'Enregistrement de la commande impossible.');
+                : e.message || 'Import de la commande impossible.');
         } finally { setBusy(false); }
     };
 
@@ -440,42 +459,31 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             )}
             {tab === 'orders' && (
                 <div role="tabpanel" className="space-y-3">
-                    <p className="text-sm text-slate-300">Une confirmation engage le budget. Le bon de livraison ne crée jamais de nouvel achat.</p>
+                    <p className="text-sm text-slate-300">
+                        Les commandes s’ajoutent uniquement en important une confirmation PDF du fournisseur.
+                        Les articles, quantités, prix et données de commande sont extraits automatiquement.
+                    </p>
                     <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-blue-600 bg-blue-950/30 p-3 text-sm font-semibold text-blue-100">
-                        <FileSpreadsheet size={19}/> Importer une confirmation PDF automatiquement
+                        <FileSpreadsheet size={19}/> Importer une confirmation de commande PDF
                         <input type="file" accept=".pdf,application/pdf" className="sr-only"
-                            disabled={busy} onChange={event=>{void importDigitalPdf(event.target.files?.[0],'order');event.target.value='';}}/>
+                            disabled={busy||site.status!=='active'}
+                            onChange={event=>{void importDigitalPdf(event.target.files?.[0],'order');event.target.value='';}}/>
                     </label>
-                    <p className="text-xs text-slate-400">Chantier, fournisseur, PO, lignes et total contrôlés automatiquement. Exception uniquement en cas d’écart.</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {[
-                            ['supplier','Fournisseur','Flocor'],
-                            ['poNumber','N° PO client','P02281'],
-                            ['supplierNumber','Commande fournisseur (facultatif)','7252931'],
-                            ['shippingProject','Nom indiqué à la livraison','DJ4 S.E.C.'],
-                        ].map(([key,label,placeholder]) => (
-                            <label key={key} className="text-sm text-slate-300">
-                                {label}
-                                <input type="text" maxLength={150} value={order[key]}
-                                    onChange={e => { setOrder(prev => ({...prev, [key]:e.target.value}));
-                                      setShippingVerified(false); setShippingOverride('');
-                                      setPriceRiskAcknowledged(false); }}
-                                    placeholder={placeholder}
-                                    className="mt-1 min-h-11 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 text-white"/>
-                            </label>
-                        ))}
-                        <label className="text-sm text-slate-300">Date de la commande
-                            <input type="date" value={order.date} onChange={e => setOrder(prev => ({...prev,date:e.target.value}))}
-                                className="mt-1 min-h-11 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 text-white"/>
-                        </label>
-                    </div>
-                    <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-600 p-3 text-sm text-blue-200">
-                        <FileSpreadsheet size={19}/> Importer les lignes de commande Excel / CSV
-                        <input type="file" accept=".xlsx,.xls,.csv" className="sr-only" disabled={busy} onChange={e => { void selectFile(e.target.files?.[0], 'order'); e.target.value = ''; }}/>
-                    </label>
+                    <p className="text-xs text-slate-400">
+                        PDF numérique complet uniquement. Chantier, fournisseur, PO, lignes et total contrôlés avant
+                        l’enregistrement. Si le fichier est incomplet, aucune commande n’est créée.
+                        Les achats hors soumission sont acceptés et comptabilisés normalement.
+                    </p>
                     {pendingOrder && (
                         <div className="rounded-xl border border-slate-600 p-3 text-sm space-y-3">
-                            <p>{pendingOrder.sourceName} · {pendingOrder.rows.length} articles · {money(pendingOrder.rows.reduce((sum,line) => sum + line.amount,0))}</p>
+                            <p className="font-semibold">Confirmation PDF vérifiée · {pendingOrder.sourceName}</p>
+                            <p className="text-xs text-slate-300">
+                                {order.supplier} · PO {order.poNumber} · Chantier : {order.shippingProject}
+                            </p>
+                            <p className="text-sm">
+                                {pendingOrder.rows.length} articles ·
+                                {' '}{money(pendingOrder.rows.reduce((sum,line) => sum + line.amount,0))} HT
+                            </p>
                             {pendingPriceComparison && (
                                 <div className="rounded-lg border border-amber-700/70 p-3 text-sm space-y-2">
                                     <p className="font-semibold">Vérification des prix avant engagement</p>
@@ -517,24 +525,13 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                     </p>}
                                 </div>
                             )}
-                            {shippingCheck.requiresOverride && (
-                                <div className="rounded-lg border border-amber-600/70 bg-amber-950/30 p-3 text-sm space-y-2">
-                                    <p className="text-amber-200">Le nom indiqué à la livraison ne correspond pas exactement à « {site.name} ». Vérifiez le document et confirmez manuellement le chantier.</p>
-                                    <label className="block">Retaper le nom du chantier sélectionné
-                                        <input type="text" value={shippingOverride} onChange={e => { setShippingOverride(e.target.value); setShippingVerified(false); }}
-                                            placeholder={site.name} autoComplete="off" className="mt-1 min-h-11 w-full rounded-lg border border-amber-700 bg-slate-900 px-3 text-white"/>
-                                    </label>
-                                </div>
-                            )}
-                            <label className="flex items-start gap-2">
-                                <input type="checkbox" checked={shippingVerified}
-                                    onChange={e => setShippingVerified(e.target.checked)} className="mt-1"/>
-                                <span>J’ai vérifié que le nom de chantier indiqué à la livraison correspond bien à <strong>{site.name}</strong>. Le numéro PO seul ne prouve pas le chantier.</span>
-                            </label>
-                            <button type="button" onClick={saveOrder} disabled={busy || !shippingVerified || !shippingCheck.canAccept ||
+                            <p className="text-xs text-emerald-200">
+                                Le chantier a été vérifié à partir du PDF, sans saisie manuelle.
+                            </p>
+                            <button type="button" onClick={saveOrder} disabled={busy || !pendingOrder.verifiedPdf || !shippingCheck.canAccept ||
                                     (pendingPriceNeedsReview&&!priceRiskAcknowledged) || site.status !== 'active'}
                                 className="min-h-11 w-full rounded-lg bg-blue-600 font-semibold disabled:opacity-50">
-                                {busy ? 'Enregistrement…' : 'Valider la commande'}
+                                {busy ? 'Enregistrement…' : 'Confirmer l’import du PDF'}
                             </button>
                         </div>
                     )}
