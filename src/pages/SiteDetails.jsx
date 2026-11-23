@@ -7,6 +7,7 @@ import { ArrowLeft, MapPin, Hammer, ExternalLink, Clock, BarChart3, Trash2 } fro
 import MaterialDetailsModal from '../components/MaterialDetailsModal';
 import SiteFormModal from '../components/SiteFormModal';
 import SitePerformancePanel from '../components/SitePerformancePanel';
+import StartupHoursPolicyPanel from '../components/StartupHoursPolicyPanel';
 
 const SiteDetails = () => {
     const { id } = useParams();
@@ -184,7 +185,7 @@ const SiteDetails = () => {
                     <div className="grid grid-cols-5 gap-4 px-3 py-2 text-[10px] uppercase font-bold text-slate-500">
                         <div className="col-span-2">Section</div>
                         <div className="text-right">Prévu</div>
-                        <div className="text-right">Réalisé</div>
+                        <div className="text-right">Saisie manuelle</div>
                         <div className="text-right">Écart</div>
                     </div>
 
@@ -240,6 +241,7 @@ const SiteDetails = () => {
                         });
                     })()}
                 </div>
+                <StartupHoursPolicyPanel site={site}/>
                 </div>
             </details>
 
