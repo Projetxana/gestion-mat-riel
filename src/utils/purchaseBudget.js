@@ -142,7 +142,7 @@ export const comparePurchaseItems = (budgetLines = [], orderLines = [], purchase
         if (line.id != null) budgetKeyById.set(String(line.id), key);
         // Supplier quotations may contain the customer's ART alias in a description.
         // Use it only when it points to one unique material key (no fuzzy matching).
-        for(const match of String(line.description||'').matchAll(/\\bAlias\\s*:?\\s*(ART[.\\d]+)/gi)){
+        for(const match of String(line.description||'').matchAll(/\bAlias\s*:?\s*(ART[.\d]+)/gi)){
             const alias=normalizeCatalogCode(match[1]);
             if(!alias)continue;
             if(budgetKeyByAlias.has(alias)&&budgetKeyByAlias.get(alias)!==key){
