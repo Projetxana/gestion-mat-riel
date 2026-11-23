@@ -105,9 +105,9 @@ test('non-quoted purchases never force confirmation or automatic SKU pairing',()
  assert.equal(comparison.needsReview.length,0);
  assert.equal(comparison.overpriceCount,0);
  const panel=readFileSync(new URL('../src/components/PurchaseBudgetPanel.jsx',import.meta.url),'utf8');
- const priceRule=panel.match(/const priceReview=mode==='order'&&\\([\\s\\S]*?\\);/);
+ const priceRule=panel.split("const priceReview=mode==='order'&&")[1]?.split("if(parsed.status")[0];
  assert.ok(priceRule);
- assert.doesNotMatch(priceRule[0],/notInQuoteCount|!matchingQuote/);
+ assert.doesNotMatch(priceRule,/notInQuoteCount|!matchingQuote/);
  assert.doesNotMatch(panel,/pendingPriceNeedsReview|priceRiskAcknowledged/);
 });
 test('quotation source count, quote number, prices and printed total must be confirmed',()=>{
