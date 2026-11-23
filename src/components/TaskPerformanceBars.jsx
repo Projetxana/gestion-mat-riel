@@ -36,7 +36,7 @@ const TaskPerformanceBars = ({ rows, snapshotRows, validatedAt, historyMode }) =
             {rows.some(task=>task.overlapUnverified) && (
                 <p className="text-xs text-amber-200 flex items-start gap-2" role="status">
                     <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                    Certaines tâches combinent saisie manuelle et pointages. Leur total n’est pas calculé tant que leurs sources ne sont pas distinguées dans les paramètres du chantier.
+                    Lorsque les heures manuelles et les pointages automatiques se chevauchent potentiellement, aucun cumul incertain n’est calculé.
                 </p>
             )}
             <div className="space-y-2">
@@ -59,7 +59,7 @@ const TaskPerformanceBars = ({ rows, snapshotRows, validatedAt, historyMode }) =
                                     <div className="flex items-center justify-between gap-2 text-xs tabular-nums">
                                         <span className="text-slate-300">Prévu : <strong>{fmt(task.budget)} h</strong></span>
                                         <span className={bar.overBudget ? 'text-red-300' : 'text-slate-300'}>
-                                            Total réalisé : <strong>{bar.known ? fmt(task.actual, 2) + ' h' : 'Sources à distinguer'}</strong>
+                                            Total comptabilisé : <strong>{bar.known ? fmt(task.actual, 2) + ' h' : 'Sources à distinguer'}</strong>
                                         </span>
                                     </div>
                                     <div role="img" aria-label={`${task.name} : ${fmt(task.budget)} heures prévues, ${bar.known ? fmt(task.actual,2) + ' heures réalisées' : 'total à préciser'}`}
@@ -70,10 +70,18 @@ const TaskPerformanceBars = ({ rows, snapshotRows, validatedAt, historyMode }) =
                                     {(task.historical > 0 || task.sessionsHours > 0) && (
                                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-300">
                                             {task.historical > 0 &&
-                                                <span>Heures manuelles : <strong>{fmt(task.historical,2)} h</strong></span>}
-                                            {task.sessionsHours > 0 &&
-                                                <span>Pointages employés : <strong>{fmt(task.sessionsHours,2)} h</strong></span>}
+                                                <span>Saisie manuelle sur la tâche : <strong>{fmt(task.historical,2)} h</strong></span>}
+                                            {task.manualSessionHours > 0 &&
+                                                <span>Feuilles de temps saisies manuellement : <strong>{fmt(task.manualSessionHours,2)} h</strong></span>}
+                                            {task.employeePunchHours > 0 &&
+                                                <span>Pointages employés : <strong>{fmt(task.employeePunchHours,2)} h</strong></span>}
                                         </div>
+                                    )}
+                                    {task.manualSessionOverlap && (
+                                        <p className="text-xs text-amber-200">
+                                            {fmt(task.manualSessionHours,2)} h de feuilles de temps manuelles affichées séparément :
+                                            elles ne sont pas ajoutées au total pour éviter un doublon avec les heures de la tâche.
+                                        </p>
                                     )}
                                     {bar.overBudget && (
                                         <p className="text-xs text-red-300 font-medium">
