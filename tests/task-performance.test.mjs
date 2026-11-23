@@ -37,3 +37,42 @@ test('bars cap at budget and flag overruns',()=>{
  assert.equal(barConsumption(100,140).overBudget,true);
  assert.equal(barConsumption(100,null).known,false);
 });
+
+
+test('manually recorded work is immediately visible if no employee punches exist',()=>{
+ const rows=computeTaskHours({
+  tasks:[{id:107,name:'Sous-sol 1',planned_hours:280,completed_hours:229},
+         {id:106,name:'Sous-sol 2',planned_hours:272,completed_hours:222}],
+  sessions:[],siteId:8,historyMode:'unverified'
+ });
+ assert.equal(rows[0].actual,229);
+ assert.equal(rows[1].actual,222);
+ assert.equal(rows[0].overlapUnverified,false);
+ assert.equal(barConsumption(rows[0].budget,rows[0].actual).known,true);
+});
+
+test('DJ3 hours can be summed for operational reporting without validating IPMO',()=>{
+ const sample=[{id:107,name:'Sous-sol 1',planned_hours:280,completed_hours:229},
+  {id:106,name:'Sous-sol 2',planned_hours:272,completed_hours:222}];
+ const punches=[{
+  id:10,site_id:8,section_id:107,
+  punch_start_at:'2026-11-19T13:00:00Z',
+  punch_end_at:'2026-11-19T21:00:00Z'
+ }];
+ const unverified=computeTaskHours({tasks:sample,sessions:punches,siteId:8,historyMode:'unverified'});
+ assert.equal(unverified[0].historical,229);
+ assert.equal(unverified[0].sessionsHours,8);
+ assert.equal(unverified[0].actual,null);
+ assert.equal(unverified[0].overlapUnverified,true);
+ assert.equal(unverified[1].actual,222);
+ const distinct=computeTaskHours({
+  tasks:sample,sessions:punches,siteId:8,
+  manualHoursDistinct:true,historyMode:'unverified'
+ });
+ assert.equal(distinct[0].actual,237);
+ assert.equal(distinct[0].overlapUnverified,false);
+ assert.equal(distinct[1].actual,222);
+ // Physical percent and immutable published IPMO are not inputs.
+ assert.equal('physical_percent' in distinct[0],false);
+ assert.equal('performance_index' in distinct[0],false);
+});
