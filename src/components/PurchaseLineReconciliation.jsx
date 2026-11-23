@@ -137,9 +137,15 @@ export default function PurchaseLineReconciliation({
    {showResolved && <div className="space-y-2">
     {savedLinks.map(link=>{
      const target=budgetLines.find(b=>String(b.id)===String(link.budget_line_id));
+     const obsolete=link.disposition==='linked'&&!target;
+     const unresolved=obsolete&&(comparisons.unmatched||[]).some(line=>
+      String(line.id)===String(link.order_line_id));
      return <div key={link.order_line_id} className="rounded-lg border border-slate-700 p-2 flex items-center justify-between gap-3 text-xs">
       <span className="min-w-0 break-words">Commande #{link.order_line_id} → {link.disposition==='outside_budget'
-       ?'Hors estimation':(target?.item_code||'Référence inconnue')+' · '+(target?.description||'Article introuvable')}</span>
+       ?'Hors estimation':obsolete
+         ?(unresolved?'Ancienne association CD · vérifier le nouvel article Flocor'
+            :'Ancienne association CD conservée · produit Flocor recoupé par référence')
+         :target.item_code+' · '+target.description}</span>
       <button type="button" disabled={!enabled||Boolean(saving)}
        onClick={()=>void forget(link.order_line_id)}
        className="min-h-11 shrink-0 rounded-lg border border-slate-600 px-2 text-blue-200 disabled:opacity-50">
