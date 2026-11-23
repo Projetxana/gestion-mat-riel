@@ -86,9 +86,12 @@ CREATE POLICY bt_supplier_price_links_insert ON public.bt_supplier_price_line_li
   public.bt_stage2_is_admin(company_id) AND created_by=(SELECT auth.uid())
   AND EXISTS(SELECT 1
    FROM public.bt_purchase_order_lines o
+   JOIN public.bt_purchase_orders po ON po.id=o.order_id
    JOIN public.bt_supplier_price_lines q
     ON q.id=bt_supplier_price_line_links.quote_line_id
+   JOIN public.bt_supplier_price_quotes sq ON sq.id=q.quote_id
    WHERE o.id=bt_supplier_price_line_links.order_line_id
+   AND lower(btrim(po.supplier))=lower(btrim(sq.supplier))
    AND o.company_id=bt_supplier_price_line_links.company_id
    AND o.site_id=bt_supplier_price_line_links.site_id
    AND q.company_id=o.company_id AND q.site_id=o.site_id
@@ -101,9 +104,12 @@ CREATE POLICY bt_supplier_price_links_update ON public.bt_supplier_price_line_li
   public.bt_stage2_is_admin(company_id) AND created_by=(SELECT auth.uid())
   AND EXISTS(SELECT 1
    FROM public.bt_purchase_order_lines o
+   JOIN public.bt_purchase_orders po ON po.id=o.order_id
    JOIN public.bt_supplier_price_lines q
     ON q.id=bt_supplier_price_line_links.quote_line_id
+   JOIN public.bt_supplier_price_quotes sq ON sq.id=q.quote_id
    WHERE o.id=bt_supplier_price_line_links.order_line_id
+   AND lower(btrim(po.supplier))=lower(btrim(sq.supplier))
    AND o.company_id=bt_supplier_price_line_links.company_id
    AND o.site_id=bt_supplier_price_line_links.site_id
    AND q.company_id=o.company_id AND q.site_id=o.site_id
