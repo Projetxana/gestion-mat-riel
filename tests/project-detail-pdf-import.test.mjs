@@ -38,15 +38,16 @@ test('both tabs provide a PDF import and still preserve Excel/CSV fallback',()=>
 test('order creation requires a verified imported PDF, never typed fields',()=>{
  const panel=read('components/PurchaseBudgetPanel.jsx');
  const orderTab=panel.split("{tab === 'orders' && (")[1].split("        </section>")[0];
- assert.match(orderTab,/Importer une confirmation de commande PDF/);
- assert.doesNotMatch(orderTab,/Importer les lignes de commande Excel \\/ CSV/);
- assert.doesNotMatch(orderTab,/N° PO client|Command[eé] fournisseur \\(facultatif\\)|type="date"/);
- assert.doesNotMatch(orderTab,/onChange=\\{e => \\{ setOrder/);
- assert.match(panel,/pendingOrder\\?\\.verifiedPdf/);
- assert.match(panel,/if\\(parsed.status!=='auto_commit' \\|\\| !rows.length\\)/);
- assert.match(panel,/mode !== 'budget'/);
- assert.match(panel,/p_project_verified: true/);
- assert.match(orderTab,/Commandes enregistrées/);
+ assert.ok(orderTab.includes('Importer une confirmation de commande PDF'));
+ assert.ok(!orderTab.includes('Importer les lignes de commande Excel / CSV'));
+ assert.ok(!orderTab.includes('N° PO client'));
+ assert.ok(!orderTab.includes('type="date"'));
+ assert.ok(!orderTab.includes('onChange={e => { setOrder'));
+ assert.ok(panel.includes('pendingOrder?.verifiedPdf'));
+ assert.ok(panel.includes("if(parsed.status!=='auto_commit' || !rows.length)"));
+ assert.ok(panel.includes("mode !== 'budget'"));
+ assert.ok(panel.includes('p_project_verified: true'));
+ assert.ok(orderTab.includes('Commandes enregistrées'));
  assert.ok(transformSync(panel,{loader:'jsx'}).code.length>100);
 });
 test('PDF text extraction stays in a local bundled worker, never external OCR',()=>{
