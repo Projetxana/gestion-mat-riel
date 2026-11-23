@@ -2,6 +2,7 @@ import { parseDecimal } from './purchaseBudget.js';
 import { extractDocumentHints } from './purchaseDocumentText.js';
 import { extractFlocorHeader } from './flocorLayoutParser.js';
 import { extractCdEstimateHeader } from './cdEstimateLayoutParser.js';
+import { extractFlocorQuotationHeader,extractFlocorQuotationLines } from './flocorQuotationParser.js';
 import { assessPdfAutoImport } from './pdfAutoImportPolicy.js';
 
 const amountFrom = raw => {
@@ -21,7 +22,11 @@ export const derivePdfImportEvidence = (readResult,{kind,site,supplier=''}) => {
     const hints=extractDocumentHints(text,kind);
     const isFlocor=kind==='order' && Boolean(extractFlocorHeader(text)) && /\bFLOCOR\b/i.test(text.slice(0,3000));
     const isCd=kind==='budget' && Boolean(extractCdEstimateHeader(text));
-    const parser_id=isFlocor?'flocor-layout-v1':isCd?'cd-estimate-v1':'unknown';
+    const hasQuotationHeader=Boolean(extractFlocorQuotationHeader(text));
+    const isQuotation=kind==='budget' && hasQuotationHeader;
+    const quotation=isQuotation?extractFlocorQuotationLines(text):null;
+    const parser_id=isFlocor?'flocor-layout-v1':isCd?'cd-estimate-v1':
+        isQuotation?'flocor-quotation-v1':'unknown';
     let printed_material_total=null;
     if(isFlocor){
         const match=text.match(/Sous-total\s*\/\s*Sub-Total\s+([\d ,.\u00a0]+)(?=\s*$)/im);
@@ -34,8 +39,9 @@ export const derivePdfImportEvidence = (readResult,{kind,site,supplier=''}) => {
         const match=text.match(/total du mat[eé]riel[^\n]*?rapports\.\s+([\d \u00a0]+,\d{2})\s*$/im);
         printed_material_total=match?amountFrom(match[1]):null;
     }
+    if (isQuotation) printed_material_total=quotation.printed_material_total;
     const rows=hints.suggested_lines||[];
-    const source_line_count=rowAnchors(text,kind);
+    const source_line_count=isQuotation?quotation.source_line_count:rowAnchors(text,kind);
     const material_line_count=rows.filter(row=>row.included!==false).length;
     const boPresent=isFlocor && rows.some(row=>Number(row.supplier_bo_qty||0)>0);
     const unknownPriceUnits=isCd && rows.some(row=>row.source_price_unit &&
@@ -51,6 +57,7 @@ export const derivePdfImportEvidence = (readResult,{kind,site,supplier=''}) => {
     return {
         hints, supplier:isFlocor?'Flocor':supplier,
         document:{
+            document_type:hasQuotationHeader?'supplier_quotation':kind,
             mime_type:'application/pdf',
             digital_text:readResult?.digitalText===true,
             sha256:readResult?.sha256||'',
