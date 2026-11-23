@@ -36,6 +36,30 @@ test('manual links reconcile quantities without changing any order amounts',()=>
  const totalAfter=[...orders].reduce((sum,x)=>sum+x.amount,0);
  assert.equal(totalBefore,totalAfter);
 });
+test('a replaced CD estimate reattaches saved old links by exact active Flocor code or printed alias',()=>{
+ const active=[
+  {id:200,item_code:'P10GV2',description:'TUYAU 2 PO',unit:'FT',quantity:3255,amount:12661.95},
+  {id:201,item_code:'90CI1',description:'COUDE 90 1 PO (Alias ART00051)',unit:'UN',quantity:75,amount:172.5},
+ ];
+ const historic=[
+  {id:1,order_id:'po',item_code:'P10GV2',description:'TUYAU',unit:'FT',quantity:840,amount:3267.6},
+  {id:2,order_id:'po',item_code:'ART00051',description:'COUDE',unit:'UN',quantity:60,amount:138}
+ ];
+ const obsoleteLinks=[
+  {order_line_id:1,budget_line_id:10,disposition:'linked'},
+  {order_line_id:2,budget_line_id:11,disposition:'linked'}
+ ];
+ const r=comparePurchaseItems(active,historic,obsoleteLinks);
+ assert.equal(r.unmatched.length,0);
+ assert.equal(r.matched.find(x=>x.item_code==='P10GV2').orderedQty,840);
+ assert.equal(r.matched.find(x=>x.item_code==='90CI1').orderedQty,60);
+});
+test('never reuse an obsolete historical link when active Flocor SKU is ambiguous or absent',()=>{
+ const active=[{id:200,item_code:'P10GV2',description:'TUYAU',unit:'FT',quantity:100,amount:389}];
+ const old=[{id:1,item_code:'DIFFERENT',unit:'FT',quantity:5,amount:50}];
+ const r=comparePurchaseItems(active,old,[{order_line_id:1,budget_line_id:10,disposition:'linked'}]);
+ assert.equal(r.unmatched.length,1);
+});
 test('out-of-estimate entries stay committed but no longer appear as unresolved',()=>{
  const links=[{order_line_id:4,disposition:'outside_budget',budget_line_id:null}];
  const result=comparePurchaseItems(budget,orders,links);
