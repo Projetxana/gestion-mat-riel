@@ -22,7 +22,8 @@ export const derivePdfImportEvidence = (readResult,{kind,site,supplier=''}) => {
     const hints=extractDocumentHints(text,kind);
     const isFlocor=kind==='order' && Boolean(extractFlocorHeader(text)) && /\bFLOCOR\b/i.test(text.slice(0,3000));
     const isCd=kind==='budget' && Boolean(extractCdEstimateHeader(text));
-    const isQuotation=kind==='budget' && Boolean(extractFlocorQuotationHeader(text));
+    const hasQuotationHeader=Boolean(extractFlocorQuotationHeader(text));
+    const isQuotation=kind==='budget' && hasQuotationHeader;
     const quotation=isQuotation?extractFlocorQuotationLines(text):null;
     const parser_id=isFlocor?'flocor-layout-v1':isCd?'cd-estimate-v1':
         isQuotation?'flocor-quotation-v1':'unknown';
@@ -56,7 +57,7 @@ export const derivePdfImportEvidence = (readResult,{kind,site,supplier=''}) => {
     return {
         hints, supplier:isFlocor?'Flocor':supplier,
         document:{
-            document_type:isQuotation?'supplier_quotation':kind,
+            document_type:hasQuotationHeader?'supplier_quotation':kind,
             mime_type:'application/pdf',
             digital_text:readResult?.digitalText===true,
             sha256:readResult?.sha256||'',
