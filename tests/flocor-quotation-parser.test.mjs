@@ -90,5 +90,8 @@ test('wrong site, altered subtotal, and malformed product row trigger review war
 test('quotation never masquerades as Flocor order confirmation',()=>{
  const hints=extractDocumentHints(sample,'order');
  assert.equal(hints.suggested_lines.length,0);
+ const decision=assessDigitalPdf(makePdf(sample),{kind:'order',site});
+ assert.equal(decision.status,'attention_required');
+ assert.ok(decision.issues.some(issue=>issue.code==='quotation'));
  assert.equal(extractFlocorQuotationHeader('FLOCOR- DORVAL\nCOMMANDE DE VTE\nCONFIRMATION'),null);
 });
