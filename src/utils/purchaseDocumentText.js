@@ -4,6 +4,7 @@ import { normalizeToken } from './purchaseBudget.js';
 import { extractSupplierTableLines } from './purchaseDocumentLines.js';
 import { extractFlocorHeader,extractFlocorLayoutLines } from './flocorLayoutParser.js';
 import {extractCdEstimateHeader,extractCdEstimateLines} from './cdEstimateLayoutParser.js';
+import {extractFlocorQuotationHeader,extractFlocorQuotationLines} from './flocorQuotationParser.js';
 
 const field = (text, names) => {
   for (const name of names) {
@@ -20,6 +21,7 @@ export const extractDocumentHints = (input, type = 'order') => {
   const text = String(input ?? '').replace(/\r\n?/g, '\n').slice(0, 120000);
   const flocorHeader = extractFlocorHeader(text);
   const estimateHeader = type==='budget'?extractCdEstimateHeader(text):null;
+  const quotationHeader = type==='budget'?extractFlocorQuotationHeader(text):null;
   const poNumber = clean(field(text, [
     'customer\\s*po\\s*(?:no\\.?|number|#)?',
     'no\\.?\\s*commande\\s*client',
@@ -31,7 +33,8 @@ export const extractDocumentHints = (input, type = 'order') => {
     'job\\s*name', 'nom\\s*(?:du\\s*)?projet',
     'chantier\\s*(?:de\\s*livraison)?', 'ship\\s*to\\s*(?:project|job)',
     'adresse\\s*livraison', 'delivery\\s*address',
-  ]) || flocorHeader?.shipping_project_name || estimateHeader?.shipping_project_name);
+  ]) || flocorHeader?.shipping_project_name || estimateHeader?.shipping_project_name ||
+   quotationHeader?.shipping_project_name);
   const supplierOrder = clean(field(text, [
     'supplier\\s*order\\s*(?:number|#|no\\.?)*',
     'commande\\s*fournisseur',
@@ -39,7 +42,9 @@ export const extractDocumentHints = (input, type = 'order') => {
   ]));
   // Candidate quantities/prices come only from recognized tables and ALWAYS require review.
   let lineSuggestions = type==='budget'
-      ? extractCdEstimateLines(text)
+      ? quotationHeader
+        ? extractFlocorQuotationLines(text)
+        : extractCdEstimateLines(text)
       : extractSupplierTableLines(text, { kind: type === 'delivery' ? 'delivery' : 'order' });
   if(type!=='budget' && !lineSuggestions.items.length){
     const flocor=extractFlocorLayoutLines(text,{kind:type === 'delivery' ? 'delivery' : 'order'});
@@ -53,6 +58,8 @@ export const extractDocumentHints = (input, type = 'order') => {
     po_number: poNumber,
     shipping_project_name: shippingProject,
     supplier_order_number: supplierOrder,
+    quote_number: quotationHeader?.quote_number || '',
+    quotation_date: quotationHeader?.quotation_date || '',
     has_quantity_columns: numbers.length >= 2,
     suggested_lines: lineSuggestions.items,
     suggested_line_count: lineSuggestions.items.length,
