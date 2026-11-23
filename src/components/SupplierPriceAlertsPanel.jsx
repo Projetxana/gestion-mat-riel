@@ -139,27 +139,20 @@ export default function SupplierPriceAlertsPanel({
      {' '}{money(comparison.notInQuoteAmount)} HT engagés
     </h4>
     <p className="text-xs text-slate-300">
-     Ces articles figurent dans les commandes, mais pas dans la soumission fournisseur
-     de référence. Ils ne sont pas des erreurs de rapprochement :
-     aucun prix négocié n’est disponible pour vérifier une hausse.
-     Leurs dépenses restent comptabilisées.
+     Ces produits ont été commandés sans figurer dans la soumission de référence.
+     Ils ne sont pas à rapprocher et n’ont pas de prix de comparaison.
+     Leurs dépenses sont entièrement incluses dans le suivi du budget global.
     </p>
     <p className="text-xs text-slate-400">
-     Rien à sélectionner si ce sont des achats additionnels.
-     Pour les intégrer au budget prévisionnel, utilisez « Ajouter une liste complémentaire »
-     dans l’onglet Budget. La soumission Flocor originale ne sera pas modifiée.
+     Liste informative conservée pour analyser les écarts entre estimations et
+     achats réels en fin de chantier. Ces achats ne modifient ni la soumission
+     initiale ni le montant du budget de référence. Aucune intervention requise.
     </p>
     {(showAllUnquoted?notInQuote:notInQuote.slice(0,6)).map(row=>
      <article key={row.id} className="rounded-md bg-slate-950/40 p-2 space-y-2 text-xs">
       <p className="font-medium break-words">{row.item_code||'Sans référence'} · {row.description}</p>
       <p className="text-slate-300">Commande {row.poNumber} · {row.quantity} {row.unit} ·
        {' '}{unitPrice(row.unit_cost)}/unité · {money(row.amount)} HT</p>
-      <details className="border-t border-slate-700 pt-2">
-       <summary className="min-h-10 cursor-pointer text-blue-200">
-        Il s’agit d’un produit du devis sous une référence différente ?
-       </summary>
-       {manualMapping(row)}
-      </details>
      </article>
     )}
     {notInQuote.length>6&&<button type="button" onClick={()=>setShowAllUnquoted(v=>!v)}
