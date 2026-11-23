@@ -24,7 +24,10 @@ Le total effectif = **dernière estimation de base** (ou estimation initiale si 
 PDF numériques reconnus par les lecteurs existants (notamment estimation CD), Excel/CSV en secours.
 - S'il n'y a aucune anomalie, le PDF préremplit les lignes, puis une seule action enregistre l'avenant/la nouvelle base. **Aucune validation ligne par ligne.**
 - Les rapports CD multi-scénarios peuvent afficher des coûts non matériels ou des ajustements globaux. Un rapport ayant seulement un écart entre total global et total matériel, sans ligne manquante ni erreur d'unité, peut être confirmé **une fois** en affichant le nombre d'articles et le total matériel retenu.
-- Projet non reconnu, lignes perdues, prix/unités incohérents, fichier image/scanné : import automatique refusé, avec message et alternative Excel/CSV. L'IA OCR payante reste désactivée.
+- Si la reconnaissance automatique échoue (chantier absent, fournisseur inconnu, total non identifié, couverture partielle), **le PDF numérique lisible ouvre désormais une revue manuelle**, au lieu d'être rejeté en bloc. Les lignes proposées ne sont jamais enregistrées sans action de l'administrateur.
+- La revue permet de corriger les références, quantités, unités, prix et montants, d'exclure/ajouter des lignes et de consulter le texte local extrait. Sans ligne détectée, une ligne vide permet la saisie manuelle. Une extraction générique prudente donne des propositions pour les tableaux séparés par colonnes, jamais une preuve de complétude.
+- L'administrateur confirme obligatoirement le chantier (nom exact si différent/absent), le nombre de lignes matérielles incluses, le total hors taxes ou son absence, les écarts avec le document et l'exhaustivité vérifiée. Échec immédiat en cas de ligne invalide ou quantité × prix incohérente. Une seconde confirmation précède l'enregistrement RPC.
+- Un PDF scanné sans texte exploitable, incomplet, corrompu ou excessivement volumineux reste non importable par ce flux. L'IA OCR payante reste désactivée; une version Excel/CSV est l'alternative.
 - Un remplacement affiche le total avant/après et demande une confirmation **unique** (action budgétaire importante).
 
 ## Tests
