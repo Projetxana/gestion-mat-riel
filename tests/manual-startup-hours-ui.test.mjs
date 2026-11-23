@@ -11,7 +11,7 @@ test('DJ3 project modal offers manual startup hours independently from the IPMO'
  assert.match(modal,/<StartupHoursPolicyPanel site=\{site\}\/>/);
  assert.match(details,/Saisie manuelle/);
  assert.match(details,/completed_hours: Number\(v\)/);
- assert.match(component,/Ces heures manuelles ne figurent pas dans les pointages/);
+ assert.match(component,/Ces heures de démarrage sont distinctes des pointages automatiques/);
  assert.match(component,/ne touche pas à l’IPMO/);
  assert.ok(transformSync(modal,{loader:'jsx'}).code.length>100);
  assert.ok(transformSync(component,{loader:'jsx'}).code.length>100);
