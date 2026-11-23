@@ -5,10 +5,12 @@ import {normalizeToken,parseDecimal} from '../utils/purchaseBudget';
 import {assessDigitalPdf} from '../utils/pdfImportEvidence';
 import {quoteImportDate,activeSupplierQuotes} from '../utils/supplierPriceWatch';
 import {validateSupplierQuoteDraft} from '../utils/supplierPriceQuoteImport';
+import PurchasePdfCard from './PurchasePdfCard';
+import {archivePurchasePdf} from '../utils/purchasePdfArchive';
 
 const money=value=>new Intl.NumberFormat('fr-CA',{style:'currency',currency:'CAD'}).format(Number(value||0));
 
-export default function SupplierPriceReferencePanel({site,companyId,quotes=[],enabled=true,onSaved}){
+export default function SupplierPriceReferencePanel({site,companyId,quotes=[],documents=[],archiveEnabled=false,enabled=true,onSaved}){
  const [pending,setPending]=useState(null);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
@@ -38,7 +40,7 @@ export default function SupplierPriceReferencePanel({site,companyId,quotes=[],en
    const source=parsed.hints?.suggested_lines||[];
    if(source.length===0)throw new Error('Aucun produit lisible. Vérifiez la qualité du PDF.');
    setPending({
-    sourceName:file.name.slice(0,250),sha:doc.sha256,
+    sourceName:file.name.slice(0,250),sha:doc.sha256,sourceFile:file,
     supplier:'Flocor',quoteNumber:parsed.hints.quote_number||'',
     quoteDate:quoteImportDate(parsed.hints.quotation_date),
     documentSite:parsed.hints.shipping_project_name||'',
@@ -77,15 +79,28 @@ export default function SupplierPriceReferencePanel({site,companyId,quotes=[],en
    ' HT.\nLe budget estimatif et les commandes existantes resteront inchangés.'))return;
   setBusy(true);
   try{
-   const {error:rpcError}=await supabase.rpc('bt_supplier_price_register',{
+   const {data:quoteId,error:rpcError}=await supabase.rpc('bt_supplier_price_register',{
     p_company_id:companyId,p_site_id:site.id,p_supplier:pending.supplier,
     p_quote_number:pending.quoteNumber,p_quote_date:pending.quoteDate,
     p_source_name:pending.sourceName,p_file_sha256:pending.sha,
     p_expected_total:verified.amount,p_lines:verified.rows,p_confirmed:true,
    });
    if(rpcError)throw rpcError;
+   let archiveWarning='';
+   if(archiveEnabled && quoteId && pending.sourceFile){
+    try{
+     await archivePurchasePdf(pending.sourceFile,{
+      kind:'quote',source:{id:quoteId,quote_number:pending.quoteNumber,
+       line_count:verified.rows.length,total_amount:verified.amount},
+      site,companyId,
+     });
+    }catch(e){
+     archiveWarning=' Le PDF original n’a pas été archivé : '+
+      (e?.message||'réessayez en cliquant sur la soumission.');
+    }
+   }
    setPending(null);setCount('');setConfirmed(false);
-   setSuccess('Soumission enregistrée comme référence de prix. Les commandes déjà saisies seront comparées.');
+   setSuccess('Soumission enregistrée comme référence de prix. Les commandes déjà saisies seront comparées.'+archiveWarning);
    await onSaved?.();
   }catch(e){setError(e?.code==='23505'?'Cette soumission est déjà importée.':
    e?.message||'Sauvegarde du référentiel impossible.');}
@@ -104,14 +119,25 @@ export default function SupplierPriceReferencePanel({site,companyId,quotes=[],en
     Un nouveau PDF ajoute une version datée; les anciennes restent conservées.
    </p>
   </div>
-  {flocor&&<div className="rounded-lg border border-emerald-700 bg-emerald-950/20 p-3 text-sm">
+  {flocor&&(archiveEnabled?<PurchasePdfCard
+   kind="quote" source={flocor} site={site} companyId={companyId}
+   documentRecord={documents.find(d=>d.source_kind==='quote'&&String(d.source_id)===String(flocor.id))}
+   onAttached={onSaved}
+   className="border-emerald-700 bg-emerald-950/20 text-sm">
    <p className="font-semibold text-emerald-200">
     Flocor · Soumission nº {flocor.quote_number}</p>
    <p className="text-xs text-slate-300">
     {flocor.line_count} lignes · {money(flocor.total_amount)} HT ·
     {flocor.quote_date?' '+flocor.quote_date+' ·':''} référence active
    </p>
-  </div>}
+  </PurchasePdfCard>:<div className="rounded-lg border border-emerald-700 bg-emerald-950/20 p-3 text-sm">
+   <p className="font-semibold text-emerald-200">
+    Flocor · Soumission nº {flocor.quote_number}</p>
+   <p className="text-xs text-slate-300">
+    {flocor.line_count} lignes · {money(flocor.total_amount)} HT ·
+    {flocor.quote_date?' '+flocor.quote_date+' ·':''} référence active
+   </p>
+  </div>)}
   {!enabled&&<p role="status" className="text-amber-200 text-sm">
    Référentiel de prix non encore activé sur Supabase. Migration nécessaire avant import.
   </p>}
