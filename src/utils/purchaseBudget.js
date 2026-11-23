@@ -125,6 +125,8 @@ export const comparePurchaseItems = (budgetLines = [], orderLines = [], purchase
     const unmatched = [];
     const outsideBudget = [];
     const budgetKeyById = new Map();
+    const budgetKeyByAlias = new Map();
+    const ambiguousAliases = new Set();
     const linkByOrderLineId = new Map((purchaseLinks || []).map(link => [String(link.order_line_id), link]));
     for (const line of budgetLines) {
         const key = keyOf(line);
@@ -138,7 +140,17 @@ export const comparePurchaseItems = (budgetLines = [], orderLines = [], purchase
         entry.estimatedAmount += Number(line.amount || 0);
         budgetByKey.set(key, entry);
         if (line.id != null) budgetKeyById.set(String(line.id), key);
+        // Supplier quotations may contain the customer's ART alias in a description.
+        // Use it only when it points to one unique material key (no fuzzy matching).
+        for(const match of String(line.description||'').matchAll(/\\bAlias\\s*:?\\s*(ART[.\\d]+)/gi)){
+            const alias=normalizeCatalogCode(match[1]);
+            if(!alias)continue;
+            if(budgetKeyByAlias.has(alias)&&budgetKeyByAlias.get(alias)!==key){
+                ambiguousAliases.add(alias);
+            }else budgetKeyByAlias.set(alias,key);
+        }
     }
+    for(const alias of ambiguousAliases)budgetKeyByAlias.delete(alias);
     for (const line of orderLines) {
         const link = line.id == null ? null : linkByOrderLineId.get(String(line.id));
         if (link?.disposition === 'outside_budget') {
@@ -147,11 +159,17 @@ export const comparePurchaseItems = (budgetLines = [], orderLines = [], purchase
         }
         // A saved, admin-verified correspondence takes precedence over the
         // supplier's product code. No quantities or costs are rewritten.
-        const key = link?.disposition === 'linked'
-            ? budgetKeyById.get(String(link.budget_line_id))
-            : keyOf(line);
+        const savedKey=link?.disposition==='linked'
+            ? budgetKeyById.get(String(link.budget_line_id)) : null;
+        const naturalKey=keyOf(line);
+        const aliasKey=budgetKeyByAlias.get(normalizeCatalogCode(line.item_code));
+        // A historical link may point to the superseded CD estimate. Preserve it
+        // for audit but compare using an exact active supplier SKU/alias when possible.
+        const fallbackKey=[naturalKey,aliasKey].find(k=>k&&budgetByKey.has(k)&&
+            k.endsWith(':'+normalizedUnit(line.unit)));
+        const key=link?.disposition==='linked' ? savedKey||fallbackKey : fallbackKey;
         if (!key || !budgetByKey.has(key) || (
-            link?.disposition === 'linked' &&
+            savedKey && key===savedKey &&
             normalizedUnit(budgetLines.find(b=>String(b.id)===String(link.budget_line_id))?.unit) !== normalizedUnit(line.unit)
         )) {
             unmatched.push(line);
