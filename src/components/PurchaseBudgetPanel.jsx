@@ -150,7 +150,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
     ])), [orders, orderLines]);
 
-    const archiveNewOrder=async(file,poNumber,supplier)=>{
+    const archiveNewOrder=async(file,poNumber,supplier,lines)=>{
         if(!archiveEnabled)return 'Le stockage privé des documents n’est pas encore activé.';
         const {data:record,error:lookupError}=await supabase.from('bt_purchase_orders')
             .select('id, po_number, supplier, shipping_project_name')
@@ -158,7 +158,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             .eq('po_number',poNumber).eq('supplier',supplier).maybeSingle();
         if(lookupError||!record?.id)throw lookupError||new Error('Commande créée, introuvable pour archivage.');
         await archivePurchasePdf(file,{
-            kind:'order',source:record,site,companyId:currentCompanyId,
+            kind:'order',source:{
+                ...record,line_count:lines.length,
+                total_amount:lines.reduce((sum,line)=>sum+Number(line.amount||0),0),
+            },site,companyId:currentCompanyId,
         });
         return '';
     };
@@ -230,7 +233,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     setPendingOrder(null);setOrder(emptyOrder);
                     try{
                         pdfArchiveWarning=await archiveNewOrder(
-                            file,parsed.hints.po_number,parsed.supplier);
+                            file,parsed.hints.po_number,parsed.supplier,rows);
                     }catch(e){
                         pdfArchiveWarning=e?.message||'Archivage du PDF impossible.';
                     }
@@ -343,7 +346,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             if(pendingOrder.originalFile){
                 try{
                     pdfArchiveWarning=await archiveNewOrder(
-                        pendingOrder.originalFile,order.poNumber.trim(),order.supplier.trim());
+                        pendingOrder.originalFile,order.poNumber.trim(),order.supplier.trim(),pendingOrder.rows);
                 }catch(e){
                     pdfArchiveWarning=e?.message||'Archivage du PDF impossible.';
                 }
@@ -559,7 +562,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                         {!orders.length && <p className="text-sm text-slate-400">Aucune commande à ce jour.</p>}
                         {orders.map(item => (
                             archiveEnabled?<PurchasePdfCard key={item.id}
-                                kind="order" source={item} site={site} companyId={currentCompanyId}
+                                kind="order" source={{...item,
+                                    line_count:orderLines.filter(line=>line.order_id===item.id).length,
+                                    total_amount:orderTotals.get(item.id)}}
+                                site={site} companyId={currentCompanyId}
                                 documentRecord={purchaseDocuments.find(d=>d.source_kind==='order'&&String(d.source_id)===String(item.id))}
                                 onAttached={refresh} className="bg-slate-800">
                                 <div className="flex justify-between gap-2">
