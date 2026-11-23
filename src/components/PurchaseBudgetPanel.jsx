@@ -7,6 +7,9 @@ import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shipp
 import { assessDigitalPdf } from '../utils/pdfImportEvidence';
 import PurchaseLineReconciliation from './PurchaseLineReconciliation';
 import PurchaseBudgetRevisions from './PurchaseBudgetRevisions';
+import SupplierPriceReferencePanel from './SupplierPriceReferencePanel';
+import SupplierPriceAlertsPanel from './SupplierPriceAlertsPanel';
+import {compareSupplierPrices,activeSupplierQuotes} from '../utils/supplierPriceWatch';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
     style: 'currency', currency: 'CAD', minimumFractionDigits: 2,
@@ -59,6 +62,11 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const [shippingOverride, setShippingOverride] = useState('');
     const [reloadIndex, setReloadIndex] = useState(0);
     const [pdfIssues, setPdfIssues] = useState([]);
+    const [priceQuotes,setPriceQuotes] = useState([]);
+    const [priceQuoteLines,setPriceQuoteLines] = useState([]);
+    const [priceLinks,setPriceLinks] = useState([]);
+    const [priceReferenceEnabled,setPriceReferenceEnabled] = useState(true);
+    const [priceRiskAcknowledged,setPriceRiskAcknowledged] = useState(false);
 
     const refresh = useCallback(async () => {
         if (!site?.id || !currentCompanyId || !isAdmin || !isCorrectTenant) return;
@@ -68,7 +76,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             const conditions = ['company_id', 'site_id'];
             const selectProject = (table, cols) =>
                 supabase.from(table).select(cols).eq(conditions[0], currentCompanyId).eq(conditions[1], site.id);
-            const [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult, linkResult] = await Promise.all([
+            const [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult, linkResult,
+                quotesResult, quoteLinesResult, priceLinksResult] = await Promise.all([
                 selectProject('bt_purchase_budgets', 'id, source_name, created_at').maybeSingle(),
                 supabase.rpc('bt_purchase_effective_budget_lines', {
                     p_company_id:currentCompanyId,p_site_id:site.id
@@ -77,8 +86,14 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     'id, revision_no, kind, label, source_name, file_sha256, line_count, total_amount, created_at')
                     .order('revision_no', { ascending: false }),
                 selectProject('bt_purchase_orders', 'id, po_number, supplier, supplier_order_number, shipping_project_name, created_at, order_date').order('created_at', { ascending: false }),
-                selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, unit, amount').order('id'),
+                selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, unit, unit_cost, amount').order('id'),
                 selectProject('bt_purchase_line_links', 'order_line_id, budget_line_id, disposition'),
+                selectProject('bt_supplier_price_quotes',
+                    'id, supplier, quote_number, quote_date, source_name, file_sha256, line_count, total_amount, created_at')
+                    .order('created_at', { ascending: false }),
+                selectProject('bt_supplier_price_lines',
+                    'id, quote_id, item_code, customer_alias, description, unit, quantity, unit_cost, amount'),
+                selectProject('bt_supplier_price_line_links', 'order_line_id, quote_line_id'),
             ]);
             const failure = [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult].find(result => result.error);
             if (failure) throw failure.error;
@@ -89,6 +104,11 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             setOrderLines(itemsResult.data || []);
             setPurchaseLinks(linkResult.error ? [] : (linkResult.data || []));
             setLinkingEnabled(!linkResult.error);
+            const pricesAvailable=!quotesResult.error&&!quoteLinesResult.error&&!priceLinksResult.error;
+            setPriceReferenceEnabled(pricesAvailable);
+            setPriceQuotes(pricesAvailable?(quotesResult.data||[]):[]);
+            setPriceQuoteLines(pricesAvailable?(quoteLinesResult.data||[]):[]);
+            setPriceLinks(pricesAvailable?(priceLinksResult.data||[]):[]);
         } catch (e) {
             setError(e.code === '42P01'
                 ? 'Les tables du module Achats ne sont pas encore activées dans Supabase.'
@@ -103,6 +123,19 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
     const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, shippingOverride);
     const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines, purchaseLinks), [budgetLines, orderLines, purchaseLinks]);
+    const pendingPriceComparison=useMemo(()=>pendingOrder?compareSupplierPrices({
+        quotes:priceQuotes,quoteLines:priceQuoteLines,
+        orders:[{id:'pending',supplier:order.supplier,po_number:order.poNumber}],
+        orderLines:pendingOrder.rows.map((line,index)=>({
+            ...line,id:'draft-'+index,order_id:'pending'
+        })),
+    }):null,[pendingOrder,order,priceQuotes,priceQuoteLines]);
+    const supplierHasQuote=Boolean(activeSupplierQuotes(priceQuotes).find(
+        quote=>quote.supplier&&quote.supplier.trim().toLowerCase()===order.supplier.trim().toLowerCase()));
+    const pendingPriceNeedsReview=Boolean(pendingOrder&&(
+        !supplierHasQuote ||
+        pendingPriceComparison?.overpriceCount>0 ||
+        pendingPriceComparison?.needsReview.length>0));
     const orderTotals = useMemo(() => new Map(orders.map(item => [
         item.id, orderLines.filter(line => line.order_id === item.id)
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
@@ -113,6 +146,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         setError('');
         setNotice('');
         setPdfIssues([]);
+        setPriceRiskAcknowledged(false);
         try {
             const rows = parsePurchaseRows(await readSheet(file), { kind: mode });
             if (mode === 'budget') setPendingBudget({ rows, sourceName: file.name });
@@ -134,6 +168,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         }
         setBusy(true);
         setError(''); setNotice(''); setPdfIssues([]);
+        setPriceRiskAcknowledged(false);
         try {
             // Lazy-load bundled PDF.js only after the administrator selects a file.
             const { readDigitalPdf } = await import('../utils/digitalPdfReader');
@@ -142,7 +177,16 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 kind:mode,site,previousOrders:orders,hasExistingBudget:Boolean(budget),
             });
             const rows = parsed.verified_rows;
-            if(parsed.status === 'auto_commit' && rows.length){
+            const matchingQuote=activeSupplierQuotes(priceQuotes).some(q=>
+                q.supplier&&q.supplier.trim().toLowerCase()===String(parsed.supplier||'').trim().toLowerCase());
+            const pricePreview=mode==='order'&&rows.length?compareSupplierPrices({
+                quotes:priceQuotes,quoteLines:priceQuoteLines,
+                orders:[{id:'pending',supplier:parsed.supplier,po_number:parsed.hints?.po_number}],
+                orderLines:rows.map((row,index)=>({...row,id:'draft-'+index,order_id:'pending'})),
+            }):null;
+            const priceReview=mode==='order'&&(!matchingQuote||
+                pricePreview?.overpriceCount>0||pricePreview?.needsReview.length>0);
+            if(parsed.status === 'auto_commit' && rows.length&&!priceReview){
                 const args = mode === 'budget' ? {
                     p_company_id:currentCompanyId,p_site_id:site.id,
                     p_source_name:file.name.slice(0,150),p_lines:rows,
@@ -166,9 +210,15 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 setNotice(`PDF enregistré automatiquement : ${rows.length} article(s) · ${money(rows.reduce((sum,row)=>sum+row.amount,0))}. Aucune validation nécessaire.`);
                 return;
             }
-            // Fail closed: never save a partial budget/PO. Provide the existing
-            // manual verification path only when all individual lines parse.
+            // A fully parsed PO with a price issue is NOT auto-committed:
+            // show the administrator the offending lines before saving.
             const issues=parsed.issues?.map(issue=>issue.message) || [];
+            if(priceReview){
+                issues.unshift(pricePreview?.overpriceCount
+                    ? 'ALERTE PRIX : '+pricePreview.overpriceCount+' article(s) dépassent la soumission ('+
+                      money(pricePreview.impact)+' HT). Confirmez avant enregistrement.'
+                    : 'Prix de référence absent ou produit non rapproché : validation requise avant commande.');
+            }
             setPdfIssues(issues.length ? issues : ['Document à vérifier avant enregistrement.']);
             let tentative=null;
             try {
@@ -215,6 +265,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     };
 
     const saveOrder = async () => {
+        if(pendingPriceNeedsReview&&!priceRiskAcknowledged){
+            setError('Confirmez avoir examiné les alertes ou les références de prix manquantes.');
+            return;
+        }
         if (!pendingOrder || !shippingVerified || !shippingCheck.canAccept || busy || !order.supplier.trim()
             || !order.poNumber.trim() || !order.shippingProject.trim()) {
             setError('Fournisseur, numéro de PO, projet indiqué à la livraison et validation sont obligatoires.');
@@ -231,7 +285,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 p_project_verified: shippingVerified, p_override_confirmation: shippingOverride.trim(), p_lines: pendingOrder.rows,
             });
             if (rpcError) throw rpcError;
-            setPendingOrder(null); setOrder(emptyOrder); setShippingVerified(false); setShippingOverride('');
+            setPendingOrder(null); setOrder(emptyOrder); setShippingVerified(false);
+            setShippingOverride('');setPriceRiskAcknowledged(false);
             setNotice('Commande enregistrée dans le chantier sélectionné. Aucun montant de livraison ajouté.');
             setReloadIndex(value => value + 1);
             onPurchasesChanged?.();
@@ -283,6 +338,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 </div>
             )}
 
+            <SupplierPriceAlertsPanel site={site} companyId={currentCompanyId}
+                quotes={priceQuotes} quoteLines={priceQuoteLines} orders={orders}
+                orderLines={orderLines} links={priceLinks} enabled={priceReferenceEnabled}
+                onUpdated={refresh}/>
             <div className="flex gap-2 border-b border-slate-700 mb-4" role="tablist" aria-label="Suivi des achats">
                 {[['budget','Budget'],['orders','Commandes']].map(([key,label]) => (
                     <button key={key} type="button" role="tab" aria-selected={tab === key}
@@ -300,6 +359,9 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             <p className="flex items-center gap-2 text-emerald-300 text-sm"><CheckCircle2 size={16}/>
                                 Budget actif · {budgetLines.length} article(s) (estimation de base + avenants éventuels)
                              </p>
+                             <SupplierPriceReferencePanel site={site} companyId={currentCompanyId}
+                                 quotes={priceQuotes} enabled={priceReferenceEnabled}
+                                 onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
                              <PurchaseBudgetRevisions site={site} companyId={currentCompanyId}
                                 budget={budget} budgetLines={budgetLines} revisions={budgetRevisions}
                                 onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
@@ -388,7 +450,9 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             <label key={key} className="text-sm text-slate-300">
                                 {label}
                                 <input type="text" maxLength={150} value={order[key]}
-                                    onChange={e => { setOrder(prev => ({...prev, [key]:e.target.value})); setShippingVerified(false); setShippingOverride(''); }}
+                                    onChange={e => { setOrder(prev => ({...prev, [key]:e.target.value}));
+                                      setShippingVerified(false); setShippingOverride('');
+                                      setPriceRiskAcknowledged(false); }}
                                     placeholder={placeholder}
                                     className="mt-1 min-h-11 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 text-white"/>
                             </label>
@@ -405,6 +469,41 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     {pendingOrder && (
                         <div className="rounded-xl border border-slate-600 p-3 text-sm space-y-3">
                             <p>{pendingOrder.sourceName} · {pendingOrder.rows.length} articles · {money(pendingOrder.rows.reduce((sum,line) => sum + line.amount,0))}</p>
+                            {pendingPriceComparison && (
+                                <div className="rounded-lg border border-amber-700/70 p-3 text-sm space-y-2">
+                                    <p className="font-semibold">Vérification des prix avant engagement</p>
+                                    {!supplierHasQuote&&<p className="text-amber-200 text-xs">
+                                        Aucune soumission de référence active pour {order.supplier||'ce fournisseur'}.
+                                        Importez-la dans Budget pour contrôler les prix.
+                                    </p>}
+                                    {pendingPriceComparison.overpriceCount>0&&<div role="alert"
+                                        className="text-red-200 text-xs space-y-1">
+                                        <p className="font-semibold">
+                                            {pendingPriceComparison.overpriceCount} dépassement(s) :
+                                            {' '}{money(pendingPriceComparison.impact)} HT
+                                        </p>
+                                        {pendingPriceComparison.overpriced.map(row=>
+                                            <p key={row.id}>{row.item_code} ·
+                                                soumission {money(row.referenceUnitCost)} / {row.unit} →
+                                                confirmé {money(row.unit_cost)} / {row.unit} ·
+                                                écart {money(row.impact)} HT</p>
+                                        )}
+                                    </div>}
+                                    {pendingPriceComparison.needsReview.length>0&&<p className="text-amber-200 text-xs">
+                                        {pendingPriceComparison.needsReview.length} ligne(s) sans rapprochement fiable :
+                                        vérifier les codes et unités après enregistrement.
+                                    </p>}
+                                    {pendingPriceNeedsReview&&<label className="flex items-start gap-2 text-xs">
+                                        <input type="checkbox" checked={priceRiskAcknowledged}
+                                            onChange={e=>setPriceRiskAcknowledged(e.target.checked)}/>
+                                        Je reconnais les écarts ou les références manquantes et autorise
+                                        l’enregistrement de cette commande sans modifier les prix de la soumission.
+                                    </label>}
+                                    {!pendingPriceNeedsReview&&<p className="text-emerald-200 text-xs">
+                                        Tous les prix reconnus respectent la soumission fournisseur.
+                                    </p>}
+                                </div>
+                            )}
                             {shippingCheck.requiresOverride && (
                                 <div className="rounded-lg border border-amber-600/70 bg-amber-950/30 p-3 text-sm space-y-2">
                                     <p className="text-amber-200">Le nom indiqué à la livraison ne correspond pas exactement à « {site.name} ». Vérifiez le document et confirmez manuellement le chantier.</p>
@@ -419,7 +518,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                     onChange={e => setShippingVerified(e.target.checked)} className="mt-1"/>
                                 <span>J’ai vérifié que le nom de chantier indiqué à la livraison correspond bien à <strong>{site.name}</strong>. Le numéro PO seul ne prouve pas le chantier.</span>
                             </label>
-                            <button type="button" onClick={saveOrder} disabled={busy || !shippingVerified || !shippingCheck.canAccept || site.status !== 'active'}
+                            <button type="button" onClick={saveOrder} disabled={busy || !shippingVerified || !shippingCheck.canAccept ||
+                                    (pendingPriceNeedsReview&&!priceRiskAcknowledged) || site.status !== 'active'}
                                 className="min-h-11 w-full rounded-lg bg-blue-600 font-semibold disabled:opacity-50">
                                 {busy ? 'Enregistrement…' : 'Valider la commande'}
                             </button>

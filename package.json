@@ -16,7 +16,7 @@
     "test:project-monitoring": "node --test tests/project-monitoring.test.mjs tests/purchase-monitoring.test.mjs tests/project-monitoring-navigation.test.mjs",
     "test:employee-worksites": "node --test tests/current-employee-sites.test.mjs",
     "test:purchases": "node --test tests/purchase-budget.test.mjs",
-    "test:pdf-import": "node --test tests/pdf-auto-import.test.mjs tests/pdf-import-evidence.test.mjs tests/pdf-import-layout.test.mjs tests/project-detail-pdf-import.test.mjs tests/flocor-layout-parser.test.mjs tests/cd-estimate-parser.test.mjs tests/purchase-document-lines.test.mjs",
+    "test:pdf-import": "node --test tests/pdf-auto-import.test.mjs tests/pdf-import-evidence.test.mjs tests/reviewed-budget-pdf.test.mjs tests/pdf-import-layout.test.mjs tests/project-detail-pdf-import.test.mjs tests/flocor-layout-parser.test.mjs tests/flocor-quotation-parser.test.mjs tests/supplier-price-watch.test.mjs tests/cd-estimate-parser.test.mjs tests/purchase-document-lines.test.mjs",
     "test:purchase-reconciliation": "node --test tests/purchase-reconciliation.test.mjs",
     "test:manual-startup-hours": "node --test tests/manual-startup-hours-ui.test.mjs",
     "test:budget-revisions": "node --test tests/purchase-budget-revisions.test.mjs"
