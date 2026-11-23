@@ -501,7 +501,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                         {' '}{money(pendingPriceComparison.notInQuoteAmount)} HT
                                         comptabilisés dans les dépenses globales.
                                         Aucune correspondance n’est demandée.
-                                    </p>
+                                    </p>}
                                     {pendingPriceComparison.needsReview.length>0&&<p className="text-amber-200 text-xs">
                                         {pendingPriceComparison.needsReview.length} ligne(s) avec
                                         une correspondance incertaine : vérifier les codes et unités.
