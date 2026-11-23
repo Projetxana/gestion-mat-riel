@@ -110,10 +110,12 @@ export const calculatePurchaseBudget = (budgetLines = [], orderLines = []) => {
 
 const normalizedUnit = value => {
     const unit = normalizeToken(value);
-    return ['FT', 'PI', 'PIED', 'PIEDS'].includes(unit) ? 'PI' : unit;
+    if (['FT', 'PI', 'PIED', 'PIEDS', 'FOOT', 'FEET'].includes(unit)) return 'PI';
+    if (['UN', 'EA', 'EACH', 'PCS', 'PC', 'UNIT'].includes(unit)) return 'UN';
+    return unit;
 };
 
-export const comparePurchaseItems = (budgetLines = [], orderLines = []) => {
+export const comparePurchaseItems = (budgetLines = [], orderLines = [], purchaseLinks = []) => {
     const keyOf = line => {
         const code = normalizeCatalogCode(line.item_code);
         return code ? code + ':' + normalizedUnit(line.unit) : null;
@@ -121,6 +123,9 @@ export const comparePurchaseItems = (budgetLines = [], orderLines = []) => {
     const budgetByKey = new Map();
     const orderedByKey = new Map();
     const unmatched = [];
+    const outsideBudget = [];
+    const budgetKeyById = new Map();
+    const linkByOrderLineId = new Map((purchaseLinks || []).map(link => [String(link.order_line_id), link]));
     for (const line of budgetLines) {
         const key = keyOf(line);
         if (!key) continue;
@@ -132,10 +137,23 @@ export const comparePurchaseItems = (budgetLines = [], orderLines = []) => {
         entry.estimatedQty += Number(line.quantity || 0);
         entry.estimatedAmount += Number(line.amount || 0);
         budgetByKey.set(key, entry);
+        if (line.id != null) budgetKeyById.set(String(line.id), key);
     }
     for (const line of orderLines) {
-        const key = keyOf(line);
-        if (!key || !budgetByKey.has(key)) {
+        const link = line.id == null ? null : linkByOrderLineId.get(String(line.id));
+        if (link?.disposition === 'outside_budget') {
+            outsideBudget.push(line);
+            continue;
+        }
+        // A saved, admin-verified correspondence takes precedence over the
+        // supplier's product code. No quantities or costs are rewritten.
+        const key = link?.disposition === 'linked'
+            ? budgetKeyById.get(String(link.budget_line_id))
+            : keyOf(line);
+        if (!key || !budgetByKey.has(key) || (
+            link?.disposition === 'linked' &&
+            normalizedUnit(budgetLines.find(b=>String(b.id)===String(link.budget_line_id))?.unit) !== normalizedUnit(line.unit)
+        )) {
             unmatched.push(line);
             continue;
         }
@@ -152,5 +170,33 @@ export const comparePurchaseItems = (budgetLines = [], orderLines = []) => {
             exceeded: order.quantity > entry.estimatedQty,
         };
     });
-    return { matched, unmatched };
+    return { matched, unmatched, outsideBudget };
+};
+
+// Candidate matches are suggestions, NEVER automatic write operations. A
+// different vendor SKU may identify the same article as the local CD code.
+export const suggestBudgetCorrespondences = (orderLine, budgetLines = []) => {
+    const tokens = value => {
+        const normalized = String(value ?? '').normalize('NFKD')
+            .replace(/[\u0300-\u036f]/g, '').toUpperCase()
+            .replace(/(\d+)\s*(?:"|PO\b|POUCE[S]?\b)/g, '$1PO')
+            .replace(/[^A-Z0-9]+/g, ' ').trim().split(/\s+/);
+        return new Set(tokens.filter(t=>t.length>=2 && ![
+            'DE','DES','DU','LE','LA','LES','EN','ET','AVEC','NOIR','GALV','STD'
+        ].includes(t)));
+    };
+    const from=tokens(orderLine.description);
+    const sourceCode=normalizeCatalogCode(orderLine.item_code);
+    return budgetLines.filter(b=>normalizedUnit(b.unit)===normalizedUnit(orderLine.unit))
+        .map(b=>{
+            const target=tokens(b.description);
+            const intersection=[...from].filter(w=>target.has(w)).length;
+            const union=new Set([...from,...target]).size||1;
+            const shared=intersection/union;
+            const codeEqual=sourceCode && sourceCode===normalizeCatalogCode(b.item_code);
+            const quantityEqual=Number(orderLine.quantity)===Number(b.quantity);
+            const score=(codeEqual?10:0) + shared*4 + (quantityEqual?0.35:0);
+            return {...b,score,codeEqual:Boolean(codeEqual)};
+        })
+        .sort((a,b)=>b.score-a.score || String(a.item_code).localeCompare(String(b.item_code)));
 };
