@@ -149,6 +149,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         setError('');
         setNotice('');
         setPdfIssues([]);
+        setPriceRiskAcknowledged(false);
         try {
             const rows = parsePurchaseRows(await readSheet(file), { kind: mode });
             if (mode === 'budget') setPendingBudget({ rows, sourceName: file.name });
@@ -170,6 +171,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         }
         setBusy(true);
         setError(''); setNotice(''); setPdfIssues([]);
+        setPriceRiskAcknowledged(false);
         try {
             // Lazy-load bundled PDF.js only after the administrator selects a file.
             const { readDigitalPdf } = await import('../utils/digitalPdfReader');
@@ -178,7 +180,16 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 kind:mode,site,previousOrders:orders,hasExistingBudget:Boolean(budget),
             });
             const rows = parsed.verified_rows;
-            if(parsed.status === 'auto_commit' && rows.length){
+            const matchingQuote=activeSupplierQuotes(priceQuotes).some(q=>
+                q.supplier&&q.supplier.trim().toLowerCase()===String(parsed.supplier||'').trim().toLowerCase());
+            const pricePreview=mode==='order'&&rows.length?compareSupplierPrices({
+                quotes:priceQuotes,quoteLines:priceQuoteLines,
+                orders:[{id:'pending',supplier:parsed.supplier,po_number:parsed.hints?.po_number}],
+                orderLines:rows.map((row,index)=>({...row,id:'draft-'+index,order_id:'pending'})),
+            }):null;
+            const priceReview=mode==='order'&&(!matchingQuote||
+                pricePreview?.overpriceCount>0||pricePreview?.needsReview.length>0);
+            if(parsed.status === 'auto_commit' && rows.length&&!priceReview){
                 const args = mode === 'budget' ? {
                     p_company_id:currentCompanyId,p_site_id:site.id,
                     p_source_name:file.name.slice(0,150),p_lines:rows,
@@ -202,9 +213,15 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 setNotice(`PDF enregistré automatiquement : ${rows.length} article(s) · ${money(rows.reduce((sum,row)=>sum+row.amount,0))}. Aucune validation nécessaire.`);
                 return;
             }
-            // Fail closed: never save a partial budget/PO. Provide the existing
-            // manual verification path only when all individual lines parse.
+            // A fully parsed PO with a price issue is NOT auto-committed:
+            // show the administrator the offending lines before saving.
             const issues=parsed.issues?.map(issue=>issue.message) || [];
+            if(priceReview){
+                issues.unshift(pricePreview?.overpriceCount
+                    ? 'ALERTE PRIX : '+pricePreview.overpriceCount+' article(s) dépassent la soumission ('+
+                      money(pricePreview.impact)+' HT). Confirmez avant enregistrement.'
+                    : 'Prix de référence absent ou produit non rapproché : validation requise avant commande.');
+            }
             setPdfIssues(issues.length ? issues : ['Document à vérifier avant enregistrement.']);
             let tentative=null;
             try {
@@ -251,6 +268,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     };
 
     const saveOrder = async () => {
+        if(pendingPriceNeedsReview&&!priceRiskAcknowledged){
+            setError('Confirmez avoir examiné les alertes ou les références de prix manquantes.');
+            return;
+        }
         if (!pendingOrder || !shippingVerified || !shippingCheck.canAccept || busy || !order.supplier.trim()
             || !order.poNumber.trim() || !order.shippingProject.trim()) {
             setError('Fournisseur, numéro de PO, projet indiqué à la livraison et validation sont obligatoires.');
@@ -267,7 +288,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 p_project_verified: shippingVerified, p_override_confirmation: shippingOverride.trim(), p_lines: pendingOrder.rows,
             });
             if (rpcError) throw rpcError;
-            setPendingOrder(null); setOrder(emptyOrder); setShippingVerified(false); setShippingOverride('');
+            setPendingOrder(null); setOrder(emptyOrder); setShippingVerified(false);
+            setShippingOverride('');setPriceRiskAcknowledged(false);
             setNotice('Commande enregistrée dans le chantier sélectionné. Aucun montant de livraison ajouté.');
             setReloadIndex(value => value + 1);
             onPurchasesChanged?.();
@@ -424,7 +446,9 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             <label key={key} className="text-sm text-slate-300">
                                 {label}
                                 <input type="text" maxLength={150} value={order[key]}
-                                    onChange={e => { setOrder(prev => ({...prev, [key]:e.target.value})); setShippingVerified(false); setShippingOverride(''); }}
+                                    onChange={e => { setOrder(prev => ({...prev, [key]:e.target.value}));
+                                      setShippingVerified(false); setShippingOverride('');
+                                      setPriceRiskAcknowledged(false); }}
                                     placeholder={placeholder}
                                     className="mt-1 min-h-11 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 text-white"/>
                             </label>
