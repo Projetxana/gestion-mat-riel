@@ -141,7 +141,8 @@ test('UI compares prices in both pre-import confirmation and recorded order view
  assert.match(panel,/priceRiskAcknowledged/);
  assert.match(panel,/pendingPriceNeedsReview/);
  assert.match(panel,/quoteBasedBudget/);
- assert.match(panel,/!quoteBasedBudget&&<PurchaseLineReconciliation/);
+ assert.match(panel,/!quoteBasedBudget&&orderLines.length>0&&/);
+ assert.match(panel,/<PurchaseLineReconciliation/);
  assert.match(panel,/Aucune correspondance n’est demandée/);
  assert.match(alerts,/Aucune intervention requise/);
  assert.doesNotMatch(alerts,/Il s’agit d’un produit du devis sous une référence différente/);
