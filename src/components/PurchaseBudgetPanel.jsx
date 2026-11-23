@@ -377,7 +377,11 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             {orderLines.length > 0 && (
                                 <details className="rounded-lg border border-slate-700 p-3">
                                     <summary className="cursor-pointer min-h-11 text-sm font-semibold text-blue-200">Comparer les quantités estimées et commandées</summary>
-                                    <p className="text-xs text-slate-400 my-2">Quantités rapprochées entre articles estimés et commandes importées. Un « 0 » ne prouve pas que l’article n’a pas été acheté : des codes fournisseurs peuvent différer.</p>
+                                    <p className="text-xs text-slate-400 my-2">
+                                        Comparaison indicative des quantités pour les références reconnues.
+                                        Les achats absents de la soumission restent inclus dans les
+                                        dépenses totales, sans obligation d’associer les produits.
+                                    </p>
                                     <div className="space-y-1 max-h-80 overflow-y-auto">
                                         {comparisons.matched.map(row => (
                                             <div key={row.key} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 py-2 text-xs">
@@ -385,7 +389,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                                 <span className={row.exceeded ? 'text-red-300 tabular-nums' : 'text-slate-300 tabular-nums'}>
                                                     Rapproché : {row.orderedQty} / {row.estimatedQty} {row.unit}
                                                 </span>
-                                                <span className="text-slate-400 tabular-nums">{comparisons.unmatched.length ? "Écart provisoire" : "Reste estimatif " + row.remainingQty}</span>
+                                                <span className="text-slate-400 tabular-nums">Reste théorique {row.remainingQty}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -394,11 +398,11 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                         {comparisons.outsideBudget.length > 0 &&
                                             ' · ' + comparisons.outsideBudget.length + ' ligne(s) classée(s) hors estimation.'}
                                     </p>
-                                    <PurchaseLineReconciliation
+                                    {!quoteBasedBudget&&<PurchaseLineReconciliation
                                         site={site} companyId={currentCompanyId} budgetLines={budgetLines}
                                         orders={orders} comparisons={comparisons} links={purchaseLinks}
                                         enabled={linkingEnabled} onUpdated={refresh}
-                                    />
+                                    />}
                                 </details>
                             )}
                         </>
@@ -489,25 +493,21 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                                 écart {money(row.impact)} HT</p>
                                         )}
                                     </div>}
-                                    {pendingPriceComparison.notInQuoteCount>0&&<p className="text-amber-200 text-xs">
-                                        {pendingPriceComparison.notInQuoteCount} article(s) de cette commande
-                                        ne figurent pas dans la soumission fournisseur :
-                                        { ' ' }{money(pendingPriceComparison.notInQuoteAmount)} HT engagés
-                                        sans prix soumissionné. Vérifiez s’il s’agit d’un achat additionnel.
-                                    </p>}
+                                    {pendingPriceComparison.notInQuoteCount>0&&<p className="text-slate-300 text-xs">
+                                        {pendingPriceComparison.notInQuoteCount} article(s) hors soumission :
+                                        {' '}{money(pendingPriceComparison.notInQuoteAmount)} HT inclus
+                                        dans le total engagé. Aucun rapprochement nécessaire.
+                                    </p>
                                     {pendingPriceComparison.needsReview.length>0&&<p className="text-amber-200 text-xs">
                                         {pendingPriceComparison.needsReview.length} ligne(s) avec
                                         une correspondance incertaine : vérifier les codes et unités.
                                     </p>}
-                                    {pendingPriceNeedsReview&&<label className="flex items-start gap-2 text-xs">
-                                        <input type="checkbox" checked={priceRiskAcknowledged}
-                                            onChange={e=>setPriceRiskAcknowledged(e.target.checked)}/>
-                                        Je reconnais les écarts ou les références manquantes et autorise
-                                        l’enregistrement de cette commande sans modifier les prix de la soumission.
-                                    </label>}
-                                    {!pendingPriceNeedsReview&&<p className="text-emerald-200 text-xs">
-                                        Tous les prix reconnus respectent la soumission fournisseur.
+                                    {pendingPriceWarning&&<p role="status" className="text-amber-200 text-xs">
+                                        Les alertes de prix restent visibles sans bloquer la saisie de la commande.
                                     </p>}
+                                    {!pendingPriceWarning&&supplierHasQuote&&<p className="text-emerald-200 text-xs">
+                                        Aucun dépassement détecté parmi les produits rapprochés.
+                                    </p>
                                 </div>
                             )}
                             {shippingCheck.requiresOverride && (
@@ -525,7 +525,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                 <span>J’ai vérifié que le nom de chantier indiqué à la livraison correspond bien à <strong>{site.name}</strong>. Le numéro PO seul ne prouve pas le chantier.</span>
                             </label>
                             <button type="button" onClick={saveOrder} disabled={busy || !shippingVerified || !shippingCheck.canAccept ||
-                                    (pendingPriceNeedsReview&&!priceRiskAcknowledged) || site.status !== 'active'}
+                                    site.status !== 'active'}
                                 className="min-h-11 w-full rounded-lg bg-blue-600 font-semibold disabled:opacity-50">
                                 {busy ? 'Enregistrement…' : 'Valider la commande'}
                             </button>
