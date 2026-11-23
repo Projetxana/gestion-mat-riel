@@ -95,6 +95,24 @@ test('newest same-supplier quotation wins; historical references remain intact',
   {...quoteLines[0],id:999,quote_id:'q2',unit_cost:8.5}]});
  assert.equal(r.lines[0].status,'below');
 });
+test('non-quoted purchases never force confirmation or automatic SKU pairing',()=>{
+ const order=[
+  {id:99,order_id:'order1',item_code:'MISSING-FROM-QUOTE',
+   unit:'UN',quantity:3,unit_cost:4,amount:12},
+ ];
+ const comparison=compare({orderLines:order});
+ assert.equal(comparison.notInQuoteCount,1);
+ assert.equal(comparison.needsReview.length,0);
+ assert.equal(comparison.overpriceCount,0);
+ const panel=readFileSync(new URL('../src/components/PurchaseBudgetPanel.jsx',import.meta.url),'utf8');
+ const priceRule=panel.split("const priceReview=mode==='order'&&")[1]?.split("if(parsed.status")[0];
+ assert.ok(priceRule);
+ assert.doesNotMatch(priceRule,/notInQuoteCount|!matchingQuote/);
+ const gate=panel.split('const pendingPriceNeedsReview=Boolean(pendingOrder&&(')[1]?.split('));')[0];
+ assert.ok(gate);
+ assert.doesNotMatch(gate,/notInQuoteCount|!supplierHasQuote/);
+ assert.match(panel,/priceRiskAcknowledged/);
+});
 test('quotation source count, quote number, prices and printed total must be confirmed',()=>{
  const data={
   site,rows:[{item_code:'009V.2',description:'Manchon',unit:'UN',
@@ -121,6 +139,12 @@ test('UI compares prices in both pre-import confirmation and recorded order view
  assert.match(panel,/SupplierPriceAlertsPanel/);
  assert.match(panel,/pendingPriceComparison/);
  assert.match(panel,/priceRiskAcknowledged/);
+ assert.match(panel,/pendingPriceNeedsReview/);
+ assert.match(panel,/quoteBasedBudget/);
+ assert.match(panel,/!quoteBasedBudget&&<PurchaseLineReconciliation/);
+ assert.match(panel,/Aucune correspondance n’est demandée/);
+ assert.match(alerts,/Aucune intervention requise/);
+ assert.doesNotMatch(alerts,/Il s’agit d’un produit du devis sous une référence différente/);
  assert.match(alerts,/overpriceCount/);
  assert.match(alerts,/Articles commandés hors soumission/);
  assert.match(alerts,/Aucune hausse détectée sur les lignes/);

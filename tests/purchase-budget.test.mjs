@@ -61,6 +61,17 @@ test('budget accounting uses confirmed orders only; receptions have no cost effe
     assert.deepEqual(totals, {initial:500, committed:280, varianceCommitted:-220, uncommitted:220});
 });
 
+test('A1 Cash & Carry global spending includes unquoted purchases without changing Flocor budget',()=>{
+    const flocorBudget=[{amount:57062.03}];
+    const confirmedOrders=[{amount:37726.82},{amount:217.18}];
+    const totals=calculatePurchaseBudget(flocorBudget,confirmedOrders);
+    assert.equal(totals.initial,57062.03);
+    assert.equal(totals.committed,37944);
+    assert.equal(totals.uncommitted,19118.03);
+    assert.equal(totals.varianceCommitted,-19118.03);
+    // No extra line is added to the Flocor source budget.
+    assert.equal(flocorBudget.length,1);
+});
 test('mismatched shipping site is blocked without explicit site-name override', () => {
     assert.equal(shippingProjectVerification('DJ4 S.E.C.', 'DJ4 SEC').canAccept, true);
     assert.equal(shippingProjectVerification('Orélis Jarry', 'DJ4 S.E.C.').canAccept, false);
