@@ -108,7 +108,10 @@ test('non-quoted purchases never force confirmation or automatic SKU pairing',()
  const priceRule=panel.split("const priceReview=mode==='order'&&")[1]?.split("if(parsed.status")[0];
  assert.ok(priceRule);
  assert.doesNotMatch(priceRule,/notInQuoteCount|!matchingQuote/);
- assert.doesNotMatch(panel,/pendingPriceNeedsReview|priceRiskAcknowledged/);
+ const gate=panel.split('const pendingPriceNeedsReview=Boolean(pendingOrder&&(')[1]?.split('));')[0];
+ assert.ok(gate);
+ assert.doesNotMatch(gate,/notInQuoteCount|!supplierHasQuote/);
+ assert.match(panel,/priceRiskAcknowledged/);
 });
 test('quotation source count, quote number, prices and printed total must be confirmed',()=>{
  const data={
@@ -135,10 +138,11 @@ test('UI compares prices in both pre-import confirmation and recorded order view
  assert.match(panel,/SupplierPriceReferencePanel/);
  assert.match(panel,/SupplierPriceAlertsPanel/);
  assert.match(panel,/pendingPriceComparison/);
- assert.doesNotMatch(panel,/priceRiskAcknowledged|pendingPriceNeedsReview/);
+ assert.match(panel,/priceRiskAcknowledged/);
+ assert.match(panel,/pendingPriceNeedsReview/);
  assert.match(panel,/quoteBasedBudget/);
  assert.match(panel,/!quoteBasedBudget&&<PurchaseLineReconciliation/);
- assert.match(panel,/Aucun rapprochement nécessaire/);
+ assert.match(panel,/Aucune correspondance n’est demandée/);
  assert.match(alerts,/Aucune intervention requise/);
  assert.doesNotMatch(alerts,/Il s’agit d’un produit du devis sous une référence différente/);
  assert.match(alerts,/overpriceCount/);
