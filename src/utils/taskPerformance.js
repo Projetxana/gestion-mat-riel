@@ -12,30 +12,37 @@ export const computeTaskHours = ({
         const end = Date.parse(row.corrected_end_at || row.punch_end_at);
         if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end > Date.now()) continue;
         const key = String(row.section_id);
-        hoursByTask.set(key, (hoursByTask.get(key) || 0) + (end - start) / 3600000);
+        const hours=(end-start)/3600000;
+        const source=hoursByTask.get(key) || {all:0,manual:0,employee:0};
+        source.all+=hours;
+        // The time-sheet has two kinds of entries: manual_entry=true is
+        // also MANUAL, so it may already be represented in completed_hours.
+        if(row.manual_entry===true) source.manual+=hours;
+        else source.employee+=hours;
+        hoursByTask.set(key,source);
     }
     return tasks.map(task => {
         const budget = Number(task.planned_hours) || 0;
         const historical = Math.max(0, Number(task.completed_hours) || 0);
-        const sessionsHours = hoursByTask.get(String(task.id)) || 0;
-        // Historical manually entered time is always a valid recorded fact.
-        // If there is no punch for the task there can be no overlap. When
-        // both sources exist, only sum them if explicitly distinguished by
-        // the administrator for this site, or if previously IPMO-confirmed.
-        // Crucially, this display setting never publishes a performance report.
-        const overlapUnverified = historical > 0 && sessionsHours > 0 &&
-            !manualHoursDistinct && historyMode === 'unverified';
-        const actual = manualHoursDistinct || historyMode === 'additive'
-            ? historical + sessionsHours
-            : historical > 0 && sessionsHours === 0
-                ? historical
-                : historyMode === 'sessions_only' || historical === 0
-                    ? sessionsHours
-                    : null;
+        const {all:sessionsHours,manual:manualSessionHours,employee:employeePunchHours}
+            = hoursByTask.get(String(task.id)) || {all:0,manual:0,employee:0};
+        // An administrator can confirm that manual start-up hours are
+        // distinct from EMPLOYEE punches, but that does not establish whether
+        // manually entered time-sheet sessions overlap the old task totals.
+        // Keep those time-sheet rows visible but do not add them silently.
+        const manualSessionOverlap=historical>0 && manualSessionHours>0 &&
+            historyMode!=='additive';
+        let actual;
+        if(historyMode==='additive') actual=historical+sessionsHours;
+        else if(manualHoursDistinct && historical>0) actual=historical+employeePunchHours;
+        else if(historical>0 && sessionsHours===0) actual=historical;
+        else if(historyMode==='sessions_only' || historical===0) actual=sessionsHours;
+        else actual=null;
+        const overlapUnverified=actual===null;
         return {
-            ...task, budget, actual, historical, sessionsHours,
-            overlapUnverified,
-            manualHoursDistinct,
+            ...task,budget,actual,historical,sessionsHours,
+            manualSessionHours,employeePunchHours,manualSessionOverlap,
+            overlapUnverified,manualHoursDistinct,
         };
     });
 };
