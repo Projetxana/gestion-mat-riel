@@ -5,6 +5,7 @@ import { X, MapPin, Hammer, ExternalLink } from 'lucide-react';
 import MaterialDetailsModal from './MaterialDetailsModal';
 import SiteFormModal from './SiteFormModal';
 import SitePerformancePanel from './SitePerformancePanel';
+import StartupHoursPolicyPanel from './StartupHoursPolicyPanel';
 
 const SiteDetailsModal = ({ site: initialSite, onClose }) => {
     const { materials, sites, currentUser, saasSession, currentCompanyId, deleteSite } = useAppContext();
@@ -130,6 +131,7 @@ const SiteDetailsModal = ({ site: initialSite, onClose }) => {
                         </div>
                     </div>
 
+                    <StartupHoursPolicyPanel site={site}/>
                     <SitePerformancePanel site={site} />
 
                     <h3 className="text-lg font-bold mb-4">Liste du Matériel</h3>

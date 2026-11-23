@@ -1,6 +1,10 @@
 // Task bars are based on currently recorded hours. 100%-completion badges
 // MUST use the immutable task snapshot from the last validated IPMO report.
-export const computeTaskHours = ({ tasks = [], sessions = [], siteId, historyMode = 'unverified' }) => {
+export const computeTaskHours = ({
+    tasks = [], sessions = [], siteId, historyMode = 'unverified',
+    // Site-level, admin-confirmed policy independent from the IPMO report.
+    manualHoursDistinct = false,
+}) => {
     const hoursByTask = new Map();
     for (const row of sessions) {
         if (String(row.site_id) !== String(siteId) || !row.punch_end_at) continue;
@@ -14,13 +18,25 @@ export const computeTaskHours = ({ tasks = [], sessions = [], siteId, historyMod
         const budget = Number(task.planned_hours) || 0;
         const historical = Math.max(0, Number(task.completed_hours) || 0);
         const sessionsHours = hoursByTask.get(String(task.id)) || 0;
-        // Unknown overlap of legacy hours and punches: report no combined actual.
-        const actual = historyMode === 'sessions_only' || historical === 0
-            ? sessionsHours
-            : historyMode === 'additive'
-                ? historical + sessionsHours
-                : null;
-        return { ...task, budget, actual, historical, sessionsHours };
+        // Historical manually entered time is always a valid recorded fact.
+        // If there is no punch for the task there can be no overlap. When
+        // both sources exist, only sum them if explicitly distinguished by
+        // the administrator for this site, or if previously IPMO-confirmed.
+        // Crucially, this display setting never publishes a performance report.
+        const overlapUnverified = historical > 0 && sessionsHours > 0 &&
+            !manualHoursDistinct && historyMode === 'unverified';
+        const actual = manualHoursDistinct || historyMode === 'additive'
+            ? historical + sessionsHours
+            : historical > 0 && sessionsHours === 0
+                ? historical
+                : historyMode === 'sessions_only' || historical === 0
+                    ? sessionsHours
+                    : null;
+        return {
+            ...task, budget, actual, historical, sessionsHours,
+            overlapUnverified,
+            manualHoursDistinct,
+        };
     });
 };
 

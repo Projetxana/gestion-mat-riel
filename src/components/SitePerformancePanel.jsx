@@ -6,6 +6,7 @@ import { useCompanyPerformance } from '../hooks/useCompanyPerformance';
 import TaskPerformanceBars from './TaskPerformanceBars';
 import PerformanceTrends from './PerformanceTrends';
 import { computeTaskHours } from '../utils/taskPerformance';
+import {useSiteManualHourPolicy} from '../hooks/useSiteManualHourPolicy';
 
 const number = (value, digits = 1) =>
     Number(value || 0).toLocaleString('fr-CA', {
@@ -26,6 +27,7 @@ const statusColor = (index) => {
 const SitePerformancePanel = ({ site, onReportSaved }) => {
     const { projectTasks, timeSessions } = useAppContext();
     const { enabled, isAdmin, loading: accessLoading } = useCompanyPerformance();
+    const {manualHoursDistinct,loading:sourceLoading}=useSiteManualHourPolicy(site);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -101,7 +103,9 @@ const SitePerformancePanel = ({ site, onReportSaved }) => {
         sessions: timeSessions || [],
         siteId: site?.id,
         historyMode: latest?.history_mode || 'unverified',
-    }), [siteTasks, timeSessions, site?.id, latest?.history_mode]);
+        // Validated only for the operational hours display; IPMO remains untouched.
+        manualHoursDistinct: !sourceLoading && manualHoursDistinct,
+    }), [siteTasks, timeSessions, site?.id, latest?.history_mode, manualHoursDistinct, sourceLoading]);
 
     if (accessLoading || !isAdmin || !enabled || site?.status === 'archived') return null;
     const earnedPreview = siteTasks.reduce((sum, task) =>
@@ -204,7 +208,7 @@ const SitePerformancePanel = ({ site, onReportSaved }) => {
                         </p>
                     )}
                     <p className="text-xs text-slate-400">
-                        Résultats figés au dernier bilan. Les barres des tâches ci-dessous reflètent les heures enregistrées depuis.
+                        Résultats figés au dernier bilan. Les barres des tâches ci-dessous affichent les heures manuelles et les pointages disponibles. Le bilan IPMO reste figé.
                     </p>
                 </div>
             ) : (
