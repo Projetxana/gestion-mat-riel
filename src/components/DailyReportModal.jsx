@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Camera, Send, Trash2, Plus, Image as ImageIcon, RotateCcw } from 'lucide-react';
+import { X, Camera, Send, Trash2, Plus, Image as ImageIcon, ZoomIn, ZoomOut, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
+import { prepareReportPhoto, getPhotoExtension, humanFileSize, photoResolutionWarning } from '../utils/dailyReportMedia';
 
 const LEVELS = [
     "Sous-sol 1", "Sous-sol 2", "Rez-de-chaussée",
@@ -23,75 +24,21 @@ const DailyReportModal = ({ onClose }) => {
         { id: Date.now(), level: 'Rez-de-chaussée', customLevel: '', roomDetail: '', photos: [] }
     ]);
 
-    // Camera State
-    const [isCameraOpen, setIsCameraOpen] = useState(false);
-    const [cameraSectionId, setCameraSectionId] = useState(null);
-    const [stream, setStream] = useState(null);
-    const videoRef = useRef(null);
-    const canvasRef = useRef(null);
-
-    // --- CAMERA LOGIC ---
-    useEffect(() => {
-        if (isCameraOpen) {
-            startCamera();
-        } else {
-            stopCamera();
-        }
-        return () => stopCamera();
-    }, [isCameraOpen]);
-
-    const startCamera = async () => {
-        try {
-            const mediaStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' },
-                audio: false
-            });
-            setStream(mediaStream);
-            if (videoRef.current) {
-                videoRef.current.srcObject = mediaStream;
-            }
-        } catch (err) {
-            console.error("Camera Error:", err);
-            alert("Impossible d'accéder à la caméra. Vérifiez les permissions.");
-            setIsCameraOpen(false);
-        }
+    // A real full-resolution still comes from the native camera's file picker.
+    // Preview is a separate, mandatory step before an email can be sent.
+    const [photoPreview, setPhotoPreview] = useState(null);
+    const [photoZoom, setPhotoZoom] = useState(1);
+    const [showSendReview, setShowSendReview] = useState(false);
+    const [photoError, setPhotoError] = useState('');
+    const [preparingPhotos, setPreparingPhotos] = useState(false);
+    const photosRef = useRef([]);
+    const currentPreviewPhoto = photoPreview
+        ? sections.find(section => section.id === photoPreview.sectionId)?.photos[photoPreview.index]
+        : null;
+    const showPhoto = (sectionId, index) => {
+        setPhotoZoom(1);
+        setPhotoPreview({ sectionId, index });
     };
-
-    const stopCamera = () => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            setStream(null);
-        }
-    };
-
-    const takePhoto = () => {
-        if (videoRef.current && canvasRef.current && cameraSectionId) {
-            const video = videoRef.current;
-            const canvas = canvasRef.current;
-
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0);
-
-            canvas.toBlob((blob) => {
-                const url = URL.createObjectURL(blob);
-                addPhotoToSection(cameraSectionId, { blob, previewUrl: url });
-            }, 'image/jpeg', 0.8);
-        }
-    };
-
-    const openCamera = (sectionId) => {
-        setCameraSectionId(sectionId);
-        setIsCameraOpen(true);
-    };
-
-    const closeCamera = () => {
-        setIsCameraOpen(false);
-        setCameraSectionId(null);
-    };
-
 
     // --- SECTIONS LOGIC ---
     const addSection = () => {
@@ -102,57 +49,133 @@ const DailyReportModal = ({ onClose }) => {
     };
 
     const removeSection = (sectionId) => {
-        if (sections.length === 1) return;
-        setSections(prev => prev.filter(s => s.id !== sectionId));
+        if (sections.length === 1 || isUploading) return;
+        const deleted = sections.find(section => section.id === sectionId);
+        deleted?.photos.forEach(photo => URL.revokeObjectURL(photo.previewUrl));
+        if (photoPreview?.sectionId === sectionId) setPhotoPreview(null);
+        setSections(prev => prev.filter(section => section.id !== sectionId));
     };
 
     const updateSection = (sectionId, field, value) => {
         setSections(prev => prev.map(s => s.id === sectionId ? { ...s, [field]: value } : s));
     };
 
-    const addPhotoToSection = (sectionId, photoObj) => {
-        setSections(prev => prev.map(s =>
-            s.id === sectionId ? { ...s, photos: [...s.photos, photoObj] } : s
-        ));
+    const addFilesToSection = async (sectionId, fileList, previewImmediately = false) => {
+        const files = Array.from(fileList || []);
+        if (!files.length || isUploading) return;
+        setPhotoError('');
+        setPreparingPhotos(true);
+        try {
+            const received = await Promise.allSettled(files.map(prepareReportPhoto));
+            const photos = received.filter(result => result.status === 'fulfilled')
+                .map(result => result.value);
+            const errors = received.filter(result => result.status === 'rejected')
+                .map(result => result.reason?.message || 'Image illisible.');
+            if (photos.length) {
+                const firstNewIndex = sections.find(section => section.id === sectionId)?.photos.length || 0;
+                setSections(prev => prev.map(section =>
+                    section.id === sectionId
+                        ? { ...section, photos: [...section.photos, ...photos] }
+                        : section
+                ));
+                // Present the real captured still immediately to inspect focus
+                // and retake before the user returns to the report.
+                if (previewImmediately) showPhoto(sectionId, firstNewIndex);
+            }
+            if (errors.length) setPhotoError(errors.join(' '));
+        } finally {
+            setPreparingPhotos(false);
+        }
     };
 
-    const addFilesToSection = (sectionId, fileList) => {
-        if (!fileList || fileList.length === 0) return;
-        const newPhotos = Array.from(fileList).map(file => ({
-            blob: file, // Treating File as Blob
-            previewUrl: URL.createObjectURL(file)
-        }));
-        setSections(prev => prev.map(s =>
-            s.id === sectionId ? { ...s, photos: [...s.photos, ...newPhotos] } : s
-        ));
+    const replacePreviewPhoto = async (file) => {
+        if (!file || !photoPreview || isUploading) return;
+        setPhotoError('');
+        setPreparingPhotos(true);
+        try {
+            const replacement = await prepareReportPhoto(file);
+            const target = sections.find(section => section.id === photoPreview.sectionId);
+            const previous = target?.photos[photoPreview.index];
+            if (!previous) {
+                URL.revokeObjectURL(replacement.previewUrl);
+                return;
+            }
+            setSections(prev => prev.map(section => {
+                if (section.id !== photoPreview.sectionId) return section;
+                const photos = [...section.photos];
+                photos[photoPreview.index] = replacement;
+                return { ...section, photos };
+            }));
+            URL.revokeObjectURL(previous.previewUrl);
+            setPhotoZoom(1);
+        } catch (error) {
+            setPhotoError(error.message || 'Impossible de reprendre la photo.');
+        } finally {
+            setPreparingPhotos(false);
+        }
     };
 
     const removePhotoFromSection = (sectionId, photoIndex) => {
-        setSections(prev => prev.map(s => {
-            if (s.id !== sectionId) return s;
-            const updatedPhotos = [...s.photos];
-            URL.revokeObjectURL(updatedPhotos[photoIndex].previewUrl); // Cleanup
-            updatedPhotos.splice(photoIndex, 1);
-            return { ...s, photos: updatedPhotos };
+        if (isUploading) return;
+        const photo = sections.find(section => section.id === sectionId)?.photos[photoIndex];
+        if (photo) URL.revokeObjectURL(photo.previewUrl);
+        setSections(prev => prev.map(section => {
+            if (section.id !== sectionId) return section;
+            return { ...section, photos: section.photos.filter((_, i) => i !== photoIndex) };
         }));
+        if (photoPreview?.sectionId === sectionId) setPhotoPreview(null);
     };
 
-    // Cleanup URLs on unmount
+    // Revoke ALL temporary previews on unmount, including images taken later.
     useEffect(() => {
-        return () => {
-            sections.forEach(s => s.photos.forEach(p => URL.revokeObjectURL(p.previewUrl)));
-        };
+        photosRef.current = sections.flatMap(section => section.photos);
+    }, [sections]);
+    useEffect(() => () => {
+        photosRef.current.forEach(photo => URL.revokeObjectURL(photo.previewUrl));
     }, []);
+
+    const validateReport = () => {
+        if (!selectedSiteId) {
+            setPhotoError('Veuillez sélectionner un chantier.');
+            return false;
+        }
+        const selectedSite = sites.find(site => String(site.id) === String(selectedSiteId));
+        if (!selectedSite?.email) {
+            setPhotoError('Ce chantier ne possède pas de destinataire courriel configuré.');
+            return false;
+        }
+        if (!sections.some(section => section.photos.length)) {
+            setPhotoError('Veuillez ajouter au moins une photo.');
+            return false;
+        }
+        if (preparingPhotos) {
+            setPhotoError('Les photos sont encore en préparation.');
+            return false;
+        }
+        setPhotoError('');
+        return true;
+    };
+
+    const openSendReview = () => {
+        if (!validateReport()) return;
+        setPhotoPreview(null);
+        setShowSendReview(true);
+    };
 
     // --- REPORT GENERATION ---
     const generateReportImage = async (siteName, userName, date, textNotes) => {
+        // A 1600px report cover avoids the pixelation of the old 800px JPEG.
+        // The photographed documents are emailed independently at full resolution.
         const width = 800;
-        let height = 600 + (sections.length * 40);
-
+        const height = Math.max(720, 590 + sections.length * 36 +
+            Math.ceil((textNotes || '').length / 34) * 36);
+        const pixelScale = 2;
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = width * pixelScale;
+        canvas.height = height * pixelScale;
         const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Impossible de préparer le rapport.');
+        ctx.scale(pixelScale, pixelScale);
 
         // Background
         ctx.fillStyle = '#ffffff';
@@ -231,27 +254,19 @@ const DailyReportModal = ({ onClose }) => {
         ctx.fillStyle = '#64748b';
         ctx.font = 'italic 16px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText("Généré par Antigravity", width / 2, height - 20);
+        ctx.fillText("Généré par BuildTrack", width / 2, height - 20);
 
         return new Promise((resolve, reject) => {
             canvas.toBlob((blob) => {
                 if (blob) resolve(blob);
                 else reject(new Error("Erreur génération image"));
-            }, 'image/jpeg', 0.8);
+            }, 'image/jpeg', 0.96);
         });
     };
 
     const handleSend = async () => {
-        if (!selectedSiteId) {
-            alert("Veuillez sélectionner un chantier.");
-            return;
-        }
-
-        const totalPhotos = sections.reduce((acc, s) => acc + s.photos.length, 0);
-        if (totalPhotos === 0) {
-            alert("Veuillez ajouter au moins une photo.");
-            return;
-        }
+        // Sending is possible only after viewing the confirmation screen.
+        if (!showSendReview || isUploading || !validateReport()) return;
 
         setIsUploading(true);
         setUploadProgress(0);
@@ -265,46 +280,60 @@ const DailyReportModal = ({ onClose }) => {
             const dateStr = new Date().toLocaleDateString('fr-FR');
             const userName = currentUser?.name || 'Technicien';
             const timestamp = Date.now();
+            const safeSite = siteName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 65);
+            const uniquePrefix = `reports/${selectedSite.id}/${timestamp}_${crypto.randomUUID()}`;
 
-            // 1. Doc Image
+            // The cover is rendered at 1600px. Photos are uploaded separately
+            // at exactly the original resolution reviewed by the employee.
             const docBlob = await generateReportImage(siteName, userName, dateStr, notes);
-            const docFileName = `Rapport_${dateStr.replace(/\//g, '-')}_${siteName.replace(/\s+/g, '_')}.jpg`;
+            const docFileName = `Rapport_${dateStr.replace(/\//g, '-')}_${safeSite}.jpg`;
+            const docStoragePath = `${uniquePrefix}/${docFileName}`;
 
             const { error: docError } = await supabase.storage
                 .from('delivery-notes')
-                .upload(docFileName, docBlob);
+                .upload(docStoragePath, docBlob, {
+                    contentType: 'image/jpeg',
+                    upsert: false
+                });
             if (docError) throw docError;
 
             const { data: docUrlData } = supabase.storage
                 .from('delivery-notes')
-                .getPublicUrl(docFileName);
+                .getPublicUrl(docStoragePath);
 
             const attachments = [
                 { filename: docFileName, path: docUrlData.publicUrl }
             ];
 
-            // 2. Photos
             let processedCount = 0;
             for (const section of sections) {
-                const levelName = (section.level === 'Autre' ? (section.customLevel || 'Autre') : section.level)
-                    .replace(/\s+/g, '_')
-                    .replace(/[^a-zA-Z0-9_]/g, '');
+                const levelName = (section.level === 'Autre'
+                    ? (section.customLevel || 'Autre')
+                    : section.level)
+                    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 50) || 'Zone';
 
                 for (let i = 0; i < section.photos.length; i++) {
-                    const { blob } = section.photos[i];
-                    const fileName = `${levelName}_${i + 1}_${timestamp}_${processedCount}.jpg`;
+                    const photo = section.photos[i];
+                    const extension = getPhotoExtension(photo.mimeType || photo.blob.type);
+                    const fileName = `${levelName}_Photo_${i + 1}.${extension}`;
+                    const photoStoragePath = `${uniquePrefix}/photo_${processedCount}_${fileName}`;
 
                     const { error } = await supabase.storage
                         .from('delivery-notes')
-                        .upload(fileName, blob);
+                        .upload(photoStoragePath, photo.blob, {
+                            contentType: photo.mimeType || 'image/jpeg',
+                            upsert: false
+                        });
                     if (error) throw error;
 
                     const { data: publicData } = supabase.storage
                         .from('delivery-notes')
-                        .getPublicUrl(fileName);
+                        .getPublicUrl(photoStoragePath);
 
                     attachments.push({
-                        filename: `${levelName}_Photo_${i + 1}.jpg`,
+                        filename: fileName,
                         path: publicData.publicUrl
                     });
 
@@ -350,7 +379,8 @@ const DailyReportModal = ({ onClose }) => {
 
             addLog(`[EMAIL CONFIRMED] Rapport journalier envoyé par ${userName}`);
 
-            alert("Rapport envoyé !");
+            setShowSendReview(false);
+            alert("Rapport et photos haute définition envoyés !");
             onClose();
 
         } catch (error) {
@@ -364,28 +394,128 @@ const DailyReportModal = ({ onClose }) => {
     return (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col">
 
-            {/* CAMERA OVERLAY */}
-            {isCameraOpen && (
-                <div className="absolute inset-0 z-50 bg-black flex flex-col">
-                    <div className="flex-1 relative">
-                        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                        <canvas ref={canvasRef} className="hidden" />
-                        {/* Live Thumbnails Overlay */}
-                        <div className="absolute bottom-4 left-4 right-4 h-20 flex gap-2 overflow-x-auto">
-                            {sections.find(s => s.id === cameraSectionId)?.photos.slice(-5).map((p, idx) => (
-                                <img key={idx} src={p.previewUrl} className="h-full rounded border-2 border-white" alt="" />
-                            ))}
+            {/* FULL-SIZE PHOTO PREVIEW, BEFORE SENDING OR AFTER RETAKING */}
+            {photoPreview && currentPreviewPhoto && (
+                <div className="absolute inset-0 z-[90] flex flex-col bg-slate-950 text-white"
+                    role="dialog" aria-modal="true" aria-label="Aperçu de la photo"
+                    style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+                    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-700 bg-slate-900 p-3">
+                        <div>
+                            <h3 className="text-sm font-bold">Vérifier la netteté de la photo</h3>
+                            <p className="text-xs text-slate-300">
+                                {currentPreviewPhoto.width} × {currentPreviewPhoto.height} px · {humanFileSize(currentPreviewPhoto.blob.size)}
+                            </p>
                         </div>
+                        <button type="button" onClick={() => setPhotoPreview(null)}
+                            className="min-h-11 min-w-11 rounded-lg border border-slate-600 inline-flex items-center justify-center"
+                            aria-label="Fermer l’aperçu"><X size={20} /></button>
                     </div>
-                    <div className="h-32 bg-slate-900 flex items-center justify-around p-4">
-                        <button onClick={closeCamera} className="bg-slate-800 text-white p-4 rounded-full">
-                            <RotateCcw size={24} />
+                    <div className="flex items-center justify-center gap-3 bg-slate-900/90 py-2">
+                        <button type="button" onClick={() => setPhotoZoom(z => Math.max(1, z - 0.5))}
+                            disabled={photoZoom <= 1} aria-label="Réduire le zoom"
+                            className="min-w-11 min-h-11 rounded-lg border border-slate-600 disabled:opacity-40 flex items-center justify-center">
+                            <ZoomOut size={19} />
                         </button>
-                        <button onClick={takePhoto} className="w-20 h-20 rounded-full border-4 border-white bg-slate-800 flex items-center justify-center active:scale-95 transition-transform">
-                            <div className="w-16 h-16 rounded-full bg-white"></div>
+                        <span className="text-sm tabular-nums" aria-live="polite">{Math.round(photoZoom * 100)} %</span>
+                        <button type="button" onClick={() => setPhotoZoom(z => Math.min(3, z + 0.5))}
+                            disabled={photoZoom >= 3} aria-label="Agrandir pour vérifier les détails"
+                            className="min-w-11 min-h-11 rounded-lg border border-slate-600 disabled:opacity-40 flex items-center justify-center">
+                            <ZoomIn size={19} />
                         </button>
-                        <div className="w-14"></div> {/* Spacer */}
                     </div>
+                    <div className="min-h-0 flex-1 overflow-auto bg-black p-2">
+                        <img src={currentPreviewPhoto.previewUrl} alt="Photo complète du rapport à vérifier avant envoi"
+                            className="block mx-auto object-contain"
+                            style={{
+                                width: photoZoom > 1 ? `${Math.round(photoZoom * 100)}%` : 'auto',
+                                maxWidth: photoZoom > 1 ? 'none' : '100%',
+                                maxHeight: photoZoom > 1 ? 'none' : '100%',
+                            }} />
+                    </div>
+                    {photoResolutionWarning(currentPreviewPhoto.width, currentPreviewPhoto.height) && (
+                        <p role="alert" className="flex gap-2 items-center px-3 py-2 text-xs text-amber-200">
+                            <AlertTriangle size={16} />
+                            {photoResolutionWarning(currentPreviewPhoto.width, currentPreviewPhoto.height)}
+                        </p>
+                    )}
+                    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-700 p-3 bg-slate-900">
+                        <label className="min-h-11 flex items-center justify-center rounded-lg border border-blue-600 px-3 text-sm text-blue-100 cursor-pointer">
+                            <Camera size={17} className="mr-2" /> Reprendre
+                            <input type="file" accept="image/*" capture="environment" className="sr-only"
+                                disabled={preparingPhotos || isUploading}
+                                onChange={e => {
+                                    const file = e.target.files?.[0];
+                                    e.target.value = '';
+                                    void replacePreviewPhoto(file);
+                                }} />
+                        </label>
+                        <button type="button"
+                            onClick={() => removePhotoFromSection(photoPreview.sectionId, photoPreview.index)}
+                            disabled={isUploading}
+                            className="min-h-11 rounded-lg border border-red-700 px-3 text-sm text-red-200">
+                            Supprimer
+                        </button>
+                        <button type="button" onClick={() => setPhotoPreview(null)}
+                            className="min-h-11 rounded-lg bg-blue-600 px-4 font-semibold text-sm">
+                            Photo vérifiée
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* EXPLICIT PRE-SEND REVIEW, NO EMAIL BEFORE CONFIRMATION */}
+            {showSendReview && (
+                <div className="absolute inset-0 z-[70] flex flex-col bg-slate-950 text-white"
+                    role="dialog" aria-modal="true" aria-label="Vérification du rapport avant envoi"
+                    style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+                    <header className="flex shrink-0 justify-between items-center gap-3 border-b border-slate-700 p-4 bg-slate-900">
+                        <div>
+                            <h3 className="font-bold text-lg">Vérifier avant d’envoyer</h3>
+                            <p className="text-xs text-slate-300">Touchez chaque image pour contrôler sa netteté et ses détails.</p>
+                        </div>
+                        <button type="button" onClick={() => setShowSendReview(false)} disabled={isUploading}
+                            className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border border-slate-600"
+                            aria-label="Retour au rapport"><X size={20} /></button>
+                    </header>
+                    <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm space-y-1">
+                            <p><strong>Chantier :</strong> {sites.find(site => String(site.id) === String(selectedSiteId))?.name}</p>
+                            <p className="break-words"><strong>Destinataire :</strong> {sites.find(site => String(site.id) === String(selectedSiteId))?.email}</p>
+                            <p><strong>Photos :</strong> {sections.reduce((sum, section) => sum + section.photos.length, 0)}</p>
+                            <p className="text-xs text-slate-400">Les images en pièces jointes conservent leur résolution. Vérifiez leur lisibilité avant confirmation.</p>
+                        </div>
+                        {sections.map(section => section.photos.length > 0 && (
+                            <div key={section.id} className="space-y-2">
+                                <h4 className="text-sm font-semibold">{section.level === 'Autre' ? section.customLevel || 'Autre' : section.level}
+                                    {section.roomDetail ? ' · ' + section.roomDetail : ''}</h4>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                    {section.photos.map((photo, index) => (
+                                        <button type="button" key={photo.previewUrl}
+                                            onClick={() => showPhoto(section.id, index)}
+                                            className="rounded-lg border border-slate-700 bg-slate-900 p-2 text-left min-h-11">
+                                            <img src={photo.previewUrl} alt={`Photo ${index + 1}, ouvrir en grand`}
+                                                className="w-full h-36 object-contain bg-black rounded" />
+                                            <p className="text-xs mt-2">Photo {index + 1} · {photo.width} × {photo.height} px</p>
+                                            {photoResolutionWarning(photo.width, photo.height) && (
+                                                <p className="text-xs text-amber-200">Résolution faible — vérifier</p>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                        {photoError && <p role="alert" className="text-sm text-red-200">{photoError}</p>}
+                    </div>
+                    <footer className="shrink-0 grid grid-cols-2 gap-2 border-t border-slate-700 bg-slate-900 p-3">
+                        <button type="button" onClick={() => setShowSendReview(false)}
+                            disabled={isUploading} className="min-h-12 rounded-xl border border-slate-600 text-sm font-semibold">
+                            Modifier
+                        </button>
+                        <button type="button" onClick={handleSend} disabled={isUploading || preparingPhotos}
+                            className="min-h-12 rounded-xl bg-blue-600 text-white text-sm font-bold flex gap-2 items-center justify-center disabled:opacity-50">
+                            <Send size={18} /> {isUploading ? `Envoi… ${uploadProgress}%` : 'Confirmer l’envoi'}
+                        </button>
+                    </footer>
                 </div>
             )}
 
@@ -465,42 +595,55 @@ const DailyReportModal = ({ onClose }) => {
                                 />
                             )}
 
-                            {/* Photos Grid */}
+                            {/* Native camera stills retain full-resolution pixels. */}
                             <div className="grid grid-cols-3 gap-2">
                                 {section.photos.map((photo, pIndex) => (
-                                    <div key={pIndex} className="relative aspect-square rounded-lg overflow-hidden border border-slate-700">
-                                        <img src={photo.previewUrl} className="w-full h-full object-cover" alt="" />
-                                        <button
+                                    <div key={photo.previewUrl} className="relative aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black">
+                                        <button type="button"
+                                            onClick={() => showPhoto(section.id, pIndex)}
+                                            className="w-full h-full focus-visible:outline-2 focus-visible:outline-blue-400"
+                                            aria-label={`Agrandir la photo ${pIndex + 1}, ${photo.width} par ${photo.height} pixels`}>
+                                            <img src={photo.previewUrl} className="w-full h-full object-contain"
+                                                alt={`Photo ${pIndex + 1} du rapport`} />
+                                        </button>
+                                        <button type="button"
                                             onClick={() => removePhotoFromSection(section.id, pIndex)}
-                                            className="absolute top-0 right-0 bg-red-500 text-white p-1 rounded-bl shadow-md"
-                                        >
-                                            <X size={12} />
+                                            disabled={isUploading}
+                                            aria-label={`Supprimer la photo ${pIndex + 1}`}
+                                            className="absolute top-0 right-0 min-w-10 min-h-10 inline-flex items-center justify-center bg-red-700 text-white rounded-bl shadow-md">
+                                            <X size={18} />
                                         </button>
                                     </div>
                                 ))}
 
-                                {/* Add Button Group */}
                                 <div className="aspect-square bg-slate-800 rounded-lg flex flex-col gap-1 overflow-hidden">
-                                    {/* Camera Button */}
-                                    <button
-                                        onClick={() => openCamera(section.id)}
-                                        className="flex-1 w-full flex flex-col items-center justify-center hover:bg-slate-700 transition-colors bg-slate-800/50"
-                                    >
-                                        <Camera className="text-blue-400 mb-1" size={20} />
-                                        <span className="text-[9px] text-blue-400 font-bold uppercase">Caméra</span>
-                                    </button>
-                                    <div className="h-[1px] bg-slate-700 w-full"></div>
-                                    {/* Gallery Button */}
-                                    <label className="flex-1 w-full flex flex-col items-center justify-center cursor-pointer hover:bg-slate-700 transition-colors bg-slate-800/50">
-                                        <ImageIcon className="text-slate-400 mb-1" size={20} />
-                                        <span className="text-[9px] text-slate-400 font-bold uppercase">Galerie</span>
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            multiple
-                                            className="hidden"
-                                            onChange={(e) => addFilesToSection(section.id, e.target.files)}
-                                        />
+                                    {/* The native camera picker takes a true still image, not a video frame. */}
+                                    <label className="flex-1 w-full flex flex-col items-center justify-center cursor-pointer hover:bg-slate-700 bg-slate-800/50">
+                                        <Camera className="text-blue-300 mb-1" size={21} />
+                                        <span className="text-[10px] text-blue-200 font-bold uppercase">Prendre photo</span>
+                                        <input type="file" accept="image/*" capture="environment" className="sr-only"
+                                            disabled={isUploading || preparingPhotos}
+                                            onChange={e => {
+                                                // FileList is live: copy before clearing the input so
+                                                // iPhone Safari does not discard the newly taken photo.
+                                                const files = Array.from(e.target.files || []);
+                                                e.target.value = '';
+                                                void addFilesToSection(section.id, files, true);
+                                            }} />
+                                    </label>
+                                    <div className="h-px bg-slate-700 w-full"></div>
+                                    <label className="flex-1 w-full flex flex-col items-center justify-center cursor-pointer hover:bg-slate-700 bg-slate-800/50">
+                                        <ImageIcon className="text-slate-300 mb-1" size={20} />
+                                        <span className="text-[10px] text-slate-300 font-bold uppercase">Galerie</span>
+                                        <input type="file" accept="image/*" multiple className="sr-only"
+                                            disabled={isUploading || preparingPhotos}
+                                            onChange={e => {
+                                                // FileList is live: copy before clearing the input so
+                                                // iPhone Safari does not discard the newly taken photo.
+                                                const files = Array.from(e.target.files || []);
+                                                e.target.value = '';
+                                                void addFilesToSection(section.id, files);
+                                            }} />
                                     </label>
                                 </div>
                             </div>
@@ -508,7 +651,12 @@ const DailyReportModal = ({ onClose }) => {
                     </div>
                 ))}
 
-                <button onClick={addSection} className="w-full py-4 border-2 border-dashed border-slate-700 rounded-xl flex items-center justify-center gap-2 text-slate-400 hover:text-white">
+                {photoError && <p role="alert" className="flex items-start gap-2 rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-100">
+                    <AlertTriangle size={18} className="shrink-0" /> {photoError}
+                </p>}
+                {preparingPhotos && <p role="status" className="text-sm text-blue-200">Préparation des photos en haute définition…</p>}
+                <button type="button" onClick={addSection} disabled={isUploading || preparingPhotos}
+                    className="w-full min-h-11 py-4 border-2 border-dashed border-slate-700 rounded-xl flex items-center justify-center gap-2 text-slate-400 hover:text-white disabled:opacity-50">
                     <Plus size={20} /><span className="font-bold">Ajouter un niveau</span>
                 </button>
                 <div className="h-24"></div>
@@ -516,11 +664,12 @@ const DailyReportModal = ({ onClose }) => {
 
             <div className="absolute bottom-0 w-full bg-slate-900 border-t border-slate-800 p-4 z-20">
                 <button
-                    onClick={handleSend}
-                    disabled={isUploading}
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white text-lg font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2"
+                    onClick={openSendReview}
+                    disabled={isUploading || preparingPhotos}
+                    className="w-full min-h-12 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-base font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2"
                 >
-                    {isUploading ? <span>Envoi... {uploadProgress}%</span> : <> <Send size={24} /> <span>Envoyer</span> </>}
+                    <CheckCircle2 size={22} />
+                    <span>Vérifier les photos et envoyer</span>
                 </button>
             </div>
         </div>
