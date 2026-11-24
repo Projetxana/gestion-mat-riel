@@ -70,6 +70,9 @@ test('delivery attachments preserve the image bytes, MIME and Atoom recipient', 
 test('the daily report mail also retains a defined photo count', () => {
   const send=daily.slice(daily.indexOf('const handleSend = async'));
   assert.match(send,/const totalPhotos = sections\.reduce\(/);
+  assert.match(daily,/\{photoPreview && currentPreviewPhoto && createPortal\(/);
+  assert.match(daily,/fixed inset-0 z-\[9999\]/);
+  assert.match(daily,/Voir en grand/);
   assert.match(send,/processedCount \/ totalPhotos/);
   assert.ok(transformSync(daily,{loader:'jsx'}).code.length>100);
 });
