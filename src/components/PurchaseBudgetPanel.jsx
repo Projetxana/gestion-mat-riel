@@ -427,7 +427,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                 Budget actif · {budgetLines.length} article(s) (estimation de base + avenants éventuels)
                              </p>
                              <SupplierPriceReferencePanel site={site} companyId={currentCompanyId}
-                                 quotes={priceQuotes} enabled={priceReferenceEnabled}
+                                 quotes={priceQuotes} quoteLines={priceQuoteLines}
+                                 enabled={priceReferenceEnabled}
                                  documents={purchaseDocuments} archiveEnabled={archiveEnabled}
                                  onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
                              <PurchaseBudgetRevisions site={site} companyId={currentCompanyId}
@@ -567,6 +568,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                     total_amount:orderTotals.get(item.id)}}
                                 site={site} companyId={currentCompanyId}
                                 documentRecord={purchaseDocuments.find(d=>d.source_kind==='order'&&String(d.source_id)===String(item.id))}
+                                detailLines={orderLines.filter(line=>String(line.order_id)===String(item.id))}
                                 onAttached={refresh} className="bg-slate-800">
                                 <div className="flex justify-between gap-2">
                                     <div className="min-w-0">
