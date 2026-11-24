@@ -36,7 +36,7 @@ test('camera still automatically opens in a full screen portal with a clear zoom
   assert.match(delivery, /if \(showImmediately\) openPreview\(firstNewIndex\)/);
   assert.match(delivery, /\{previewPhoto && createPortal\(/);
   assert.match(delivery, /fixed inset-0 z-\[9999\]/);
-  assert.match(delivery, /Aperçu grand format du bon de livraison/);
+  assert.match(delivery, /Aperçu grand format de \$\{documentMode\.previewLabel\}/);
   assert.match(delivery, /Math\.min\(4, z \+ 0\.5\)/);
   assert.match(delivery, /Voir en grand/);
   assert.match(delivery, /Conserver la photo/);
@@ -65,6 +65,29 @@ test('delivery attachments preserve the image bytes, MIME and Atoom recipient', 
   assert.equal(MAX_REPORT_PHOTO_BYTES,16*1024*1024);
   assert.equal(photoResolutionWarning(4000,3000),'');
   assert.match(photoResolutionWarning(800,600),/Résolution faible/);
+});
+
+test('invoice module shares full resolution camera with a distinct invoice email', () => {
+  const invoice=read('../src/components/InvoiceModal.jsx');
+  assert.match(dashboard, /import InvoiceModal from ['"]\.\.\/components\/InvoiceModal['"]/);
+  assert.match(dashboard, /\{showInvoiceModal && <InvoiceModal/);
+  assert.match(invoice, /<DeliveryNoteModal onClose=\{onClose\} mode="invoice"/);
+  assert.doesNotMatch(invoice, /getUserMedia|video\.videoWidth|canvas\.toBlob|<video/);
+
+  // The default camera must still be the delivery-note workflow.
+  assert.match(delivery, /mode = 'delivery'/);
+  assert.match(delivery, /invoice: \{/);
+  assert.match(delivery, /title: 'Scanner factures'/);
+  assert.match(delivery, /prefix: 'facture'/);
+  assert.match(delivery, /subject: 'Factures'/);
+  assert.match(delivery, /emailHeading: 'Nouvelles Factures'/);
+  assert.match(delivery, /subject: \x60\$\{documentMode\.subject\}/);
+  assert.match(delivery, /const filename = \x60\$\{documentMode\.prefix\}_/);
+  assert.match(delivery, /recipient: DELIVERY_RECIPIENT/);
+  assert.match(delivery, /fixed inset-0 z-\[9999\]/);
+  assert.match(delivery, /Confirmer l’envoi/);
+  assert.match(delivery, /\.upload\(filename, photo\.blob, \{ contentType: mime, upsert: false \}\)/);
+  assert.ok(transformSync(invoice,{loader:'jsx'}).code.length>100);
 });
 
 test('the daily report mail also retains a defined photo count', () => {

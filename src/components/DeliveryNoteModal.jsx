@@ -9,7 +9,37 @@ import { prepareReportPhoto, getPhotoExtension, humanFileSize, photoResolutionWa
 // Keep this separate from DailyReportModal ("Rapport journalier").
 const DELIVERY_RECIPIENT = 'materiaux@cd.atoomerp.com';
 
-const DeliveryNoteModal = ({ onClose }) => {
+// Reuse the same reviewed HD capture workflow for both document types.
+// Their email subjects, filenames and log descriptions remain distinct.
+const DOCUMENT_MODES = {
+    delivery: {
+        title: 'Scanner bon de livraison',
+        instruction: "Prenez une photo nette du bon de livraison.",
+        prefix: 'delivery',
+        subject: 'Bon de Livraison',
+        emailHeading: 'Nouveau Bon de Livraison',
+        errorLabel: 'bon de livraison',
+        successLabel: 'Bon de livraison',
+        logLabel: 'Bon de livraison',
+        imageLabel: 'Bon de livraison',
+        previewLabel: 'bon de livraison'
+    },
+    invoice: {
+        title: 'Scanner factures',
+        instruction: "Prenez une photo nette de la facture.",
+        prefix: 'facture',
+        subject: 'Factures',
+        emailHeading: 'Nouvelles Factures',
+        errorLabel: 'facture',
+        successLabel: 'Factures',
+        logLabel: 'Factures',
+        imageLabel: 'Facture',
+        previewLabel: 'facture'
+    }
+};
+
+const DeliveryNoteModal = ({ onClose, mode = 'delivery' }) => {
+    const documentMode = DOCUMENT_MODES[mode] || DOCUMENT_MODES.delivery;
     const { addLog, currentUser } = useAppContext();
     const [photos, setPhotos] = useState([]);
     const [previewIndex, setPreviewIndex] = useState(null);
@@ -133,7 +163,7 @@ const DeliveryNoteModal = ({ onClose }) => {
                 const photo = photos[i];
                 const mime = photo.mimeType || photo.blob.type || 'image/jpeg';
                 const ext = getPhotoExtension(mime);
-                const filename = `delivery_${timestamp}_${uploadId}_${i + 1}.${ext}`;
+                const filename = `${documentMode.prefix}_${timestamp}_${uploadId}_${i + 1}.${ext}`;
                 const { error: uploadError } = await supabase.storage
                     .from('delivery-notes')
                     .upload(filename, photo.blob, { contentType: mime, upsert: false });
@@ -154,9 +184,9 @@ const DeliveryNoteModal = ({ onClose }) => {
                 },
                 body: JSON.stringify({
                     recipient: DELIVERY_RECIPIENT,
-                    subject: `Bon de Livraison - ${userName} - ${date}`,
+                    subject: `${documentMode.subject} - ${userName} - ${date}`,
                     html: `
-                        <h2>Nouveau Bon de Livraison</h2>
+                        <h2>${documentMode.emailHeading}</h2>
                         <p><strong>Envoyé par :</strong> ${userName}</p>
                         <p><strong>Date :</strong> ${date}</p>
                         <p><strong>Nombre de photos :</strong> ${photos.length}</p>
@@ -167,11 +197,11 @@ const DeliveryNoteModal = ({ onClose }) => {
             });
             const result = await response.json();
             if (!response.ok || !result.success)
-                throw new Error(result.error || 'Envoi du bon de livraison impossible.');
-            addLog(`[EMAIL CONFIRMED] Bon de livraison envoyé par ${userName}`);
+                throw new Error(result.error || `Envoi de ${documentMode.errorLabel} impossible.`);
+            addLog(`[EMAIL CONFIRMED] ${documentMode.logLabel} envoyé par ${userName}`);
             setReviewOpen(false);
-            setMessage('Bon de livraison envoyé.');
-            alert('Bon de livraison envoyé avec succès !');
+            setMessage(`${documentMode.successLabel} envoyé.`);
+            alert(`${documentMode.successLabel} envoyé avec succès !`);
             onClose();
         } catch (err) {
             setError(err?.message || 'Erreur lors de l’envoi.');
@@ -185,7 +215,7 @@ const DeliveryNoteModal = ({ onClose }) => {
             style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
             <header className="shrink-0 flex justify-between items-center gap-2 p-4 border-b border-slate-700">
                 <div>
-                    <h2 className="font-bold text-lg">Scanner bon de livraison</h2>
+                    <h2 className="font-bold text-lg">{documentMode.title}</h2>
                     <p className="text-xs text-slate-300">Photos haute définition · aperçu avant envoi</p>
                 </div>
                 <button type="button" onClick={onClose} disabled={isUploading}
@@ -194,7 +224,7 @@ const DeliveryNoteModal = ({ onClose }) => {
             </header>
             <main className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
                 <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 space-y-3">
-                    <p className="text-sm">Prenez une photo nette du bon de livraison. Elle s'ouvrira immédiatement en grand pour vérifier les détails.</p>
+                    <p className="text-sm">{documentMode.instruction} Elle s'ouvrira immédiatement en grand pour vérifier les détails.</p>
                     <label className="min-h-14 flex items-center justify-center gap-2 rounded-xl bg-blue-600 text-white text-base font-semibold cursor-pointer">
                         <Camera size={22} /> Prendre une photo
                         <input type="file" accept="image/*" capture="environment"
@@ -230,7 +260,7 @@ const DeliveryNoteModal = ({ onClose }) => {
                                 <button type="button" onClick={() => openPreview(index)}
                                     aria-label={`Agrandir la photo ${index + 1}`}
                                     className="w-full rounded-lg border border-blue-600/60 p-1 text-left">
-                                    <img src={photo.previewUrl} alt={`Bon de livraison ${index + 1}`}
+                                    <img src={photo.previewUrl} alt={`${documentMode.imageLabel} ${index + 1}`}
                                         className="h-40 w-full rounded object-contain bg-black"/>
                                     <span className="mt-2 flex items-center justify-center gap-2 text-sm font-semibold text-blue-200 min-h-10">
                                         <ZoomIn size={18}/> Voir en grand
@@ -294,7 +324,7 @@ const DeliveryNoteModal = ({ onClose }) => {
 
             {previewPhoto && createPortal(
                 <div className="fixed inset-0 z-[9999] flex flex-col bg-black text-white"
-                    role="dialog" aria-modal="true" aria-label="Aperçu grand format du bon de livraison"
+                    role="dialog" aria-modal="true" aria-label={`Aperçu grand format de ${documentMode.previewLabel}`}
                     style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
                     <header className="shrink-0 flex justify-between items-center gap-2 p-3 border-b border-slate-700 bg-slate-900">
                         <div>
@@ -316,7 +346,7 @@ const DeliveryNoteModal = ({ onClose }) => {
                     </nav>
                     <div className="min-h-0 flex-1 overflow-auto bg-black p-2">
                         <img src={previewPhoto.previewUrl}
-                            alt="Photographie originale en grand format pour vérifier le texte du bon"
+                            alt={`Photographie originale en grand format pour vérifier le texte de ${documentMode.previewLabel}`}
                             className="block mx-auto object-contain"
                             style={{
                                 width: zoom === 1 ? 'auto' : `${Math.round(zoom * 100)}%`,
