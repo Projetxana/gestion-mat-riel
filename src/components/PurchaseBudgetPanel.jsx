@@ -10,6 +10,8 @@ import PurchaseBudgetRevisions from './PurchaseBudgetRevisions';
 import PurchaseItemsOverview from './PurchaseItemsOverview';
 import SupplierPriceReferencePanel from './SupplierPriceReferencePanel';
 import SupplierPriceAlertsPanel from './SupplierPriceAlertsPanel';
+import PurchasePdfCard from './PurchasePdfCard';
+import {archivePurchasePdf} from '../utils/purchasePdfArchive';
 import {compareSupplierPrices,activeSupplierQuotes} from '../utils/supplierPriceWatch';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
@@ -66,6 +68,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const [priceLinks,setPriceLinks] = useState([]);
     const [priceReferenceEnabled,setPriceReferenceEnabled] = useState(true);
     const [priceRiskAcknowledged,setPriceRiskAcknowledged] = useState(false);
+    const [purchaseDocuments,setPurchaseDocuments] = useState([]);
+    const [archiveEnabled,setArchiveEnabled] = useState(false);
 
     const refresh = useCallback(async () => {
         if (!site?.id || !currentCompanyId || !isAdmin || !isCorrectTenant) return;
@@ -76,7 +80,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             const selectProject = (table, cols) =>
                 supabase.from(table).select(cols).eq(conditions[0], currentCompanyId).eq(conditions[1], site.id);
             const [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult, linkResult,
-                quotesResult, quoteLinesResult, priceLinksResult] = await Promise.all([
+                quotesResult, quoteLinesResult, priceLinksResult,documentsResult] = await Promise.all([
                 selectProject('bt_purchase_budgets', 'id, source_name, created_at').maybeSingle(),
                 supabase.rpc('bt_purchase_effective_budget_lines', {
                     p_company_id:currentCompanyId,p_site_id:site.id
@@ -93,6 +97,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 selectProject('bt_supplier_price_lines',
                     'id, quote_id, item_code, customer_alias, description, unit, quantity, unit_cost, amount'),
                 selectProject('bt_supplier_price_line_links', 'order_line_id, quote_line_id'),
+                selectProject('bt_purchase_documents',
+                    'id, source_kind, source_id, file_name, storage_path, uploaded_at'),
             ]);
             const failure = [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult].find(result => result.error);
             if (failure) throw failure.error;
@@ -108,6 +114,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             setPriceQuotes(pricesAvailable?(quotesResult.data||[]):[]);
             setPriceQuoteLines(pricesAvailable?(quoteLinesResult.data||[]):[]);
             setPriceLinks(pricesAvailable?(priceLinksResult.data||[]):[]);
+            setArchiveEnabled(!documentsResult.error);
+            setPurchaseDocuments(documentsResult.error?[]:(documentsResult.data||[]));
         } catch (e) {
             setError(e.code === '42P01'
                 ? 'Les tables du module Achats ne sont pas encore activées dans Supabase.'
@@ -141,6 +149,22 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         item.id, orderLines.filter(line => line.order_id === item.id)
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
     ])), [orders, orderLines]);
+
+    const archiveNewOrder=async(file,poNumber,supplier,lines)=>{
+        if(!archiveEnabled)return 'Le stockage privé des documents n’est pas encore activé.';
+        const {data:record,error:lookupError}=await supabase.from('bt_purchase_orders')
+            .select('id, po_number, supplier, shipping_project_name')
+            .eq('company_id',currentCompanyId).eq('site_id',site.id)
+            .eq('po_number',poNumber).eq('supplier',supplier).maybeSingle();
+        if(lookupError||!record?.id)throw lookupError||new Error('Commande créée, introuvable pour archivage.');
+        await archivePurchasePdf(file,{
+            kind:'order',source:{
+                ...record,line_count:lines.length,
+                total_amount:lines.reduce((sum,line)=>sum+Number(line.amount||0),0),
+            },site,companyId:currentCompanyId,
+        });
+        return '';
+    };
 
     // Orders cannot be created with typed fields. Spreadsheets remain available
     // only for the initial budget; supplier orders require their source PDF.
@@ -203,13 +227,23 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     ? 'bt_purchase_import_budget':'bt_purchase_create_order';
                 const {error:rpcError}=await supabase.rpc(functionName,args);
                 if(rpcError)throw rpcError;
+                let pdfArchiveWarning='';
                 if(mode==='budget')setPendingBudget(null);
-                else {setPendingOrder(null);setOrder(emptyOrder);}
+                else {
+                    setPendingOrder(null);setOrder(emptyOrder);
+                    try{
+                        pdfArchiveWarning=await archiveNewOrder(
+                            file,parsed.hints.po_number,parsed.supplier,rows);
+                    }catch(e){
+                        pdfArchiveWarning=e?.message||'Archivage du PDF impossible.';
+                    }
+                }
                 setReloadIndex(value=>value+1);
                 onPurchasesChanged?.();
-                setNotice('PDF enregistré automatiquement : '+rows.length+
+                setNotice('Commande ou budget enregistré : '+rows.length+
                     ' article(s) · '+money(rows.reduce((sum,row)=>sum+row.amount,0))+
-                    '. Les achats hors soumission restent inclus dans les dépenses.');
+                    '. Les achats hors soumission restent inclus dans les dépenses.'+
+                    (pdfArchiveWarning?' PDF original à joindre : '+pdfArchiveWarning:''));
                 return;
             }
 
@@ -240,7 +274,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 setOrder(metadata);
                 setPendingOrder({
                     rows,sourceName:file.name.slice(0,150),verifiedPdf:true,
-                    fingerprint:parsed.document_fingerprint,
+                    originalFile:file,fingerprint:parsed.document_fingerprint,
                 });
                 setPdfIssues(pricePreview?.overpriceCount>0
                     ? ['ALERTE PRIX : '+pricePreview.overpriceCount+
@@ -308,9 +342,19 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 p_lines: pendingOrder.rows,
             });
             if (rpcError) throw rpcError;
+            let pdfArchiveWarning='';
+            if(pendingOrder.originalFile){
+                try{
+                    pdfArchiveWarning=await archiveNewOrder(
+                        pendingOrder.originalFile,order.poNumber.trim(),order.supplier.trim(),pendingOrder.rows);
+                }catch(e){
+                    pdfArchiveWarning=e?.message||'Archivage du PDF impossible.';
+                }
+            }
             setPendingOrder(null); setOrder(emptyOrder);
             setPriceRiskAcknowledged(false);
-            setNotice('Confirmation PDF enregistrée. Les dépenses du chantier sont mises à jour.');
+            setNotice('Confirmation PDF enregistrée. Les dépenses du chantier sont mises à jour.'+
+                (pdfArchiveWarning?' PDF original à joindre : '+pdfArchiveWarning:''));
             setReloadIndex(value => value + 1);
             onPurchasesChanged?.();
         } catch (e) {
@@ -384,6 +428,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                              </p>
                              <SupplierPriceReferencePanel site={site} companyId={currentCompanyId}
                                  quotes={priceQuotes} enabled={priceReferenceEnabled}
+                                 documents={purchaseDocuments} archiveEnabled={archiveEnabled}
                                  onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
                              <PurchaseBudgetRevisions site={site} companyId={currentCompanyId}
                                 budget={budget} budgetLines={budgetLines} revisions={budgetRevisions}
@@ -516,7 +561,23 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                         <h3 className="font-semibold flex items-center gap-2"><Package size={17}/> Commandes enregistrées ({orders.length})</h3>
                         {!orders.length && <p className="text-sm text-slate-400">Aucune commande à ce jour.</p>}
                         {orders.map(item => (
-                            <div key={item.id} className="rounded-lg border border-slate-700 bg-slate-800 p-3 flex justify-between gap-2">
+                            archiveEnabled?<PurchasePdfCard key={item.id}
+                                kind="order" source={{...item,
+                                    line_count:orderLines.filter(line=>line.order_id===item.id).length,
+                                    total_amount:orderTotals.get(item.id)}}
+                                site={site} companyId={currentCompanyId}
+                                documentRecord={purchaseDocuments.find(d=>d.source_kind==='order'&&String(d.source_id)===String(item.id))}
+                                onAttached={refresh} className="bg-slate-800">
+                                <div className="flex justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-sm break-words">{item.supplier} · PO {item.po_number}</p>
+                                        <p className="text-xs text-slate-400 break-words">Livraison : {item.shipping_project_name}</p>
+                                        <p className="text-xs text-slate-400 break-words">Fichier : {item.source_name||'original non conservé'}</p>
+                                    </div>
+                                    <span className="font-semibold tabular-nums text-sm shrink-0">{money(orderTotals.get(item.id))}</span>
+                                </div>
+                            </PurchasePdfCard>:<div key={item.id}
+                                className="rounded-lg border border-slate-700 bg-slate-800 p-3 flex justify-between gap-2">
                                 <div className="min-w-0">
                                     <p className="font-semibold text-sm break-words">{item.supplier} · PO {item.po_number}</p>
                                     <p className="text-xs text-slate-400 break-words">Livraison : {item.shipping_project_name}</p>
