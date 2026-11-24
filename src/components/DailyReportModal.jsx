@@ -268,6 +268,8 @@ const DailyReportModal = ({ onClose }) => {
         // Sending is possible only after viewing the confirmation screen.
         if (!showSendReview || isUploading || !validateReport()) return;
 
+        const totalPhotos = sections.reduce((sum, section) => sum + section.photos.length, 0);
+        if (totalPhotos === 0) return;
         setIsUploading(true);
         setUploadProgress(0);
 
