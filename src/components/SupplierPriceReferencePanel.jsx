@@ -10,7 +10,7 @@ import {archivePurchasePdf} from '../utils/purchasePdfArchive';
 
 const money=value=>new Intl.NumberFormat('fr-CA',{style:'currency',currency:'CAD'}).format(Number(value||0));
 
-export default function SupplierPriceReferencePanel({site,companyId,quotes=[],documents=[],archiveEnabled=false,enabled=true,onSaved}){
+export default function SupplierPriceReferencePanel({site,companyId,quotes=[],quoteLines=[],documents=[],archiveEnabled=false,enabled=true,onSaved}){
  const [pending,setPending]=useState(null);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
@@ -122,6 +122,7 @@ export default function SupplierPriceReferencePanel({site,companyId,quotes=[],do
   {flocor&&(archiveEnabled?<PurchasePdfCard
    kind="quote" source={flocor} site={site} companyId={companyId}
    documentRecord={documents.find(d=>d.source_kind==='quote'&&String(d.source_id)===String(flocor.id))}
+   detailLines={quoteLines.filter(line=>String(line.quote_id)===String(flocor.id))}
    onAttached={onSaved}
    className="border-emerald-700 bg-emerald-950/20 text-sm">
    <p className="font-semibold text-emerald-200">
