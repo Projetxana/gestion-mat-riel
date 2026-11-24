@@ -1,6 +1,7 @@
 import React,{useRef,useState} from 'react';
 import {FileUp,FileText,LoaderCircle} from 'lucide-react';
-import {archivePurchasePdf,openPurchasePdf} from '../utils/purchasePdfArchive';
+import {archivePurchasePdf} from '../utils/purchasePdfArchive';
+import PurchasePdfPreview from './PurchasePdfPreview';
 
 // One click opens the original when present; otherwise attaches the original
 // once, after matching it to the existing quote / PO. No accounting writes.
@@ -11,12 +12,13 @@ export default function PurchasePdfCard({
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [notice,setNotice]=useState('');
+ const [previewOpen,setPreviewOpen]=useState(false);
  const hasOriginal=Boolean(documentRecord?.storage_path);
- const action=hasOriginal?'Ouvrir le PDF original':'Joindre le PDF original';
+ const action=hasOriginal?'Afficher l’aperçu du PDF':'Joindre le PDF original';
  const handleClick=()=>{
   setError('');setNotice('');
   if(!hasOriginal){picker.current?.click();return;}
-  void openPurchasePdf(documentRecord).catch(e=>setError(e?.message||'Impossible d’ouvrir le PDF.'));
+  setPreviewOpen(true);
  };
  const upload=async file=>{
   if(!file||busy||!source?.id)return;
@@ -42,7 +44,7 @@ export default function PurchasePdfCard({
      <FileUp size={17} className="shrink-0 text-blue-300" aria-hidden="true"/>}
    </div>
    <p className={'mt-2 text-xs font-medium '+(hasOriginal?'text-emerald-300':'text-blue-200')}>
-    {busy?'Archivage en cours…':hasOriginal?'Voir le PDF original':'PDF non archivé · Joindre le fichier original'}
+    {busy?'Archivage en cours…':hasOriginal?'Voir l’aperçu du PDF':'PDF non archivé · Joindre le fichier original'}
    </p>
   </button>
   <input ref={picker} className="sr-only" type="file" accept=".pdf,application/pdf"
@@ -51,5 +53,11 @@ export default function PurchasePdfCard({
    onChange={e=>{const file=e.target.files?.[0];e.target.value='';void upload(file);}}/>
   {error&&<p role="alert" className="text-xs text-red-200">{error}</p>}
   {notice&&<p role="status" className="text-xs text-emerald-200">{notice}</p>}
+  {previewOpen&&hasOriginal&&<PurchasePdfPreview
+   record={documentRecord}
+   title={kind==='quote'?'Soumission '+(source?.quote_number||''):
+    'Commande '+(source?.po_number||'')}
+   onClose={()=>setPreviewOpen(false)}
+  />}
  </div>;
 }

@@ -53,17 +53,18 @@ export const archivePurchasePdf=async(file,{kind,source,site,companyId})=>{
  return path;
 };
 
-export const openPurchasePdf=async record=>{
+// Fetch PDF bytes only into memory for the integrated PDF.js preview.
+// The PDF stays in the private Supabase Storage bucket; no public URL,
+// signed external tab, browser download or permanent local copy is created.
+export const fetchPrivatePurchasePdf=async record=>{
  if(!record?.storage_path)throw new Error('Aucun PDF original archivé.');
- // Open the tab synchronously to avoid mobile/browser popup blocking.
- const tab=window.open('about:blank','_blank');
- if(tab){tab.opener=null;tab.document.title='Ouverture du PDF…';}
  const {data,error}=await supabase.storage.from(PURCHASE_DOCUMENT_BUCKET)
-  .createSignedUrl(record.storage_path,120);
- if(error||!data?.signedUrl){
-  if(tab)tab.close();
-  throw error||new Error('Ouverture du PDF impossible.');
- }
- if(tab)tab.location.replace(data.signedUrl);
- else window.location.assign(data.signedUrl);
+  .download(record.storage_path);
+ if(error||!data)throw error||new Error('Lecture du PDF impossible.');
+ if(data.size<10||data.size>LIMIT)
+  throw new Error('PDF absent ou trop volumineux pour l’aperçu.');
+ const bytes=new Uint8Array(await data.arrayBuffer());
+ if(String.fromCharCode(...bytes.slice(0,5))!=='%PDF-')
+  throw new Error('Document PDF invalide.');
+ return bytes;
 };

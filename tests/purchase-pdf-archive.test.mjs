@@ -54,9 +54,12 @@ test('order must match existing PO, exact supplier, job site, row count and tota
  assert.throws(()=>validatePurchasePdfEvidence(quoteProof,
   {kind:'order',source:order,site}),/diffère/);
 });
-test('only private signed short-lived access is used; no raw or public link',()=>{
+test('the PDF preview loads privately into memory without download URLs',()=>{
  const src=readFileSync(new URL('../src/utils/purchasePdfArchive.js',import.meta.url),'utf8');
- assert.match(src,/createSignedUrl\(record\.storage_path,120\)/);
+ assert.match(src,/export const fetchPrivatePurchasePdf=async record/);
+ assert.match(src,/\.download\(record\.storage_path\)/);
+ assert.match(src,/new Uint8Array\(await data\.arrayBuffer\(\)\)/);
+ assert.doesNotMatch(src,/createSignedUrl|window\.open|window\.location|URL\.createObjectURL/);
  assert.match(src,/from\(PURCHASE_DOCUMENT_BUCKET\)/);
  assert.match(src,/upload\(path,file/);
  assert.match(src,/validatePurchasePdfEvidence/);
@@ -80,8 +83,9 @@ test('clicking an original document card opens the PDF; unavailable ones request
  const card=readFileSync(new URL('../src/components/PurchasePdfCard.jsx',import.meta.url),'utf8');
  const panel=readFileSync(new URL('../src/components/PurchaseBudgetPanel.jsx',import.meta.url),'utf8');
  const quoteUi=readFileSync(new URL('../src/components/SupplierPriceReferencePanel.jsx',import.meta.url),'utf8');
- assert.match(card,/hasOriginal\?'Ouvrir le PDF original':'Joindre le PDF original'/);
- assert.match(card,/openPurchasePdf\(documentRecord\)/);
+ assert.match(card,/hasOriginal\?'Afficher l’aperçu du PDF':'Joindre le PDF original'/);
+ assert.match(card,/setPreviewOpen\(true\)/);
+ assert.match(card,/<PurchasePdfPreview/);
  assert.match(card,/archivePurchasePdf\(file/);
  assert.match(panel,/orders\.map\(item/);
  assert.match(panel,/<PurchasePdfCard/);
@@ -90,4 +94,24 @@ test('clicking an original document card opens the PDF; unavailable ones request
  assert.match(quoteUi,/archivePurchasePdf\(pending\.sourceFile/);
  for(const code of [card,panel,quoteUi])
   assert.ok(transformSync(code,{loader:'jsx'}).code.length>100);
+});
+
+test('inline preview includes readable PDF pages, navigation and mobile-safe controls',()=>{
+ const viewer=readFileSync(new URL('../src/components/PurchasePdfPreview.jsx',import.meta.url),'utf8');
+ assert.match(viewer,/createPortal\(/);
+ assert.match(viewer,/aria-modal="true"/);
+ assert.match(viewer,/role="dialog"/);
+ assert.match(viewer,/fetchPrivatePurchasePdf\(record\)/);
+ assert.match(viewer,/pdfjs-dist\/build\/pdf\.mjs/);
+ assert.match(viewer,/pdf\.getPage\(page\)/);
+ assert.match(viewer,/pageProxy\.render\(/);
+ assert.match(viewer,/Page \{page\} \/ \{pages\}/);
+ assert.match(viewer,/Agrandir le zoom/);
+ assert.match(viewer,/Réduire le zoom/);
+ assert.match(viewer,/min-h-11 min-w-11/);
+ assert.match(viewer,/event\.key==='Escape'/);
+ assert.match(viewer,/renderTaskRef\.current\?\.cancel\(\)/);
+ assert.match(viewer,/loadingTask\.destroy\(\)/);
+ assert.doesNotMatch(viewer,/<a\b|download=|createSignedUrl|window\.open|iframe|<object/);
+ assert.ok(transformSync(viewer,{loader:'jsx'}).code.length>100);
 });
