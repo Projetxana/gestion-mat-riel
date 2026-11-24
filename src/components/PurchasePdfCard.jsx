@@ -2,11 +2,12 @@ import React,{useRef,useState} from 'react';
 import {FileUp,FileText,LoaderCircle} from 'lucide-react';
 import {archivePurchasePdf} from '../utils/purchasePdfArchive';
 import PurchasePdfPreview from './PurchasePdfPreview';
+import PurchaseDataPreview from './PurchaseDataPreview';
 
 // One click opens the original when present; otherwise attaches the original
 // once, after matching it to the existing quote / PO. No accounting writes.
 export default function PurchasePdfCard({
- kind,source,site,companyId,documentRecord,onAttached,children,className='',
+ kind,source,site,companyId,documentRecord,onAttached,children,className='',detailLines=[],
 }){
  const picker=useRef(null);
  const [busy,setBusy]=useState(false);
@@ -14,10 +15,9 @@ export default function PurchasePdfCard({
  const [notice,setNotice]=useState('');
  const [previewOpen,setPreviewOpen]=useState(false);
  const hasOriginal=Boolean(documentRecord?.storage_path);
- const action=hasOriginal?'Afficher l’aperçu du PDF':'Joindre le PDF original';
+ const action=hasOriginal?'Afficher l’aperçu du PDF original':'Consulter les informations enregistrées';
  const handleClick=()=>{
   setError('');setNotice('');
-  if(!hasOriginal){picker.current?.click();return;}
   setPreviewOpen(true);
  };
  const upload=async file=>{
@@ -44,20 +44,29 @@ export default function PurchasePdfCard({
      <FileUp size={17} className="shrink-0 text-blue-300" aria-hidden="true"/>}
    </div>
    <p className={'mt-2 text-xs font-medium '+(hasOriginal?'text-emerald-300':'text-blue-200')}>
-    {busy?'Archivage en cours…':hasOriginal?'Voir l’aperçu du PDF':'PDF non archivé · Joindre le fichier original'}
+    {busy?'Archivage en cours…':hasOriginal?'Voir l’aperçu du PDF original':'Voir les détails enregistrés'}
    </p>
   </button>
+  {!hasOriginal&&<button type="button" onClick={()=>picker.current?.click()}
+   disabled={busy||!source?.id}
+   className="min-h-10 rounded-md px-2 text-xs font-medium text-blue-200 hover:underline disabled:opacity-50"
+   aria-label={'Joindre le PDF original (facultatif) : '+(source?.quote_number||source?.po_number||'document')}>
+   Joindre le PDF original (facultatif)
+  </button>}
   <input ref={picker} className="sr-only" type="file" accept=".pdf,application/pdf"
    aria-label={'Sélectionner le PDF original : '+(source?.quote_number||source?.po_number||'document')}
    disabled={busy||hasOriginal}
    onChange={e=>{const file=e.target.files?.[0];e.target.value='';void upload(file);}}/>
   {error&&<p role="alert" className="text-xs text-red-200">{error}</p>}
   {notice&&<p role="status" className="text-xs text-emerald-200">{notice}</p>}
-  {previewOpen&&hasOriginal&&<PurchasePdfPreview
+  {previewOpen&&(hasOriginal?<PurchasePdfPreview
    record={documentRecord}
    title={kind==='quote'?'Soumission '+(source?.quote_number||''):
     'Commande '+(source?.po_number||'')}
    onClose={()=>setPreviewOpen(false)}
-  />}
+  />:<PurchaseDataPreview
+   kind={kind} source={source} site={site} lines={detailLines}
+   onClose={()=>setPreviewOpen(false)}
+  />)}
  </div>;
 }
