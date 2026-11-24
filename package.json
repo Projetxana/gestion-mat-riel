@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run test:daily-report && npm run test:hours && npm run test:weekly-approval && npm run test:duration-correction && npm run test:task-performance && npm run test:performance-trends && npm run test:project-monitoring && npm run test:employee-worksites && npm run test:purchases && npm run test:pdf-import && npm run test:purchase-reconciliation && npm run test:manual-startup-hours && npm run test:budget-revisions && vite build",
+    "build": "npm run test:delivery-note && npm run test:daily-report && npm run test:hours && npm run test:weekly-approval && npm run test:duration-correction && npm run test:task-performance && npm run test:performance-trends && npm run test:project-monitoring && npm run test:employee-worksites && npm run test:purchases && npm run test:pdf-import && npm run test:purchase-reconciliation && npm run test:manual-startup-hours && npm run test:budget-revisions && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test:delivery-note": "node --test tests/delivery-note-photo-preview.test.mjs",
     "test:daily-report": "node --test tests/daily-report-photo.test.mjs",
     "test:hours": "node --test tests/quarter-hours.test.mjs",
     "test:weekly-approval": "node --test tests/weekly-approval.test.mjs",
