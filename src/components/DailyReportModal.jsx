@@ -60,7 +60,7 @@ const DailyReportModal = ({ onClose }) => {
         setSections(prev => prev.map(s => s.id === sectionId ? { ...s, [field]: value } : s));
     };
 
-    const addFilesToSection = async (sectionId, fileList) => {
+    const addFilesToSection = async (sectionId, fileList, previewImmediately = false) => {
         const files = Array.from(fileList || []);
         if (!files.length || isUploading) return;
         setPhotoError('');
@@ -72,11 +72,15 @@ const DailyReportModal = ({ onClose }) => {
             const errors = received.filter(result => result.status === 'rejected')
                 .map(result => result.reason?.message || 'Image illisible.');
             if (photos.length) {
+                const firstNewIndex = sections.find(section => section.id === sectionId)?.photos.length || 0;
                 setSections(prev => prev.map(section =>
                     section.id === sectionId
                         ? { ...section, photos: [...section.photos, ...photos] }
                         : section
                 ));
+                // Present the real captured still immediately to inspect focus
+                // and retake before the user returns to the report.
+                if (previewImmediately) showPhoto(sectionId, firstNewIndex);
             }
             if (errors.length) setPhotoError(errors.join(' '));
         } finally {
@@ -624,7 +628,7 @@ const DailyReportModal = ({ onClose }) => {
                                                 // iPhone Safari does not discard the newly taken photo.
                                                 const files = Array.from(e.target.files || []);
                                                 e.target.value = '';
-                                                void addFilesToSection(section.id, files);
+                                                void addFilesToSection(section.id, files, true);
                                             }} />
                                     </label>
                                     <div className="h-px bg-slate-700 w-full"></div>
