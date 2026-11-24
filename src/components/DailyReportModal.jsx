@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Camera, Send, Trash2, Plus, Image as ImageIcon, RotateCcw } from 'lucide-react';
+import { X, Camera, Send, Trash2, Plus, Image as ImageIcon, ZoomIn, ZoomOut, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
+import { prepareReportPhoto, getPhotoExtension, humanFileSize, photoResolutionWarning } from '../utils/dailyReportMedia';
 
 const LEVELS = [
     "Sous-sol 1", "Sous-sol 2", "Rez-de-chaussée",
@@ -23,75 +24,21 @@ const DailyReportModal = ({ onClose }) => {
         { id: Date.now(), level: 'Rez-de-chaussée', customLevel: '', roomDetail: '', photos: [] }
     ]);
 
-    // Camera State
-    const [isCameraOpen, setIsCameraOpen] = useState(false);
-    const [cameraSectionId, setCameraSectionId] = useState(null);
-    const [stream, setStream] = useState(null);
-    const videoRef = useRef(null);
-    const canvasRef = useRef(null);
-
-    // --- CAMERA LOGIC ---
-    useEffect(() => {
-        if (isCameraOpen) {
-            startCamera();
-        } else {
-            stopCamera();
-        }
-        return () => stopCamera();
-    }, [isCameraOpen]);
-
-    const startCamera = async () => {
-        try {
-            const mediaStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' },
-                audio: false
-            });
-            setStream(mediaStream);
-            if (videoRef.current) {
-                videoRef.current.srcObject = mediaStream;
-            }
-        } catch (err) {
-            console.error("Camera Error:", err);
-            alert("Impossible d'accéder à la caméra. Vérifiez les permissions.");
-            setIsCameraOpen(false);
-        }
+    // A real full-resolution still comes from the native camera's file picker.
+    // Preview is a separate, mandatory step before an email can be sent.
+    const [photoPreview, setPhotoPreview] = useState(null);
+    const [photoZoom, setPhotoZoom] = useState(1);
+    const [showSendReview, setShowSendReview] = useState(false);
+    const [photoError, setPhotoError] = useState('');
+    const [preparingPhotos, setPreparingPhotos] = useState(false);
+    const photosRef = useRef([]);
+    const currentPreviewPhoto = photoPreview
+        ? sections.find(section => section.id === photoPreview.sectionId)?.photos[photoPreview.index]
+        : null;
+    const showPhoto = (sectionId, index) => {
+        setPhotoZoom(1);
+        setPhotoPreview({ sectionId, index });
     };
-
-    const stopCamera = () => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            setStream(null);
-        }
-    };
-
-    const takePhoto = () => {
-        if (videoRef.current && canvasRef.current && cameraSectionId) {
-            const video = videoRef.current;
-            const canvas = canvasRef.current;
-
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0);
-
-            canvas.toBlob((blob) => {
-                const url = URL.createObjectURL(blob);
-                addPhotoToSection(cameraSectionId, { blob, previewUrl: url });
-            }, 'image/jpeg', 0.8);
-        }
-    };
-
-    const openCamera = (sectionId) => {
-        setCameraSectionId(sectionId);
-        setIsCameraOpen(true);
-    };
-
-    const closeCamera = () => {
-        setIsCameraOpen(false);
-        setCameraSectionId(null);
-    };
-
 
     // --- SECTIONS LOGIC ---
     const addSection = () => {
@@ -102,47 +49,114 @@ const DailyReportModal = ({ onClose }) => {
     };
 
     const removeSection = (sectionId) => {
-        if (sections.length === 1) return;
-        setSections(prev => prev.filter(s => s.id !== sectionId));
+        if (sections.length === 1 || isUploading) return;
+        const deleted = sections.find(section => section.id === sectionId);
+        deleted?.photos.forEach(photo => URL.revokeObjectURL(photo.previewUrl));
+        if (photoPreview?.sectionId === sectionId) setPhotoPreview(null);
+        setSections(prev => prev.filter(section => section.id !== sectionId));
     };
 
     const updateSection = (sectionId, field, value) => {
         setSections(prev => prev.map(s => s.id === sectionId ? { ...s, [field]: value } : s));
     };
 
-    const addPhotoToSection = (sectionId, photoObj) => {
-        setSections(prev => prev.map(s =>
-            s.id === sectionId ? { ...s, photos: [...s.photos, photoObj] } : s
-        ));
+    const addFilesToSection = async (sectionId, fileList) => {
+        const files = Array.from(fileList || []);
+        if (!files.length || isUploading) return;
+        setPhotoError('');
+        setPreparingPhotos(true);
+        try {
+            const received = await Promise.allSettled(files.map(prepareReportPhoto));
+            const photos = received.filter(result => result.status === 'fulfilled')
+                .map(result => result.value);
+            const errors = received.filter(result => result.status === 'rejected')
+                .map(result => result.reason?.message || 'Image illisible.');
+            if (photos.length) {
+                setSections(prev => prev.map(section =>
+                    section.id === sectionId
+                        ? { ...section, photos: [...section.photos, ...photos] }
+                        : section
+                ));
+            }
+            if (errors.length) setPhotoError(errors.join(' '));
+        } finally {
+            setPreparingPhotos(false);
+        }
     };
 
-    const addFilesToSection = (sectionId, fileList) => {
-        if (!fileList || fileList.length === 0) return;
-        const newPhotos = Array.from(fileList).map(file => ({
-            blob: file, // Treating File as Blob
-            previewUrl: URL.createObjectURL(file)
-        }));
-        setSections(prev => prev.map(s =>
-            s.id === sectionId ? { ...s, photos: [...s.photos, ...newPhotos] } : s
-        ));
+    const replacePreviewPhoto = async (file) => {
+        if (!file || !photoPreview || isUploading) return;
+        setPhotoError('');
+        setPreparingPhotos(true);
+        try {
+            const replacement = await prepareReportPhoto(file);
+            const target = sections.find(section => section.id === photoPreview.sectionId);
+            const previous = target?.photos[photoPreview.index];
+            if (!previous) {
+                URL.revokeObjectURL(replacement.previewUrl);
+                return;
+            }
+            setSections(prev => prev.map(section => {
+                if (section.id !== photoPreview.sectionId) return section;
+                const photos = [...section.photos];
+                photos[photoPreview.index] = replacement;
+                return { ...section, photos };
+            }));
+            URL.revokeObjectURL(previous.previewUrl);
+            setPhotoZoom(1);
+        } catch (error) {
+            setPhotoError(error.message || 'Impossible de reprendre la photo.');
+        } finally {
+            setPreparingPhotos(false);
+        }
     };
 
     const removePhotoFromSection = (sectionId, photoIndex) => {
-        setSections(prev => prev.map(s => {
-            if (s.id !== sectionId) return s;
-            const updatedPhotos = [...s.photos];
-            URL.revokeObjectURL(updatedPhotos[photoIndex].previewUrl); // Cleanup
-            updatedPhotos.splice(photoIndex, 1);
-            return { ...s, photos: updatedPhotos };
+        if (isUploading) return;
+        const photo = sections.find(section => section.id === sectionId)?.photos[photoIndex];
+        if (photo) URL.revokeObjectURL(photo.previewUrl);
+        setSections(prev => prev.map(section => {
+            if (section.id !== sectionId) return section;
+            return { ...section, photos: section.photos.filter((_, i) => i !== photoIndex) };
         }));
+        if (photoPreview?.sectionId === sectionId) setPhotoPreview(null);
     };
 
-    // Cleanup URLs on unmount
+    // Revoke ALL temporary previews on unmount, including images taken later.
     useEffect(() => {
-        return () => {
-            sections.forEach(s => s.photos.forEach(p => URL.revokeObjectURL(p.previewUrl)));
-        };
+        photosRef.current = sections.flatMap(section => section.photos);
+    }, [sections]);
+    useEffect(() => () => {
+        photosRef.current.forEach(photo => URL.revokeObjectURL(photo.previewUrl));
     }, []);
+
+    const validateReport = () => {
+        if (!selectedSiteId) {
+            setPhotoError('Veuillez sélectionner un chantier.');
+            return false;
+        }
+        const selectedSite = sites.find(site => String(site.id) === String(selectedSiteId));
+        if (!selectedSite?.email) {
+            setPhotoError('Ce chantier ne possède pas de destinataire courriel configuré.');
+            return false;
+        }
+        if (!sections.some(section => section.photos.length)) {
+            setPhotoError('Veuillez ajouter au moins une photo.');
+            return false;
+        }
+        if (preparingPhotos) {
+            setPhotoError('Les photos sont encore en préparation.');
+            return false;
+        }
+        setPhotoError('');
+        return true;
+    };
+
+    const openSendReview = () => {
+        if (!validateReport()) return;
+        setPhotoPreview(null);
+        setShowSendReview(true);
+    };
 
     // --- REPORT GENERATION ---
     const generateReportImage = async (siteName, userName, date, textNotes) => {
