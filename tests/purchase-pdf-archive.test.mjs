@@ -79,11 +79,16 @@ test('private archive SQL requires admin role, matching tenant and existing sour
  assert.doesNotMatch(sql,/storage\.foldername\(name\)/);
  assert.doesNotMatch(sql,/FOR (?:UPDATE|DELETE) TO anon/);
 });
-test('clicking an original document card opens the PDF; unavailable ones request attachment',()=>{
+test('clicking either archived or unarchived cards always opens an in-app preview',()=>{
  const card=readFileSync(new URL('../src/components/PurchasePdfCard.jsx',import.meta.url),'utf8');
  const panel=readFileSync(new URL('../src/components/PurchaseBudgetPanel.jsx',import.meta.url),'utf8');
  const quoteUi=readFileSync(new URL('../src/components/SupplierPriceReferencePanel.jsx',import.meta.url),'utf8');
- assert.match(card,/hasOriginal\?'Afficher l’aperçu du PDF':'Joindre le PDF original'/);
+ assert.match(card,/Consulter les informations enregistrées/);
+ assert.match(card,/setPreviewOpen\(true\)/);
+ assert.match(card,/<PurchaseDataPreview/);
+ assert.match(card,/<PurchasePdfPreview/);
+ assert.doesNotMatch(card,/if\(!hasOriginal\)\{picker\.current\?\.click\(\);return;\}/);
+ assert.match(card,/Joindre le PDF original \(facultatif\)/);
  assert.match(card,/setPreviewOpen\(true\)/);
  assert.match(card,/<PurchasePdfPreview/);
  assert.match(card,/archivePurchasePdf\(file/);
@@ -96,6 +101,29 @@ test('clicking an original document card opens the PDF; unavailable ones request
   assert.ok(transformSync(code,{loader:'jsx'}).code.length>100);
 });
 
+test('existing quote and order details are previewable before archiving PDFs',()=>{
+ const fallback=readFileSync(new URL('../src/components/PurchaseDataPreview.jsx',import.meta.url),'utf8');
+ const card=readFileSync(new URL('../src/components/PurchasePdfCard.jsx',import.meta.url),'utf8');
+ const quote=readFileSync(new URL('../src/components/SupplierPriceReferencePanel.jsx',import.meta.url),'utf8');
+ const panel=readFileSync(new URL('../src/components/PurchaseBudgetPanel.jsx',import.meta.url),'utf8');
+ assert.match(fallback,/Aperçu des données enregistrées/);
+ assert.match(fallback,/Le PDF original n’est pas encore archivé/);
+ assert.match(fallback,/Il ne s’agit pas d’une reproduction du PDF/);
+ assert.match(fallback,/Quantité/);
+ assert.match(fallback,/Prix unitaire HT/);
+ assert.match(fallback,/Total HT/);
+ assert.match(fallback,/role="dialog"/);
+ assert.match(fallback,/createPortal\(/);
+ assert.match(fallback,/event\.key==='Escape'/);
+ assert.match(fallback,/data-purchase-data-preview/);
+ assert.doesNotMatch(fallback,/window\.open|download=|createSignedUrl|iframe|<object/);
+ assert.match(quote,/detailLines=\{quoteLines\.filter/);
+ assert.match(panel,/detailLines=\{orderLines\.filter/);
+ assert.match(quote,/\{flocor&&<PurchasePdfCard/);
+ assert.match(panel,/\{orders\.map\(item => \(\s*<PurchasePdfCard/);
+ assert.match(card,/\{previewOpen&&\(hasOriginal\?<PurchasePdfPreview/);
+ assert.ok(transformSync(fallback,{loader:'jsx'}).code.length>100);
+});
 test('inline preview includes readable PDF pages, navigation and mobile-safe controls',()=>{
  const viewer=readFileSync(new URL('../src/components/PurchasePdfPreview.jsx',import.meta.url),'utf8');
  assert.match(viewer,/createPortal\(/);
