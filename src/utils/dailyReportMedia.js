@@ -58,10 +58,10 @@ export async function prepareReportPhoto(file) {
     const mime = String(file.type || '').toLowerCase();
     const lowerName = String(file.name || '').toLowerCase();
     const jpeg = mime === 'image/jpeg' || mime === 'image/jpg' ||
-        (!mime && /\\.jpe?g$/.test(lowerName));
-    const png = mime === 'image/png' || (!mime && /\\.png$/.test(lowerName));
+        (!mime && /\.jpe?g$/.test(lowerName));
+    const png = mime === 'image/png' || (!mime && /\.png$/.test(lowerName));
     const convertible = ['image/heic', 'image/heif', 'image/webp'].includes(mime) ||
-        (!mime && /\\.(heic|heif|webp)$/.test(lowerName));
+        (!mime && /\.(heic|heif|webp)$/.test(lowerName));
     if (!jpeg && !png && !convertible) {
         throw new Error('Format non pris en charge. Utilisez une photo JPEG, PNG, HEIC ou WebP.');
     }

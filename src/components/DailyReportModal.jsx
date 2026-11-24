@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Camera, Send, Trash2, Plus, Image as ImageIcon, ZoomIn, ZoomOut, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
@@ -268,6 +269,8 @@ const DailyReportModal = ({ onClose }) => {
         // Sending is possible only after viewing the confirmation screen.
         if (!showSendReview || isUploading || !validateReport()) return;
 
+        const totalPhotos = sections.reduce((sum, section) => sum + section.photos.length, 0);
+        if (totalPhotos === 0) return;
         setIsUploading(true);
         setUploadProgress(0);
 
@@ -395,8 +398,8 @@ const DailyReportModal = ({ onClose }) => {
         <div className="fixed inset-0 z-[100] bg-black flex flex-col">
 
             {/* FULL-SIZE PHOTO PREVIEW, BEFORE SENDING OR AFTER RETAKING */}
-            {photoPreview && currentPreviewPhoto && (
-                <div className="absolute inset-0 z-[90] flex flex-col bg-slate-950 text-white"
+            {photoPreview && currentPreviewPhoto && createPortal(
+                <div className="fixed inset-0 z-[9999] flex flex-col bg-slate-950 text-white"
                     role="dialog" aria-modal="true" aria-label="Aperçu de la photo"
                     style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
                     <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-700 bg-slate-900 p-3">
@@ -461,11 +464,11 @@ const DailyReportModal = ({ onClose }) => {
                         </button>
                     </div>
                 </div>
-            )}
+            , document.body)}
 
             {/* EXPLICIT PRE-SEND REVIEW, NO EMAIL BEFORE CONFIRMATION */}
-            {showSendReview && (
-                <div className="absolute inset-0 z-[70] flex flex-col bg-slate-950 text-white"
+            {showSendReview && createPortal(
+                <div className="fixed inset-0 z-[500] flex flex-col bg-slate-950 text-white"
                     role="dialog" aria-modal="true" aria-label="Vérification du rapport avant envoi"
                     style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
                     <header className="flex shrink-0 justify-between items-center gap-3 border-b border-slate-700 p-4 bg-slate-900">
@@ -517,7 +520,7 @@ const DailyReportModal = ({ onClose }) => {
                         </button>
                     </footer>
                 </div>
-            )}
+            , document.body)}
 
             {/* MAIN MODAL UI */}
             <div className="flex justify-between items-center p-4 bg-slate-900 border-b border-slate-800 text-white z-10">
@@ -601,10 +604,11 @@ const DailyReportModal = ({ onClose }) => {
                                     <div key={photo.previewUrl} className="relative aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black">
                                         <button type="button"
                                             onClick={() => showPhoto(section.id, pIndex)}
-                                            className="w-full h-full focus-visible:outline-2 focus-visible:outline-blue-400"
+                                            className="relative w-full h-full focus-visible:outline-2 focus-visible:outline-blue-400"
                                             aria-label={`Agrandir la photo ${pIndex + 1}, ${photo.width} par ${photo.height} pixels`}>
                                             <img src={photo.previewUrl} className="w-full h-full object-contain"
                                                 alt={`Photo ${pIndex + 1} du rapport`} />
+                                            <span className="pointer-events-none absolute bottom-0 left-0 right-0 bg-black/75 py-1 text-[10px] font-semibold text-blue-200 text-center">Voir en grand</span>
                                         </button>
                                         <button type="button"
                                             onClick={() => removePhotoFromSection(section.id, pIndex)}
