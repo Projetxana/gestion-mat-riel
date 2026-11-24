@@ -620,7 +620,9 @@ const DailyReportModal = ({ onClose }) => {
                                         <input type="file" accept="image/*" capture="environment" className="sr-only"
                                             disabled={isUploading || preparingPhotos}
                                             onChange={e => {
-                                                const files = e.target.files;
+                                                // FileList is live: copy before clearing the input so
+                                                // iPhone Safari does not discard the newly taken photo.
+                                                const files = Array.from(e.target.files || []);
                                                 e.target.value = '';
                                                 void addFilesToSection(section.id, files);
                                             }} />
@@ -632,7 +634,9 @@ const DailyReportModal = ({ onClose }) => {
                                         <input type="file" accept="image/*" multiple className="sr-only"
                                             disabled={isUploading || preparingPhotos}
                                             onChange={e => {
-                                                const files = e.target.files;
+                                                // FileList is live: copy before clearing the input so
+                                                // iPhone Safari does not discard the newly taken photo.
+                                                const files = Array.from(e.target.files || []);
                                                 e.target.value = '';
                                                 void addFilesToSection(section.id, files);
                                             }} />
