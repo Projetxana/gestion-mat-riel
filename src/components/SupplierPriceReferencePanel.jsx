@@ -10,7 +10,7 @@ import {archivePurchasePdf} from '../utils/purchasePdfArchive';
 
 const money=value=>new Intl.NumberFormat('fr-CA',{style:'currency',currency:'CAD'}).format(Number(value||0));
 
-export default function SupplierPriceReferencePanel({site,companyId,quotes=[],documents=[],archiveEnabled=false,enabled=true,onSaved}){
+export default function SupplierPriceReferencePanel({site,companyId,quotes=[],quoteLines=[],documents=[],archiveEnabled=false,enabled=true,onSaved}){
  const [pending,setPending]=useState(null);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
@@ -119,9 +119,11 @@ export default function SupplierPriceReferencePanel({site,companyId,quotes=[],do
     Un nouveau PDF ajoute une version datée; les anciennes restent conservées.
    </p>
   </div>
-  {flocor&&(archiveEnabled?<PurchasePdfCard
-   kind="quote" source={flocor} site={site} companyId={companyId}
+  {flocor&&<PurchasePdfCard
+   kind="quote" source={{...flocor,supplier:'Flocor'}} site={site} companyId={companyId}
+   canAttach={archiveEnabled}
    documentRecord={documents.find(d=>d.source_kind==='quote'&&String(d.source_id)===String(flocor.id))}
+   detailLines={quoteLines.filter(line=>String(line.quote_id)===String(flocor.id))}
    onAttached={onSaved}
    className="border-emerald-700 bg-emerald-950/20 text-sm">
    <p className="font-semibold text-emerald-200">
@@ -130,14 +132,7 @@ export default function SupplierPriceReferencePanel({site,companyId,quotes=[],do
     {flocor.line_count} lignes · {money(flocor.total_amount)} HT ·
     {flocor.quote_date?' '+flocor.quote_date+' ·':''} référence active
    </p>
-  </PurchasePdfCard>:<div className="rounded-lg border border-emerald-700 bg-emerald-950/20 p-3 text-sm">
-   <p className="font-semibold text-emerald-200">
-    Flocor · Soumission nº {flocor.quote_number}</p>
-   <p className="text-xs text-slate-300">
-    {flocor.line_count} lignes · {money(flocor.total_amount)} HT ·
-    {flocor.quote_date?' '+flocor.quote_date+' ·':''} référence active
-   </p>
-  </div>)}
+  </PurchasePdfCard>}
   {!enabled&&<p role="status" className="text-amber-200 text-sm">
    Référentiel de prix non encore activé sur Supabase. Migration nécessaire avant import.
   </p>}

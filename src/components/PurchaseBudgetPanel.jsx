@@ -427,7 +427,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                 Budget actif · {budgetLines.length} article(s) (estimation de base + avenants éventuels)
                              </p>
                              <SupplierPriceReferencePanel site={site} companyId={currentCompanyId}
-                                 quotes={priceQuotes} enabled={priceReferenceEnabled}
+                                 quotes={priceQuotes} quoteLines={priceQuoteLines}
+                                 enabled={priceReferenceEnabled}
                                  documents={purchaseDocuments} archiveEnabled={archiveEnabled}
                                  onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
                              <PurchaseBudgetRevisions site={site} companyId={currentCompanyId}
@@ -561,29 +562,23 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                         <h3 className="font-semibold flex items-center gap-2"><Package size={17}/> Commandes enregistrées ({orders.length})</h3>
                         {!orders.length && <p className="text-sm text-slate-400">Aucune commande à ce jour.</p>}
                         {orders.map(item => (
-                            archiveEnabled?<PurchasePdfCard key={item.id}
+                            <PurchasePdfCard key={item.id}
                                 kind="order" source={{...item,
-                                    line_count:orderLines.filter(line=>line.order_id===item.id).length,
+                                    line_count:orderLines.filter(line=>String(line.order_id)===String(item.id)).length,
                                     total_amount:orderTotals.get(item.id)}}
                                 site={site} companyId={currentCompanyId}
+                                canAttach={archiveEnabled}
                                 documentRecord={purchaseDocuments.find(d=>d.source_kind==='order'&&String(d.source_id)===String(item.id))}
+                                detailLines={orderLines.filter(line=>String(line.order_id)===String(item.id))}
                                 onAttached={refresh} className="bg-slate-800">
                                 <div className="flex justify-between gap-2">
                                     <div className="min-w-0">
                                         <p className="font-semibold text-sm break-words">{item.supplier} · PO {item.po_number}</p>
                                         <p className="text-xs text-slate-400 break-words">Livraison : {item.shipping_project_name}</p>
-                                        <p className="text-xs text-slate-400 break-words">Fichier : {item.source_name||'original non conservé'}</p>
                                     </div>
                                     <span className="font-semibold tabular-nums text-sm shrink-0">{money(orderTotals.get(item.id))}</span>
                                 </div>
-                            </PurchasePdfCard>:<div key={item.id}
-                                className="rounded-lg border border-slate-700 bg-slate-800 p-3 flex justify-between gap-2">
-                                <div className="min-w-0">
-                                    <p className="font-semibold text-sm break-words">{item.supplier} · PO {item.po_number}</p>
-                                    <p className="text-xs text-slate-400 break-words">Livraison : {item.shipping_project_name}</p>
-                                </div>
-                                <span className="font-semibold tabular-nums text-sm shrink-0">{money(orderTotals.get(item.id))}</span>
-                            </div>
+                            </PurchasePdfCard>
                         ))}
                     </div>
                     <p className="text-xs text-slate-400">Le PDF numérique est lu localement. L’import des courriels et le rapprochement des bons restent indépendants.</p>
