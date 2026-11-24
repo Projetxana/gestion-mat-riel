@@ -591,42 +591,51 @@ const DailyReportModal = ({ onClose }) => {
                                 />
                             )}
 
-                            {/* Photos Grid */}
+                            {/* Native camera stills retain full-resolution pixels. */}
                             <div className="grid grid-cols-3 gap-2">
                                 {section.photos.map((photo, pIndex) => (
-                                    <div key={pIndex} className="relative aspect-square rounded-lg overflow-hidden border border-slate-700">
-                                        <img src={photo.previewUrl} className="w-full h-full object-cover" alt="" />
-                                        <button
+                                    <div key={photo.previewUrl} className="relative aspect-square rounded-lg overflow-hidden border border-slate-700 bg-black">
+                                        <button type="button"
+                                            onClick={() => showPhoto(section.id, pIndex)}
+                                            className="w-full h-full focus-visible:outline-2 focus-visible:outline-blue-400"
+                                            aria-label={`Agrandir la photo ${pIndex + 1}, ${photo.width} par ${photo.height} pixels`}>
+                                            <img src={photo.previewUrl} className="w-full h-full object-contain"
+                                                alt={`Photo ${pIndex + 1} du rapport`} />
+                                        </button>
+                                        <button type="button"
                                             onClick={() => removePhotoFromSection(section.id, pIndex)}
-                                            className="absolute top-0 right-0 bg-red-500 text-white p-1 rounded-bl shadow-md"
-                                        >
-                                            <X size={12} />
+                                            disabled={isUploading}
+                                            aria-label={`Supprimer la photo ${pIndex + 1}`}
+                                            className="absolute top-0 right-0 min-w-10 min-h-10 inline-flex items-center justify-center bg-red-700 text-white rounded-bl shadow-md">
+                                            <X size={18} />
                                         </button>
                                     </div>
                                 ))}
 
-                                {/* Add Button Group */}
                                 <div className="aspect-square bg-slate-800 rounded-lg flex flex-col gap-1 overflow-hidden">
-                                    {/* Camera Button */}
-                                    <button
-                                        onClick={() => openCamera(section.id)}
-                                        className="flex-1 w-full flex flex-col items-center justify-center hover:bg-slate-700 transition-colors bg-slate-800/50"
-                                    >
-                                        <Camera className="text-blue-400 mb-1" size={20} />
-                                        <span className="text-[9px] text-blue-400 font-bold uppercase">Caméra</span>
-                                    </button>
-                                    <div className="h-[1px] bg-slate-700 w-full"></div>
-                                    {/* Gallery Button */}
-                                    <label className="flex-1 w-full flex flex-col items-center justify-center cursor-pointer hover:bg-slate-700 transition-colors bg-slate-800/50">
-                                        <ImageIcon className="text-slate-400 mb-1" size={20} />
-                                        <span className="text-[9px] text-slate-400 font-bold uppercase">Galerie</span>
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            multiple
-                                            className="hidden"
-                                            onChange={(e) => addFilesToSection(section.id, e.target.files)}
-                                        />
+                                    {/* The native camera picker takes a true still image, not a video frame. */}
+                                    <label className="flex-1 w-full flex flex-col items-center justify-center cursor-pointer hover:bg-slate-700 bg-slate-800/50">
+                                        <Camera className="text-blue-300 mb-1" size={21} />
+                                        <span className="text-[10px] text-blue-200 font-bold uppercase">Prendre photo</span>
+                                        <input type="file" accept="image/*" capture="environment" className="sr-only"
+                                            disabled={isUploading || preparingPhotos}
+                                            onChange={e => {
+                                                const files = e.target.files;
+                                                e.target.value = '';
+                                                void addFilesToSection(section.id, files);
+                                            }} />
+                                    </label>
+                                    <div className="h-px bg-slate-700 w-full"></div>
+                                    <label className="flex-1 w-full flex flex-col items-center justify-center cursor-pointer hover:bg-slate-700 bg-slate-800/50">
+                                        <ImageIcon className="text-slate-300 mb-1" size={20} />
+                                        <span className="text-[10px] text-slate-300 font-bold uppercase">Galerie</span>
+                                        <input type="file" accept="image/*" multiple className="sr-only"
+                                            disabled={isUploading || preparingPhotos}
+                                            onChange={e => {
+                                                const files = e.target.files;
+                                                e.target.value = '';
+                                                void addFilesToSection(section.id, files);
+                                            }} />
                                     </label>
                                 </div>
                             </div>
@@ -634,7 +643,12 @@ const DailyReportModal = ({ onClose }) => {
                     </div>
                 ))}
 
-                <button onClick={addSection} className="w-full py-4 border-2 border-dashed border-slate-700 rounded-xl flex items-center justify-center gap-2 text-slate-400 hover:text-white">
+                {photoError && <p role="alert" className="flex items-start gap-2 rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-100">
+                    <AlertTriangle size={18} className="shrink-0" /> {photoError}
+                </p>}
+                {preparingPhotos && <p role="status" className="text-sm text-blue-200">Préparation des photos en haute définition…</p>}
+                <button type="button" onClick={addSection} disabled={isUploading || preparingPhotos}
+                    className="w-full min-h-11 py-4 border-2 border-dashed border-slate-700 rounded-xl flex items-center justify-center gap-2 text-slate-400 hover:text-white disabled:opacity-50">
                     <Plus size={20} /><span className="font-bold">Ajouter un niveau</span>
                 </button>
                 <div className="h-24"></div>
@@ -642,11 +656,12 @@ const DailyReportModal = ({ onClose }) => {
 
             <div className="absolute bottom-0 w-full bg-slate-900 border-t border-slate-800 p-4 z-20">
                 <button
-                    onClick={handleSend}
-                    disabled={isUploading}
-                    className="w-full bg-blue-600 hover:bg-blue-500 text-white text-lg font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2"
+                    onClick={openSendReview}
+                    disabled={isUploading || preparingPhotos}
+                    className="w-full min-h-12 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-base font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2"
                 >
-                    {isUploading ? <span>Envoi... {uploadProgress}%</span> : <> <Send size={24} /> <span>Envoyer</span> </>}
+                    <CheckCircle2 size={22} />
+                    <span>Vérifier les photos et envoyer</span>
                 </button>
             </div>
         </div>
