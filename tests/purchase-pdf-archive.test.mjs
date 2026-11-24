@@ -72,7 +72,8 @@ test('private archive SQL requires admin role, matching tenant and existing sour
  assert.match(sql,/REFERENCES public\.sites/);
  assert.match(sql,/source_kind='quote'/);
  assert.match(sql,/source_kind='order'/);
- assert.match(sql,/storage\.foldername\(name\)/);
+ assert.match(sql,/storage\.foldername\(storage\.objects\.name\)/);
+ assert.doesNotMatch(sql,/storage\.foldername\(name\)/);
  assert.doesNotMatch(sql,/FOR (?:UPDATE|DELETE) TO anon/);
 });
 test('clicking an original document card opens the PDF; unavailable ones request attachment',()=>{
