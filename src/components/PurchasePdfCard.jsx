@@ -7,7 +7,7 @@ import PurchaseDataPreview from './PurchaseDataPreview';
 // One click opens the original when present; otherwise attaches the original
 // once, after matching it to the existing quote / PO. No accounting writes.
 export default function PurchasePdfCard({
- kind,source,site,companyId,documentRecord,onAttached,children,className='',detailLines=[],
+ kind,source,site,companyId,documentRecord,onAttached,children,className='',detailLines=[],canAttach=true,
 }){
  const picker=useRef(null);
  const [busy,setBusy]=useState(false);
@@ -47,7 +47,7 @@ export default function PurchasePdfCard({
     {busy?'Archivage en cours…':hasOriginal?'Voir l’aperçu du PDF original':'Voir les détails enregistrés'}
    </p>
   </button>
-  {!hasOriginal&&<button type="button" onClick={()=>picker.current?.click()}
+  {!hasOriginal&&canAttach&&<button type="button" onClick={()=>picker.current?.click()}
    disabled={busy||!source?.id}
    className="min-h-10 rounded-md px-2 text-xs font-medium text-blue-200 hover:underline disabled:opacity-50"
    aria-label={'Joindre le PDF original (facultatif) : '+(source?.quote_number||source?.po_number||'document')}>
@@ -55,7 +55,7 @@ export default function PurchasePdfCard({
   </button>}
   <input ref={picker} className="sr-only" type="file" accept=".pdf,application/pdf"
    aria-label={'Sélectionner le PDF original : '+(source?.quote_number||source?.po_number||'document')}
-   disabled={busy||hasOriginal}
+   disabled={busy||hasOriginal||!canAttach}
    onChange={e=>{const file=e.target.files?.[0];e.target.value='';void upload(file);}}/>
   {error&&<p role="alert" className="text-xs text-red-200">{error}</p>}
   {notice&&<p role="status" className="text-xs text-emerald-200">{notice}</p>}
