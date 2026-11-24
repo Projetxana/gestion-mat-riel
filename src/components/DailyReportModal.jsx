@@ -160,13 +160,18 @@ const DailyReportModal = ({ onClose }) => {
 
     // --- REPORT GENERATION ---
     const generateReportImage = async (siteName, userName, date, textNotes) => {
+        // A 1600px report cover avoids the pixelation of the old 800px JPEG.
+        // The photographed documents are emailed independently at full resolution.
         const width = 800;
-        let height = 600 + (sections.length * 40);
-
+        const height = Math.max(720, 590 + sections.length * 36 +
+            Math.ceil((textNotes || '').length / 34) * 36);
+        const pixelScale = 2;
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = width * pixelScale;
+        canvas.height = height * pixelScale;
         const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Impossible de préparer le rapport.');
+        ctx.scale(pixelScale, pixelScale);
 
         // Background
         ctx.fillStyle = '#ffffff';
@@ -245,27 +250,19 @@ const DailyReportModal = ({ onClose }) => {
         ctx.fillStyle = '#64748b';
         ctx.font = 'italic 16px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText("Généré par Antigravity", width / 2, height - 20);
+        ctx.fillText("Généré par BuildTrack", width / 2, height - 20);
 
         return new Promise((resolve, reject) => {
             canvas.toBlob((blob) => {
                 if (blob) resolve(blob);
                 else reject(new Error("Erreur génération image"));
-            }, 'image/jpeg', 0.8);
+            }, 'image/jpeg', 0.96);
         });
     };
 
     const handleSend = async () => {
-        if (!selectedSiteId) {
-            alert("Veuillez sélectionner un chantier.");
-            return;
-        }
-
-        const totalPhotos = sections.reduce((acc, s) => acc + s.photos.length, 0);
-        if (totalPhotos === 0) {
-            alert("Veuillez ajouter au moins une photo.");
-            return;
-        }
+        // Sending is possible only after viewing the confirmation screen.
+        if (!showSendReview || isUploading || !validateReport()) return;
 
         setIsUploading(true);
         setUploadProgress(0);
@@ -364,7 +361,8 @@ const DailyReportModal = ({ onClose }) => {
 
             addLog(`[EMAIL CONFIRMED] Rapport journalier envoyé par ${userName}`);
 
-            alert("Rapport envoyé !");
+            setShowSendReview(false);
+            alert("Rapport et photos haute définition envoyés !");
             onClose();
 
         } catch (error) {
