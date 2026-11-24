@@ -276,46 +276,60 @@ const DailyReportModal = ({ onClose }) => {
             const dateStr = new Date().toLocaleDateString('fr-FR');
             const userName = currentUser?.name || 'Technicien';
             const timestamp = Date.now();
+            const safeSite = siteName.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 65);
+            const uniquePrefix = `reports/${selectedSite.id}/${timestamp}_${crypto.randomUUID()}`;
 
-            // 1. Doc Image
+            // The cover is rendered at 1600px. Photos are uploaded separately
+            // at exactly the original resolution reviewed by the employee.
             const docBlob = await generateReportImage(siteName, userName, dateStr, notes);
-            const docFileName = `Rapport_${dateStr.replace(/\//g, '-')}_${siteName.replace(/\s+/g, '_')}.jpg`;
+            const docFileName = `Rapport_${dateStr.replace(/\//g, '-')}_${safeSite}.jpg`;
+            const docStoragePath = `${uniquePrefix}/${docFileName}`;
 
             const { error: docError } = await supabase.storage
                 .from('delivery-notes')
-                .upload(docFileName, docBlob);
+                .upload(docStoragePath, docBlob, {
+                    contentType: 'image/jpeg',
+                    upsert: false
+                });
             if (docError) throw docError;
 
             const { data: docUrlData } = supabase.storage
                 .from('delivery-notes')
-                .getPublicUrl(docFileName);
+                .getPublicUrl(docStoragePath);
 
             const attachments = [
                 { filename: docFileName, path: docUrlData.publicUrl }
             ];
 
-            // 2. Photos
             let processedCount = 0;
             for (const section of sections) {
-                const levelName = (section.level === 'Autre' ? (section.customLevel || 'Autre') : section.level)
-                    .replace(/\s+/g, '_')
-                    .replace(/[^a-zA-Z0-9_]/g, '');
+                const levelName = (section.level === 'Autre'
+                    ? (section.customLevel || 'Autre')
+                    : section.level)
+                    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 50) || 'Zone';
 
                 for (let i = 0; i < section.photos.length; i++) {
-                    const { blob } = section.photos[i];
-                    const fileName = `${levelName}_${i + 1}_${timestamp}_${processedCount}.jpg`;
+                    const photo = section.photos[i];
+                    const extension = getPhotoExtension(photo.mimeType || photo.blob.type);
+                    const fileName = `${levelName}_Photo_${i + 1}.${extension}`;
+                    const photoStoragePath = `${uniquePrefix}/photo_${processedCount}_${fileName}`;
 
                     const { error } = await supabase.storage
                         .from('delivery-notes')
-                        .upload(fileName, blob);
+                        .upload(photoStoragePath, photo.blob, {
+                            contentType: photo.mimeType || 'image/jpeg',
+                            upsert: false
+                        });
                     if (error) throw error;
 
                     const { data: publicData } = supabase.storage
                         .from('delivery-notes')
-                        .getPublicUrl(fileName);
+                        .getPublicUrl(photoStoragePath);
 
                     attachments.push({
-                        filename: `${levelName}_Photo_${i + 1}.jpg`,
+                        filename: fileName,
                         path: publicData.publicUrl
                     });
 
