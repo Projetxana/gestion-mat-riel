@@ -17,6 +17,8 @@ test('native phone camera captures a true still image, not a low-resolution vide
     assert.doesNotMatch(panel, /getUserMedia|video\.videoWidth|video\.videoHeight|<video/);
     assert.match(panel, /Array\.from\(e\.target\.files \|\| \[\]\)/);
     assert.match(panel, /prepareReportPhoto/);
+    assert.match(panel, /addFilesToSection\(section\.id, files, true\)/);
+    assert.match(panel, /if \(previewImmediately\) showPhoto\(sectionId, firstNewIndex\)/);
     assert.match(media, /blob: file/);
     assert.match(media, /width: image\.naturalWidth|const width = image\.naturalWidth/);
     assert.match(media, /'image\/jpeg', 0\.96/);
