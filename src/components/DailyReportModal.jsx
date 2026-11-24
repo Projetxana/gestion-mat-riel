@@ -390,28 +390,128 @@ const DailyReportModal = ({ onClose }) => {
     return (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col">
 
-            {/* CAMERA OVERLAY */}
-            {isCameraOpen && (
-                <div className="absolute inset-0 z-50 bg-black flex flex-col">
-                    <div className="flex-1 relative">
-                        <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                        <canvas ref={canvasRef} className="hidden" />
-                        {/* Live Thumbnails Overlay */}
-                        <div className="absolute bottom-4 left-4 right-4 h-20 flex gap-2 overflow-x-auto">
-                            {sections.find(s => s.id === cameraSectionId)?.photos.slice(-5).map((p, idx) => (
-                                <img key={idx} src={p.previewUrl} className="h-full rounded border-2 border-white" alt="" />
-                            ))}
+            {/* FULL-SIZE PHOTO PREVIEW, BEFORE SENDING OR AFTER RETAKING */}
+            {photoPreview && currentPreviewPhoto && (
+                <div className="absolute inset-0 z-[90] flex flex-col bg-slate-950 text-white"
+                    role="dialog" aria-modal="true" aria-label="Aperçu de la photo"
+                    style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+                    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-700 bg-slate-900 p-3">
+                        <div>
+                            <h3 className="text-sm font-bold">Vérifier la netteté de la photo</h3>
+                            <p className="text-xs text-slate-300">
+                                {currentPreviewPhoto.width} × {currentPreviewPhoto.height} px · {humanFileSize(currentPreviewPhoto.blob.size)}
+                            </p>
                         </div>
+                        <button type="button" onClick={() => setPhotoPreview(null)}
+                            className="min-h-11 min-w-11 rounded-lg border border-slate-600 inline-flex items-center justify-center"
+                            aria-label="Fermer l’aperçu"><X size={20} /></button>
                     </div>
-                    <div className="h-32 bg-slate-900 flex items-center justify-around p-4">
-                        <button onClick={closeCamera} className="bg-slate-800 text-white p-4 rounded-full">
-                            <RotateCcw size={24} />
+                    <div className="flex items-center justify-center gap-3 bg-slate-900/90 py-2">
+                        <button type="button" onClick={() => setPhotoZoom(z => Math.max(1, z - 0.5))}
+                            disabled={photoZoom <= 1} aria-label="Réduire le zoom"
+                            className="min-w-11 min-h-11 rounded-lg border border-slate-600 disabled:opacity-40 flex items-center justify-center">
+                            <ZoomOut size={19} />
                         </button>
-                        <button onClick={takePhoto} className="w-20 h-20 rounded-full border-4 border-white bg-slate-800 flex items-center justify-center active:scale-95 transition-transform">
-                            <div className="w-16 h-16 rounded-full bg-white"></div>
+                        <span className="text-sm tabular-nums" aria-live="polite">{Math.round(photoZoom * 100)} %</span>
+                        <button type="button" onClick={() => setPhotoZoom(z => Math.min(3, z + 0.5))}
+                            disabled={photoZoom >= 3} aria-label="Agrandir pour vérifier les détails"
+                            className="min-w-11 min-h-11 rounded-lg border border-slate-600 disabled:opacity-40 flex items-center justify-center">
+                            <ZoomIn size={19} />
                         </button>
-                        <div className="w-14"></div> {/* Spacer */}
                     </div>
+                    <div className="min-h-0 flex-1 overflow-auto bg-black p-2">
+                        <img src={currentPreviewPhoto.previewUrl} alt="Photo complète du rapport à vérifier avant envoi"
+                            className="block mx-auto object-contain"
+                            style={{
+                                width: photoZoom > 1 ? `${Math.round(photoZoom * 100)}%` : 'auto',
+                                maxWidth: photoZoom > 1 ? 'none' : '100%',
+                                maxHeight: photoZoom > 1 ? 'none' : '100%',
+                            }} />
+                    </div>
+                    {photoResolutionWarning(currentPreviewPhoto.width, currentPreviewPhoto.height) && (
+                        <p role="alert" className="flex gap-2 items-center px-3 py-2 text-xs text-amber-200">
+                            <AlertTriangle size={16} />
+                            {photoResolutionWarning(currentPreviewPhoto.width, currentPreviewPhoto.height)}
+                        </p>
+                    )}
+                    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-700 p-3 bg-slate-900">
+                        <label className="min-h-11 flex items-center justify-center rounded-lg border border-blue-600 px-3 text-sm text-blue-100 cursor-pointer">
+                            <Camera size={17} className="mr-2" /> Reprendre
+                            <input type="file" accept="image/*" capture="environment" className="sr-only"
+                                disabled={preparingPhotos || isUploading}
+                                onChange={e => {
+                                    const file = e.target.files?.[0];
+                                    e.target.value = '';
+                                    void replacePreviewPhoto(file);
+                                }} />
+                        </label>
+                        <button type="button"
+                            onClick={() => removePhotoFromSection(photoPreview.sectionId, photoPreview.index)}
+                            disabled={isUploading}
+                            className="min-h-11 rounded-lg border border-red-700 px-3 text-sm text-red-200">
+                            Supprimer
+                        </button>
+                        <button type="button" onClick={() => setPhotoPreview(null)}
+                            className="min-h-11 rounded-lg bg-blue-600 px-4 font-semibold text-sm">
+                            Photo vérifiée
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* EXPLICIT PRE-SEND REVIEW, NO EMAIL BEFORE CONFIRMATION */}
+            {showSendReview && (
+                <div className="absolute inset-0 z-[70] flex flex-col bg-slate-950 text-white"
+                    role="dialog" aria-modal="true" aria-label="Vérification du rapport avant envoi"
+                    style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+                    <header className="flex shrink-0 justify-between items-center gap-3 border-b border-slate-700 p-4 bg-slate-900">
+                        <div>
+                            <h3 className="font-bold text-lg">Vérifier avant d’envoyer</h3>
+                            <p className="text-xs text-slate-300">Touchez chaque image pour contrôler sa netteté et ses détails.</p>
+                        </div>
+                        <button type="button" onClick={() => setShowSendReview(false)} disabled={isUploading}
+                            className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg border border-slate-600"
+                            aria-label="Retour au rapport"><X size={20} /></button>
+                    </header>
+                    <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
+                        <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm space-y-1">
+                            <p><strong>Chantier :</strong> {sites.find(site => String(site.id) === String(selectedSiteId))?.name}</p>
+                            <p className="break-words"><strong>Destinataire :</strong> {sites.find(site => String(site.id) === String(selectedSiteId))?.email}</p>
+                            <p><strong>Photos :</strong> {sections.reduce((sum, section) => sum + section.photos.length, 0)}</p>
+                            <p className="text-xs text-slate-400">Les images en pièces jointes conservent leur résolution. Vérifiez leur lisibilité avant confirmation.</p>
+                        </div>
+                        {sections.map(section => section.photos.length > 0 && (
+                            <div key={section.id} className="space-y-2">
+                                <h4 className="text-sm font-semibold">{section.level === 'Autre' ? section.customLevel || 'Autre' : section.level}
+                                    {section.roomDetail ? ' · ' + section.roomDetail : ''}</h4>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                    {section.photos.map((photo, index) => (
+                                        <button type="button" key={photo.previewUrl}
+                                            onClick={() => showPhoto(section.id, index)}
+                                            className="rounded-lg border border-slate-700 bg-slate-900 p-2 text-left min-h-11">
+                                            <img src={photo.previewUrl} alt={`Photo ${index + 1}, ouvrir en grand`}
+                                                className="w-full h-36 object-contain bg-black rounded" />
+                                            <p className="text-xs mt-2">Photo {index + 1} · {photo.width} × {photo.height} px</p>
+                                            {photoResolutionWarning(photo.width, photo.height) && (
+                                                <p className="text-xs text-amber-200">Résolution faible — vérifier</p>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                        {photoError && <p role="alert" className="text-sm text-red-200">{photoError}</p>}
+                    </div>
+                    <footer className="shrink-0 grid grid-cols-2 gap-2 border-t border-slate-700 bg-slate-900 p-3">
+                        <button type="button" onClick={() => setShowSendReview(false)}
+                            disabled={isUploading} className="min-h-12 rounded-xl border border-slate-600 text-sm font-semibold">
+                            Modifier
+                        </button>
+                        <button type="button" onClick={handleSend} disabled={isUploading || preparingPhotos}
+                            className="min-h-12 rounded-xl bg-blue-600 text-white text-sm font-bold flex gap-2 items-center justify-center disabled:opacity-50">
+                            <Send size={18} /> {isUploading ? `Envoi… ${uploadProgress}%` : 'Confirmer l’envoi'}
+                        </button>
+                    </footer>
                 </div>
             )}
 
