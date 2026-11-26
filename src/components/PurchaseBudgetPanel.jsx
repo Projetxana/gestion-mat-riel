@@ -99,7 +99,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     'id, revision_no, kind, label, source_name, file_sha256, line_count, total_amount, created_at')
                     .order('revision_no', { ascending: false }),
                 purchaseQueryPages(selectProject('bt_purchase_orders', 'id, po_number, supplier, supplier_order_number, document_kind, shipping_project_name, created_at, order_date').order('created_at', { ascending: false }).order('id')),
-                purchaseQueryPages(selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, unit, unit_cost, amount').order('id')),
+                purchaseQueryPages(selectProject('bt_purchase_order_lines', '*').order('id')),
                 purchaseQueryPages(selectProject('bt_purchase_line_links', 'order_line_id, budget_line_id, disposition').order('order_line_id')),
                 selectProject('bt_supplier_price_quotes',
                     'id, supplier, quote_number, quote_date, source_name, file_sha256, line_count, total_amount, created_at')

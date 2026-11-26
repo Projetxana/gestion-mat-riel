@@ -1,5 +1,8 @@
 BEGIN;
 
+ALTER TABLE public.bt_purchase_order_lines
+    ADD COLUMN supplier_item_code text CHECK (length(supplier_item_code)<=100);
+
 CREATE TABLE public.bt_purchase_inbox (
     id uuid PRIMARY KEY,
     company_id uuid NOT NULL REFERENCES public.companies(id),
@@ -268,6 +271,16 @@ BEGIN
         v_order := public.bt_purchase_import_document(r.company_id,r.site_id,r.document_id,v_kind,v_po,v_supplier,v_reference,
             coalesce(v_plan->>'originalReference',''),coalesce(nullif(v_project,''),v_site),v_site,r.file_name,
             r.file_sha256,r.file_size,v_rows);
+        WITH inserted AS (
+            SELECT id,row_number() OVER (ORDER BY id) AS position
+            FROM public.bt_purchase_order_lines WHERE order_id=v_order
+        ), extracted AS (
+            SELECT ordinality, nullif(btrim(value->>'supplier_code'),'') AS supplier_code
+            FROM jsonb_array_elements(v_rows) WITH ORDINALITY
+        )
+        UPDATE public.bt_purchase_order_lines line SET supplier_item_code=extracted.supplier_code
+        FROM inserted JOIN extracted ON extracted.ordinality=inserted.position
+        WHERE line.id=inserted.id AND extracted.supplier_code IS NOT NULL;
     END IF;
     INSERT INTO public.bt_purchase_inbox(id,company_id,site_id,actor_id,file_sha256,file_name,storage_path,file_size,
         kind,supplier,reference,project_name,status,budget_mode,revision_id,quote_id,order_id,total)
