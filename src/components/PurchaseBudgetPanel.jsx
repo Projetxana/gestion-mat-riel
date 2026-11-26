@@ -4,6 +4,8 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Package, RefreshCw } from
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shippingProjectVerification } from '../utils/purchaseBudget';
+import PurchasePdfReview from './PurchasePdfReview';
+import {preparePurchaseReview,validatePurchaseReview} from '../utils/purchasePdfReview';
 import { assessDigitalPdf } from '../utils/pdfImportEvidence';
 import PurchaseLineReconciliation from './PurchaseLineReconciliation';
 import PurchaseBudgetRevisions from './PurchaseBudgetRevisions';
@@ -128,12 +130,12 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     useEffect(() => { void refresh(); }, [refresh, reloadIndex]);
 
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
-    const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name);
+    const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, pendingOrder?.review?.siteConfirmation || '');
     const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines, purchaseLinks), [budgetLines, orderLines, purchaseLinks]);
     const pendingPriceComparison=useMemo(()=>pendingOrder?compareSupplierPrices({
         quotes:priceQuotes,quoteLines:priceQuoteLines,
         orders:[{id:'pending',supplier:order.supplier,po_number:order.poNumber}],
-        orderLines:pendingOrder.rows.map((line,index)=>({
+        orderLines:pendingOrder.rows.filter(line=>line.included!==false).map((line,index)=>({
             ...line,id:'draft-'+index,order_id:'pending'
         })),
     }):null,[pendingOrder,order,priceQuotes,priceQuoteLines]);
@@ -190,6 +192,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         setError(''); setNotice(''); setPdfIssues([]);
         setPriceRiskAcknowledged(false);
         // A newly selected file must invalidate any prior confirmation draft.
+        if (mode === 'budget') setPendingBudget(null);
         if (mode === 'order') {
             setPendingOrder(null);
             setOrder(emptyOrder);
@@ -255,8 +258,9 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     setPdfIssues(issues.length?issues:[
                         'Le PDF ne fournit pas une confirmation complète et fiable.'
                     ]);
-                    setError('Import non enregistré. Fournissez une confirmation PDF complète '+
-                        'et correspondant exactement au chantier. Aucune saisie manuelle de commande.');
+                    const review=preparePurchaseReview(parsed,site,pdf.text,'order');
+                    setOrder({supplier:parsed.supplier||'',poNumber:parsed.hints?.po_number||'',supplierNumber:parsed.hints?.supplier_order_number||'',shippingProject:review.extractedProject,date:''});
+                    setPendingOrder({rows:review.rows,review,sourceName:file.name.slice(0,150),originalFile:file,verifiedPdf:false,fingerprint:parsed.document_fingerprint});
                     return;
                 }
                 const metadata={
@@ -285,15 +289,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 return;
             }
 
-            // Initial budget keeps its existing import review fallback.
             setPdfIssues(issues.length?issues:['Document à vérifier avant enregistrement.']);
-            let tentative=null;
-            try {
-                const source=parsed.hints?.suggested_lines?.filter(line=>line.included!==false)||[];
-                tentative=source.length?parsePurchaseRows(source,{kind:'budget'}):null;
-            } catch { tentative=null; }
-            setPendingBudget(!budget&&tentative
-                ? {rows:tentative,sourceName:file.name}:null);
+            if(budget) throw new Error('Utilisez le remplacement ou la liste complémentaire du budget existant.');
+            const review=preparePurchaseReview(parsed,site,pdf.text,'budget');
+            setPendingBudget({rows:review.rows,review,sourceName:file.name,originalFile:file});
         } catch(err) {
             setError(err?.code==='23505'
                 ? 'Ce budget ou ce PO est déjà enregistré. Aucune écriture en double.'
@@ -308,7 +307,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         try {
             const { error: rpcError } = await supabase.rpc('bt_purchase_import_budget', {
                 p_company_id: currentCompanyId, p_site_id: site.id,
-                p_source_name: pendingBudget.sourceName, p_lines: pendingBudget.rows,
+                p_source_name: pendingBudget.sourceName, p_lines: pendingBudget.review ? validatePurchaseReview(pendingBudget.review,pendingBudget.rows,site) : pendingBudget.rows,
             });
             if (rpcError) throw rpcError;
             setPendingBudget(null);
@@ -320,9 +319,9 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     };
 
     const saveOrder = async () => {
-        if (!pendingOrder?.verifiedPdf || !shippingCheck.canAccept || busy ||
+        if (!pendingOrder?.originalFile || (!pendingOrder.verifiedPdf && !pendingOrder.review) || !shippingCheck.canAccept || busy ||
             site.status!=='active' || !order.supplier.trim() || !order.poNumber.trim() ||
-            !order.shippingProject.trim()) {
+            (!order.shippingProject.trim() && !pendingOrder.review?.siteConfirmation)) {
             setError('La commande doit provenir d’un PDF complet vérifié pour ce chantier.');
             return;
         }
@@ -332,21 +331,22 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         }
         setBusy(true); setError(''); setNotice('');
         try {
+            const verifiedRows=pendingOrder.review?validatePurchaseReview(pendingOrder.review,pendingOrder.rows,site,order,orders):pendingOrder.rows;
             const { error: rpcError } = await supabase.rpc('bt_purchase_create_order', {
                 p_company_id: currentCompanyId, p_site_id: site.id,
                 p_po_number: order.poNumber.trim(), p_supplier: order.supplier.trim(),
                 p_supplier_order_number: order.supplierNumber.trim(),
-                p_shipping_project_name: order.shippingProject.trim(),
+                p_shipping_project_name: order.shippingProject.trim() || site.name,
                 p_order_date: null, p_source_name: pendingOrder.sourceName,
-                p_project_verified: true, p_override_confirmation: '',
-                p_lines: pendingOrder.rows,
+                p_project_verified: true, p_override_confirmation: pendingOrder.review?.siteConfirmation || '',
+                p_lines: verifiedRows,
             });
             if (rpcError) throw rpcError;
             let pdfArchiveWarning='';
             if(pendingOrder.originalFile){
                 try{
                     pdfArchiveWarning=await archiveNewOrder(
-                        pendingOrder.originalFile,order.poNumber.trim(),order.supplier.trim(),pendingOrder.rows);
+                        pendingOrder.originalFile,order.poNumber.trim(),order.supplier.trim(),verifiedRows);
                 }catch(e){
                     pdfArchiveWarning=e?.message||'Archivage du PDF impossible.';
                 }
@@ -401,7 +401,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     <ul className="mt-2 list-disc space-y-1 pl-5">
                         {pdfIssues.slice(0,8).map((issue,index)=><li key={index}>{issue}</li>)}
                     </ul>
-                    <p className="mt-2 text-xs">Si les lignes sont lisibles, utilisez le formulaire de confirmation existant ci-dessous.</p>
+                    <p className="mt-2 text-xs">Vérifiez les informations et les articles dans le formulaire de validation ci-dessous.</p>
                 </div>
             )}
 
@@ -468,7 +468,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             {pendingBudget && (
                                 <div className="rounded-xl border border-blue-700 p-3 text-sm">
                                     <p>{pendingBudget.sourceName} · {pendingBudget.rows.length} articles</p>
-                                    <p className="font-bold mt-1">Budget à confirmer : {money(pendingBudget.rows.reduce((sum,line) => sum + line.amount,0))}</p>
+                                    {pendingBudget.review&&<PurchasePdfReview pending={pendingBudget} site={site} busy={busy} onChange={setPendingBudget} onCancel={()=>{setPendingBudget(null);setPdfIssues([]);}}/>}
+                                    <p className="font-bold mt-1">Budget à confirmer : {money(pendingBudget.rows.filter(line=>line.included!==false).reduce((sum,line) => sum + (Number(line.amount)||0),0))}</p>
                                     <button type="button" onClick={saveBudget} disabled={busy || site.status !== 'active'}
                                         className="mt-3 min-h-11 w-full rounded-lg bg-blue-600 px-4 font-semibold disabled:opacity-50">
                                         {busy ? 'Enregistrement…' : 'Valider et figer le budget'}
@@ -493,20 +494,20 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             onChange={event=>{void importDigitalPdf(event.target.files?.[0],'order');event.target.value='';}}/>
                     </label>
                     <p className="text-xs text-slate-400">
-                        PDF numérique complet uniquement. Chantier, fournisseur, PO, lignes et total contrôlés avant
-                        l’enregistrement. Si le fichier est incomplet, aucune commande n’est créée.
+                        PDF justificatif obligatoire. Si la lecture automatique est incertaine, vérifiez les données avant enregistrement.
                         Les achats hors soumission sont acceptés et comptabilisés normalement.
                     </p>
                     {pendingOrder && (
                         <div className="rounded-xl border border-slate-600 p-3 text-sm space-y-3">
-                            <p className="font-semibold">Confirmation PDF vérifiée · {pendingOrder.sourceName}</p>
+                            <p className="font-semibold">{pendingOrder.review?'Confirmation PDF à vérifier':'Confirmation PDF vérifiée'} · {pendingOrder.sourceName}</p>
                             <p className="text-xs text-slate-300">
                                 {order.supplier} · PO {order.poNumber} · Chantier : {order.shippingProject}
                             </p>
                             <p className="text-sm">
                                 {pendingOrder.rows.length} articles ·
-                                {' '}{money(pendingOrder.rows.reduce((sum,line) => sum + line.amount,0))} HT
+                                {' '}{money(pendingOrder.rows.filter(line=>line.included!==false).reduce((sum,line) => sum + (Number(line.amount)||0),0))} HT
                             </p>
+                            {pendingOrder.review&&<PurchasePdfReview pending={pendingOrder} site={site} order={order} onOrder={setOrder} busy={busy} onChange={fn=>{setPendingOrder(fn);setPriceRiskAcknowledged(false);}} onCancel={()=>{setPendingOrder(null);setPdfIssues([]);}}/>}
                             {pendingPriceComparison && (
                                 <div className="rounded-lg border border-amber-700/70 p-3 text-sm space-y-2">
                                     <p className="font-semibold">Vérification des prix avant engagement</p>
@@ -549,9 +550,9 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                 </div>
                             )}
                             <p className="text-xs text-emerald-200">
-                                Le chantier a été vérifié à partir du PDF, sans saisie manuelle.
+                                {pendingOrder.review?'La validation engage les montants vérifiés du PDF.':'Le chantier a été vérifié à partir du PDF, sans saisie manuelle.'}
                             </p>
-                            <button type="button" onClick={saveOrder} disabled={busy || !pendingOrder.verifiedPdf || !shippingCheck.canAccept ||
+                            <button type="button" onClick={saveOrder} disabled={busy || (!pendingOrder.verifiedPdf && !pendingOrder.review) || !shippingCheck.canAccept ||
                                     (pendingPriceNeedsReview&&!priceRiskAcknowledged) || site.status !== 'active'}
                                 className="min-h-11 w-full rounded-lg bg-blue-600 font-semibold disabled:opacity-50">
                                 {busy ? 'Enregistrement…' : 'Confirmer l’import du PDF'}
