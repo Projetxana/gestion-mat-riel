@@ -68,3 +68,28 @@ export const fetchPrivatePurchasePdf=async record=>{
   throw new Error('Document PDF invalide.');
  return bytes;
 };
+
+export async function importPurchasePdf(file, { companyId, siteId, kind, fingerprint, metadata, rows, override }) {
+ await verifyFileHeader(file);
+ const id = crypto.randomUUID();
+ const path = [companyId, siteId, 'order', id, 'original.pdf'].join('/');
+ const bucket = supabase.storage.from(PURCHASE_DOCUMENT_BUCKET);
+ const { error: uploadError } = await bucket.upload(path, file, {
+  contentType: 'application/pdf', cacheControl: '3600', upsert: false,
+ });
+ if (uploadError) throw uploadError;
+
+ const { data, error } = await supabase.rpc('bt_purchase_import_document', {
+  p_company_id: companyId, p_site_id: siteId, p_document_id: id, p_kind: kind,
+  p_po_number: metadata.poNumber, p_supplier: metadata.supplier,
+  p_supplier_order_number: metadata.supplierNumber || '',
+  p_original_supplier_order_number: metadata.originalSupplierNumber || '',
+  p_shipping_project_name: metadata.shippingProject, p_override_confirmation: override || '',
+  p_file_name: file.name.slice(0, 250), p_file_sha256: fingerprint, p_file_size: file.size, p_lines: rows,
+ });
+ if (error) {
+  if (/^[0-9A-Z]{5}$/.test(error.code || '')) await bucket.remove([path]);
+  throw error;
+ }
+ return data;
+}

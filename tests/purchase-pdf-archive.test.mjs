@@ -92,10 +92,10 @@ test('clicking either archived or unarchived cards always opens an in-app previe
  assert.match(card,/setPreviewOpen\(true\)/);
  assert.match(card,/<PurchasePdfPreview/);
  assert.match(card,/archivePurchasePdf\(file/);
- assert.match(panel,/orders\.map\(item/);
+ assert.match(panel,/group\.documents\.map\(item/);
  assert.match(panel,/<PurchasePdfCard/);
  assert.match(quoteUi,/<PurchasePdfCard/);
- assert.match(panel,/archiveNewOrder/);
+ assert.match(panel,/importPurchasePdf/);
  assert.match(quoteUi,/archivePurchasePdf\(pending\.sourceFile/);
  for(const code of [card,panel,quoteUi])
   assert.ok(transformSync(code,{loader:'jsx'}).code.length>100);
@@ -120,7 +120,7 @@ test('existing quote and order details are previewable before archiving PDFs',()
  assert.match(quote,/detailLines=\{quoteLines\.filter/);
  assert.match(panel,/detailLines=\{orderLines\.filter/);
  assert.match(quote,/\{flocor&&<PurchasePdfCard/);
- assert.match(panel,/\{orders\.map\(item => \(\s*<PurchasePdfCard/);
+ assert.match(panel,/\{group\.documents\.map\(item => \(\s*<PurchasePdfCard/);
  assert.match(card,/\{previewOpen&&\(hasOriginal\?<PurchasePdfPreview/);
  assert.ok(transformSync(fallback,{loader:'jsx'}).code.length>100);
 });

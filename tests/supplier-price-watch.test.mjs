@@ -105,7 +105,7 @@ test('non-quoted purchases never force confirmation or automatic SKU pairing',()
  assert.equal(comparison.needsReview.length,0);
  assert.equal(comparison.overpriceCount,0);
  const panel=readFileSync(new URL('../src/components/PurchaseBudgetPanel.jsx',import.meta.url),'utf8');
- const priceRule=panel.split("const priceReview=mode==='order'&&")[1]?.split("if(parsed.status")[0];
+ const priceRule=panel.split('const needsPriceReview =')[1]?.split(';')[0];
  assert.ok(priceRule);
  assert.doesNotMatch(priceRule,/notInQuoteCount|!matchingQuote/);
  const gate=panel.split('const pendingPriceNeedsReview=Boolean(pendingOrder&&(')[1]?.split('));')[0];

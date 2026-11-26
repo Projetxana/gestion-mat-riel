@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Package, RefreshCw } from
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shippingProjectVerification, normalizeToken } from '../utils/purchaseBudget';
+import { extractFlocorCredit, groupPurchaseDocuments, isPurchaseCredit } from '../utils/purchaseDocumentIdentity';
 import PurchasePdfReview from './PurchasePdfReview';
 import {preparePurchaseReview,validatePurchaseReview} from '../utils/purchasePdfReview';
 import { assessDigitalPdf } from '../utils/pdfImportEvidence';
@@ -13,7 +14,8 @@ import PurchaseItemsOverview from './PurchaseItemsOverview';
 import SupplierPriceReferencePanel from './SupplierPriceReferencePanel';
 import SupplierPriceAlertsPanel from './SupplierPriceAlertsPanel';
 import PurchasePdfCard from './PurchasePdfCard';
-import {archivePurchasePdf} from '../utils/purchasePdfArchive';
+import { purchaseQueryPages } from '../utils/purchaseQueryPages';
+import { importPurchasePdf } from '../utils/purchasePdfArchive';
 import {compareSupplierPrices,activeSupplierQuotes} from '../utils/supplierPriceWatch';
 
 const money = number => new Intl.NumberFormat('fr-CA', {
@@ -84,23 +86,23 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             const [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult, linkResult,
                 quotesResult, quoteLinesResult, priceLinksResult,documentsResult] = await Promise.all([
                 selectProject('bt_purchase_budgets', 'id, source_name, created_at').maybeSingle(),
-                supabase.rpc('bt_purchase_effective_budget_lines', {
+                purchaseQueryPages(supabase.rpc('bt_purchase_effective_budget_lines', {
                     p_company_id:currentCompanyId,p_site_id:site.id
-                }),
+                }).order('id')),
                 selectProject('bt_purchase_budget_revisions',
                     'id, revision_no, kind, label, source_name, file_sha256, line_count, total_amount, created_at')
                     .order('revision_no', { ascending: false }),
-                selectProject('bt_purchase_orders', 'id, po_number, supplier, supplier_order_number, shipping_project_name, created_at, order_date').order('created_at', { ascending: false }),
-                selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, unit, unit_cost, amount').order('id'),
-                selectProject('bt_purchase_line_links', 'order_line_id, budget_line_id, disposition'),
+                purchaseQueryPages(selectProject('bt_purchase_orders', 'id, po_number, supplier, supplier_order_number, document_kind, shipping_project_name, created_at, order_date').order('created_at', { ascending: false }).order('id')),
+                purchaseQueryPages(selectProject('bt_purchase_order_lines', 'id, order_id, description, item_code, quantity, unit, unit_cost, amount').order('id')),
+                purchaseQueryPages(selectProject('bt_purchase_line_links', 'order_line_id, budget_line_id, disposition').order('order_line_id')),
                 selectProject('bt_supplier_price_quotes',
                     'id, supplier, quote_number, quote_date, source_name, file_sha256, line_count, total_amount, created_at')
                     .order('created_at', { ascending: false }),
                 selectProject('bt_supplier_price_lines',
                     'id, quote_id, item_code, customer_alias, description, unit, quantity, unit_cost, amount'),
                 selectProject('bt_supplier_price_line_links', 'order_line_id, quote_line_id'),
-                selectProject('bt_purchase_documents',
-                    'id, source_kind, source_id, file_name, storage_path, uploaded_at'),
+                purchaseQueryPages(selectProject('bt_purchase_documents',
+                    'id, source_kind, source_id, file_name, storage_path, uploaded_at').order('id')),
             ]);
             const failure = [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult].find(result => result.error);
             if (failure) throw failure.error;
@@ -132,7 +134,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
     const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, pendingOrder?.siteConfirmed ? site.name : (pendingOrder?.review?.siteConfirmation || ''));
     const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines, purchaseLinks), [budgetLines, orderLines, purchaseLinks]);
-    const pendingPriceComparison=useMemo(()=>pendingOrder?compareSupplierPrices({
+    const pendingPriceComparison=useMemo(()=>pendingOrder && pendingOrder.kind !== 'credit' ? compareSupplierPrices({
         quotes:priceQuotes,quoteLines:priceQuoteLines,
         orders:[{id:'pending',supplier:order.supplier,po_number:order.poNumber}],
         orderLines:pendingOrder.rows.filter(line=>line.included!==false).map((line,index)=>({
@@ -152,20 +154,77 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             .reduce((sum, line) => sum + Number(line.amount || 0), 0),
     ])), [orders, orderLines]);
 
-    const archiveNewOrder=async(file,poNumber,supplier,lines)=>{
-        if(!archiveEnabled)return 'Le stockage privé des documents n’est pas encore activé.';
-        const {data:record,error:lookupError}=await supabase.from('bt_purchase_orders')
-            .select('id, po_number, supplier, shipping_project_name')
-            .eq('company_id',currentCompanyId).eq('site_id',site.id)
-            .eq('po_number',poNumber).eq('supplier',supplier).maybeSingle();
-        if(lookupError||!record?.id)throw lookupError||new Error('Commande créée, introuvable pour archivage.');
-        await archivePurchasePdf(file,{
-            kind:'order',source:{
-                ...record,line_count:lines.length,
-                total_amount:lines.reduce((sum,line)=>sum+Number(line.amount||0),0),
-            },site,companyId:currentCompanyId,
+    const savedOrder = (kind, rows) => {
+        setPendingOrder(null);
+        setOrder(emptyOrder);
+        setPriceRiskAcknowledged(false);
+        setPdfIssues([]);
+        setReloadIndex(value => value + 1);
+        onPurchasesChanged?.();
+        setNotice((kind === 'credit' ? 'Avoir enregistré' : 'Confirmation enregistrée') +
+            ' · ' + rows.length + ' article(s) · ' +
+            money(rows.reduce((sum, row) => sum + row.amount, 0)) + ' HT.');
+    };
+
+    const findProjectAlias = async metadata => {
+        if (normalizeToken(metadata.shippingProject).length < 3) return false;
+        const { data, error } = await supabase.rpc('bt_purchase_matches_project_alias', {
+            p_company_id: currentCompanyId, p_site_id: site.id,
+            p_supplier: metadata.supplier, p_shipping_project_name: metadata.shippingProject,
         });
-        return '';
+        return !error && data === true;
+    };
+
+    const persistOrder = (draft, metadata, rows) => importPurchasePdf(draft.originalFile, {
+        companyId: currentCompanyId, siteId: site.id, kind: draft.kind, fingerprint: draft.fingerprint,
+        metadata, rows, override: draft.siteConfirmed ? site.name : draft.review?.siteConfirmation,
+    });
+
+    const importOrder = async (file, pdf) => {
+        const credit = isPurchaseCredit(pdf.text);
+        const parsed = credit ? null : assessDigitalPdf(pdf, { kind: 'order', site });
+        const extractedCredit = credit ? extractFlocorCredit(pdf.text) : null;
+        if (credit && (!extractedCredit?.complete || !pdf.allPagesProcessed || !pdf.digitalText)) {
+            throw new Error('Avoir illisible ou format fournisseur inconnu. Aucun montant enregistré.');
+        }
+
+        const metadata = credit ? {
+            supplier: 'Flocor', poNumber: extractedCredit.po_number, supplierNumber: extractedCredit.reference,
+            shippingProject: extractedCredit.shipping_project_name, originalSupplierNumber: extractedCredit.original_supplier_order_number,
+        } : {
+            supplier: parsed.supplier || '', poNumber: parsed.hints?.po_number || '',
+            supplierNumber: parsed.hints?.supplier_order_number || '',
+            shippingProject: parsed.hints?.shipping_project_name || '',
+        };
+        const draft = { kind: credit ? 'credit' : 'order', originalFile: file, sourceName: file.name.slice(0, 150), fingerprint: pdf.sha256 };
+        const directMatch = shippingProjectVerification(metadata.shippingProject, site.name).match;
+        const verified = parsed?.issues?.length && parsed.issues.every(issue => issue.code === 'project')
+            ? assessDigitalPdf(pdf, { kind: 'order', site: { ...site, name: metadata.shippingProject } })
+            : parsed;
+        const rows = credit ? extractedCredit.rows : verified.verified_rows;
+        if (!rows.length) {
+            const review = preparePurchaseReview(parsed, site, pdf.text, 'order');
+            setOrder({ ...metadata, shippingProject: review.extractedProject });
+            setPendingOrder({ ...draft, review, rows: review.rows });
+            setPdfIssues(parsed.issues.map(issue => issue.message));
+            return;
+        }
+
+        const siteConfirmed = !directMatch && await findProjectAlias(metadata);
+        const prices = credit ? null : compareSupplierPrices({
+            quotes: priceQuotes, quoteLines: priceQuoteLines,
+            orders: [{ id: 'pending', supplier: metadata.supplier, po_number: metadata.poNumber }],
+            orderLines: rows.map((row, index) => ({ ...row, id: 'draft-' + index, order_id: 'pending' })),
+        });
+        const needsPriceReview = prices?.overpriceCount > 0 || prices?.needsReview.length > 0;
+        if ((directMatch || siteConfirmed) && !needsPriceReview) {
+            await persistOrder({ ...draft, siteConfirmed }, metadata, rows);
+            savedOrder(draft.kind, rows);
+            return;
+        }
+        setOrder(metadata);
+        setPendingOrder({ ...draft, rows, verifiedPdf: true, simpleReview: !directMatch && !siteConfirmed, siteConfirmed });
+        if (!directMatch && !siteConfirmed) setPdfIssues(['Confirmez le chantier de livraison.']);
     };
 
     // Orders cannot be created with typed fields. Spreadsheets remain available
@@ -200,121 +259,29 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         try {
             const { readDigitalPdf } = await import('../utils/digitalPdfReader');
             const pdf = await readDigitalPdf(file);
-            const parsed = assessDigitalPdf(pdf, {
-                kind:mode, site, previousOrders:orders, hasExistingBudget:Boolean(budget),
-            });
-            let rows = parsed.verified_rows;
-            let aliasConfirmed = false;
-            let simpleReview = false;
-            // Only waive the project-name check; every other extraction check must pass.
-            if(mode==='order' && parsed.issues?.length && parsed.issues.every(i=>i.code==='project') && normalizeToken(parsed.hints?.shipping_project_name).length>=3){
-                const verified=assessDigitalPdf(pdf,{kind:mode,site:{...site,name:parsed.hints.shipping_project_name},previousOrders:orders,hasExistingBudget:Boolean(budget)});
-                if(verified.status==='auto_commit' && verified.verified_rows.length){
-                    rows=verified.verified_rows;
-                    const {data:history,error:historyError}=await supabase.from('bt_purchase_orders').select('site_id,supplier,shipping_project_name').eq('company_id',currentCompanyId);
-                    const matches=(history||[]).filter(o=>normalizeToken(o.supplier)===normalizeToken(parsed.supplier)&&normalizeToken(o.shipping_project_name)===normalizeToken(parsed.hints.shipping_project_name));
-                    aliasConfirmed=!historyError && matches.length>0 && matches.every(o=>String(o.site_id)===String(site.id));
-                    simpleReview=true;
-                }
-            }
-            const issues = parsed.issues?.map(issue=>issue.message)||[];
-            const pricePreview=mode==='order' && rows.length?compareSupplierPrices({
-                quotes:priceQuotes,quoteLines:priceQuoteLines,
-                orders:[{id:'pending',supplier:parsed.supplier,po_number:parsed.hints?.po_number}],
-                orderLines:rows.map((row,index)=>({...row,id:'draft-'+index,order_id:'pending'})),
-            }):null;
-            const priceReview=mode==='order'&&(
-                pricePreview?.overpriceCount>0 ||
-                pricePreview?.needsReview.length>0);
-            if((parsed.status === 'auto_commit' || aliasConfirmed) && rows.length && !priceReview){
-                const args = mode === 'budget' ? {
-                    p_company_id:currentCompanyId,p_site_id:site.id,
-                    p_source_name:file.name.slice(0,150),p_lines:rows,
-                } : {
-                    p_company_id:currentCompanyId,p_site_id:site.id,
-                    p_po_number:parsed.hints.po_number,
-                    p_supplier:parsed.supplier,
-                    p_supplier_order_number:parsed.hints.supplier_order_number||'',
-                    p_shipping_project_name:parsed.hints.shipping_project_name,
-                    p_order_date:null,p_source_name:file.name.slice(0,150),
-                    p_project_verified:true,p_override_confirmation:aliasConfirmed?site.name:'',p_lines:rows,
-                };
-                const functionName=mode==='budget'
-                    ? 'bt_purchase_import_budget':'bt_purchase_create_order';
-                const {error:rpcError}=await supabase.rpc(functionName,args);
-                if(rpcError)throw rpcError;
-                let pdfArchiveWarning='';
-                if(mode==='budget')setPendingBudget(null);
-                else {
-                    setPendingOrder(null);setOrder(emptyOrder);
-                    try{
-                        pdfArchiveWarning=await archiveNewOrder(
-                            file,parsed.hints.po_number,parsed.supplier,rows);
-                    }catch(e){
-                        pdfArchiveWarning=e?.message||'Archivage du PDF impossible.';
-                    }
-                }
-                setReloadIndex(value=>value+1);
-                onPurchasesChanged?.();
-                setNotice('Commande ou budget enregistré : '+rows.length+
-                    ' article(s) · '+money(rows.reduce((sum,row)=>sum+row.amount,0))+
-                    '. Les achats hors soumission restent inclus dans les dépenses.'+
-                    (pdfArchiveWarning?' PDF original à joindre : '+pdfArchiveWarning:''));
+            if (mode === 'order') {
+                await importOrder(file, pdf);
                 return;
             }
-
-            // No hand-entered order metadata or line items are accepted.
-            // Any incomplete, duplicate, wrong-site, or unrecognized document
-            // needs a corrected PDF, not a form that bypasses the PDF checks.
-            if(mode==='order'){
-                if(simpleReview){
-                    setOrder({supplier:parsed.supplier,poNumber:parsed.hints.po_number,supplierNumber:parsed.hints.supplier_order_number||'',shippingProject:parsed.hints.shipping_project_name,date:''});
-                    setPendingOrder({rows,sourceName:file.name.slice(0,150),verifiedPdf:true,originalFile:file,fingerprint:parsed.document_fingerprint,simpleReview:true,siteConfirmed:aliasConfirmed});
-                    setPdfIssues(['Confirmez uniquement le chantier : les articles et le total concordent.']);
-                    return;
-                }
-                if(parsed.status!=='auto_commit' || !rows.length){
-                    setPdfIssues(issues.length?issues:[
-                        'Le PDF ne fournit pas une confirmation complète et fiable.'
-                    ]);
-                    const review=preparePurchaseReview(parsed,site,pdf.text,'order');
-                    setOrder({supplier:parsed.supplier||'',poNumber:parsed.hints?.po_number||'',supplierNumber:parsed.hints?.supplier_order_number||'',shippingProject:review.extractedProject,date:''});
-                    setPendingOrder({rows:review.rows,review,sourceName:file.name.slice(0,150),originalFile:file,verifiedPdf:false,fingerprint:parsed.document_fingerprint});
-                    return;
-                }
-                const metadata={
-                    supplier:parsed.supplier||'',
-                    poNumber:parsed.hints.po_number||'',
-                    supplierNumber:parsed.hints.supplier_order_number||'',
-                    shippingProject:parsed.hints.shipping_project_name||'',
-                    date:'',
-                };
-                if(!shippingProjectVerification(metadata.shippingProject,site?.name).canAccept ||
-                    !metadata.supplier || !metadata.poNumber){
-                    setError('Import non enregistré : informations de commande ou chantier non confirmées.');
-                    return;
-                }
-                setOrder(metadata);
-                setPendingOrder({
-                    rows,sourceName:file.name.slice(0,150),verifiedPdf:true,
-                    originalFile:file,fingerprint:parsed.document_fingerprint,
+            const parsed = assessDigitalPdf(pdf, { kind: 'budget', site, hasExistingBudget: Boolean(budget) });
+            const rows = parsed.verified_rows;
+            if (parsed.status === 'auto_commit' && rows.length) {
+                const { error: rpcError } = await supabase.rpc('bt_purchase_import_budget', {
+                    p_company_id: currentCompanyId, p_site_id: site.id, p_source_name: file.name.slice(0, 150), p_lines: rows,
                 });
-                setPdfIssues(pricePreview?.overpriceCount>0
-                    ? ['ALERTE PRIX : '+pricePreview.overpriceCount+
-                       ' article(s) au-dessus de la soumission ('+money(pricePreview.impact)+
-                       ' HT). Vérifiez avant de confirmer cet import.']
-                    : ['Certaines unités ou références de prix sont ambiguës. '+
-                       'Vous pouvez confirmer la commande sans modifier la soumission.']);
+                if (rpcError) throw rpcError;
+                setReloadIndex(value => value + 1);
+                onPurchasesChanged?.();
+                setNotice('Budget initial enregistré · ' + rows.length + ' article(s).');
                 return;
             }
-
-            setPdfIssues(issues.length?issues:['Document à vérifier avant enregistrement.']);
+            setPdfIssues(parsed.issues.map(issue => issue.message));
             if(budget) throw new Error('Utilisez le remplacement ou la liste complémentaire du budget existant.');
             const review=preparePurchaseReview(parsed,site,pdf.text,'budget');
             setPendingBudget({rows:review.rows,review,sourceName:file.name,originalFile:file});
         } catch(err) {
             setError(err?.code==='23505'
-                ? 'Ce budget ou ce PO est déjà enregistré. Aucune écriture en double.'
+                ? 'Ce document a déjà été importé.'
                 : err?.message || 'Lecture PDF impossible.');
             setPdfIssues([]);
         } finally { setBusy(false); }
@@ -350,35 +317,14 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
         }
         setBusy(true); setError(''); setNotice('');
         try {
-            const verifiedRows=pendingOrder.review?validatePurchaseReview(pendingOrder.review,pendingOrder.rows,site,order,orders):pendingOrder.rows;
-            const { error: rpcError } = await supabase.rpc('bt_purchase_create_order', {
-                p_company_id: currentCompanyId, p_site_id: site.id,
-                p_po_number: order.poNumber.trim(), p_supplier: order.supplier.trim(),
-                p_supplier_order_number: order.supplierNumber.trim(),
-                p_shipping_project_name: order.shippingProject.trim() || site.name,
-                p_order_date: null, p_source_name: pendingOrder.sourceName,
-                p_project_verified: true, p_override_confirmation: pendingOrder.siteConfirmed ? site.name : (pendingOrder.review?.siteConfirmation || ''),
-                p_lines: verifiedRows,
-            });
-            if (rpcError) throw rpcError;
-            let pdfArchiveWarning='';
-            if(pendingOrder.originalFile){
-                try{
-                    pdfArchiveWarning=await archiveNewOrder(
-                        pendingOrder.originalFile,order.poNumber.trim(),order.supplier.trim(),verifiedRows);
-                }catch(e){
-                    pdfArchiveWarning=e?.message||'Archivage du PDF impossible.';
-                }
-            }
-            setPendingOrder(null); setOrder(emptyOrder);
-            setPriceRiskAcknowledged(false);
-            setNotice('Confirmation PDF enregistrée. Les dépenses du chantier sont mises à jour.'+
-                (pdfArchiveWarning?' PDF original à joindre : '+pdfArchiveWarning:''));
-            setReloadIndex(value => value + 1);
-            onPurchasesChanged?.();
+            const rows = pendingOrder.review
+                ? validatePurchaseReview(pendingOrder.review, pendingOrder.rows, site, order)
+                : pendingOrder.rows;
+            await persistOrder(pendingOrder, { ...order, shippingProject: order.shippingProject.trim() || site.name }, rows);
+            savedOrder(pendingOrder.kind, rows);
         } catch (e) {
             setError(e.code === '23505'
-                ? 'Ce PO existe déjà pour ce fournisseur. Aucune commande en double ajoutée.'
+                ? 'Ce document a déjà été importé.'
                 : e.message || 'Import de la commande impossible.');
         } finally { setBusy(false); }
     };
@@ -507,7 +453,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                         Les articles, quantités, prix et données de commande sont extraits automatiquement.
                     </p>
                     <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-blue-600 bg-blue-950/30 p-3 text-sm font-semibold text-blue-100">
-                        <FileSpreadsheet size={19}/> Importer une confirmation de commande PDF
+                        <FileSpreadsheet size={19}/> Importer une confirmation ou un avoir PDF
                         <input type="file" accept=".pdf,application/pdf" className="sr-only"
                             disabled={busy||site.status!=='active'}
                             onChange={event=>{void importDigitalPdf(event.target.files?.[0],'order');event.target.value='';}}/>
@@ -518,7 +464,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     </p>
                     {pendingOrder && (
                         <div className="rounded-xl border border-slate-600 p-3 text-sm space-y-3">
-                            <p className="font-semibold">{pendingOrder.review?'Confirmation PDF à vérifier':'Confirmation PDF vérifiée'} · {pendingOrder.sourceName}</p>
+                            <p className="font-semibold">{pendingOrder.kind === 'credit' ? 'Avoir PDF' : 'Confirmation PDF'} · {pendingOrder.sourceName}</p>
                             <p className="text-xs text-slate-300">
                                 {order.supplier} · PO {order.poNumber} · Chantier : {order.shippingProject}
                             </p>
@@ -584,9 +530,12 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                         </div>
                     )}
                     <div className="space-y-2 pt-2">
-                        <h3 className="font-semibold flex items-center gap-2"><Package size={17}/> Commandes enregistrées ({orders.length})</h3>
+                        <h3 className="font-semibold flex items-center gap-2"><Package size={17}/> Commandes et avoirs enregistrés ({orders.length})</h3>
                         {!orders.length && <p className="text-sm text-slate-400">Aucune commande à ce jour.</p>}
-                        {orders.map(item => (
+                        {groupPurchaseDocuments(orders,orderLines).map(group => (
+                          <details key={group.key} open className="rounded-xl border border-slate-700 p-3 space-y-2">
+                            <summary className="cursor-pointer font-semibold">{group.supplier} · PO {group.po_number} · {group.documents.length} document(s) · {money(group.total)}</summary>
+                            {group.documents.map(item => (
                             <PurchasePdfCard key={item.id}
                                 kind="order" source={{...item,
                                     line_count:orderLines.filter(line=>String(line.order_id)===String(item.id)).length,
@@ -598,12 +547,14 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                 onAttached={refresh} className="bg-slate-800">
                                 <div className="flex justify-between gap-2">
                                     <div className="min-w-0">
-                                        <p className="font-semibold text-sm break-words">{item.supplier} · PO {item.po_number}</p>
+                                        <p className="font-semibold text-sm break-words">{item.document_kind === 'credit' ? 'Avoir' : 'Confirmation'} · {item.supplier_order_number||item.po_number}</p>
                                         <p className="text-xs text-slate-400 break-words">Livraison : {item.shipping_project_name}</p>
                                     </div>
                                     <span className="font-semibold tabular-nums text-sm shrink-0">{money(orderTotals.get(item.id))}</span>
                                 </div>
                             </PurchasePdfCard>
+                            ))}
+                          </details>
                         ))}
                     </div>
                     <p className="text-xs text-slate-400">Le PDF numérique est lu localement. L’import des courriels et le rapprochement des bons restent indépendants.</p>

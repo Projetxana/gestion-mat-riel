@@ -25,12 +25,12 @@ test('the project overview opens separate detail windows and returns via X',()=>
 test('both tabs provide a PDF import and still preserve Excel/CSV fallback',()=>{
  const panel=read('components/PurchaseBudgetPanel.jsx');
  assert.match(panel,/Importer le budget PDF automatiquement/);
- assert.match(panel,/Importer une confirmation de commande PDF/);
+ assert.match(panel,/Importer une confirmation ou un avoir PDF/);
  assert.match(panel,/importDigitalPdf\(event\.target\.files\?\.\[0\],'budget'\)/);
  assert.match(panel,/importDigitalPdf\(event\.target\.files\?\.\[0\],'order'\)/);
  assert.match(panel,/assessDigitalPdf/);
  assert.match(panel,/bt_purchase_import_budget/);
- assert.match(panel,/bt_purchase_create_order/);
+ assert.match(panel,/importPurchasePdf/);
  assert.match(panel,/setPdfIssues/);
  assert.ok(panel.includes('Excel / CSV'));
  assert.ok(transformSync(panel,{loader:'jsx'}).code.length>100);
@@ -38,7 +38,7 @@ test('both tabs provide a PDF import and still preserve Excel/CSV fallback',()=>
 test('order creation requires an imported PDF and explicit validation of uncertain fields',()=>{
  const panel=read('components/PurchaseBudgetPanel.jsx');
  const orderTab=panel.split("{tab === 'orders' && (")[1].split("        </section>")[0];
- assert.ok(orderTab.includes('Importer une confirmation de commande PDF'));
+ assert.ok(orderTab.includes('Importer une confirmation ou un avoir PDF'));
  assert.ok(!orderTab.includes('Importer les lignes de commande Excel / CSV'));
  assert.ok(!orderTab.includes('N° PO client'));
  assert.ok(!orderTab.includes('type="date"'));
@@ -46,10 +46,10 @@ test('order creation requires an imported PDF and explicit validation of uncerta
  assert.ok(panel.includes('pendingOrder?.originalFile'));
  assert.ok(panel.includes('validatePurchaseReview'));
  assert.ok(orderTab.includes('PurchasePdfReview'));
- assert.ok(panel.includes("if(parsed.status!=='auto_commit' || !rows.length)"));
+ assert.ok(panel.includes("if (!rows.length)"));
  assert.ok(panel.includes("mode !== 'budget'"));
- assert.ok(panel.includes('p_project_verified: true'));
- assert.ok(orderTab.includes('Commandes enregistrées'));
+ assert.ok(panel.includes('persistOrder(pendingOrder'));
+ assert.ok(orderTab.includes('Commandes et avoirs enregistrés'));
  assert.ok(transformSync(panel,{loader:'jsx'}).code.length>100);
 });
 test('PDF text extraction stays in a local bundled worker, never external OCR',()=>{
