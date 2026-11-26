@@ -63,5 +63,6 @@ export const extractFlocorHeader=(text)=>{
  if(!flocorMarker.test(source)||!/CUSTOMER\s+P\.O\.\s+NUMBER/i.test(source))
   return null;
  const m=source.match(/^\s*(P\d{4,})\s{3,}(.+?)\s{3,}\d{1,3}\s+\d{1,3}\b/im);
- return m?{po_number:m[1],shipping_project_name:m[2].trim()}:null;
+ const reference = source.slice(0, 1600).match(/COMMANDE[ \t]+DE[ \t]+VTE\s+CONFIRMATION\s+(?:Statut\s*\/\s*Status\s+)?(\d{7})\b/i)?.[1] || '';
+ return m ? { po_number:m[1], shipping_project_name:m[2].trim(), ...(reference ? { supplier_order_number:reference } : {}) } : null;
 };

@@ -28,6 +28,8 @@ export default function SupplierPriceAlertsPanel({
  const quoteBySupplier=new Map(active.map(q=>[normalizeToken(q.supplier),q]));
  const toReview=comparison.needsReview;
  const notInQuote=comparison.notInQuote||[];
+ const comparable=comparison.lines.filter(row=>['ok','below','above'].includes(row.status));
+ const withoutReference=comparison.lines.filter(row=>['no_reference','other_supplier'].includes(row.status));
 
  const link=async(row,targetId)=>{
   if(!enabled||saving||!targetId)return;
@@ -88,12 +90,12 @@ export default function SupplierPriceAlertsPanel({
    <AlertTriangle size={17}/> Contrôle des prix sur les commandes confirmées
   </h3>
   {!active.length&&<p className="text-xs text-slate-400">
-   Importez d’abord la soumission fournisseur dans Budget pour activer les alertes.
+   Aucune référence de prix active. Les prix des commandes ne peuvent pas être comparés.
   </p>}
   {active.length>0&&<>
    <p className="text-xs text-slate-300">
     Comparaison hors taxes des prix unitaires des confirmations tarifées.
-    Une commande présente n’implique pas que le produit figurait dans la soumission.
+    Les commandes historiques sont comparées aux références actuellement actives.
    </p>
    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
     <div className="rounded-lg border border-red-800/60 p-2">
@@ -128,7 +130,9 @@ export default function SupplierPriceAlertsPanel({
      </p>
     </article>)}
    </div>}
-   {comparison.overpriceCount===0&&<p className="text-xs text-emerald-200 flex items-center gap-2">
+   {withoutReference.length>0&&<p className="text-xs text-amber-200">{withoutReference.length} ligne(s) sans référence fournisseur active.</p>}
+   {comparable.length===0&&<p className="text-xs text-amber-200">Aucune ligne comparable.</p>}
+   {comparison.overpriceCount===0&&comparable.length>0&&<p className="text-xs text-emerald-200 flex items-center gap-2">
     <CheckCircle2 size={16}/> Aucune hausse détectée sur les lignes
     disposant d’une référence de prix fiable.
    </p>}

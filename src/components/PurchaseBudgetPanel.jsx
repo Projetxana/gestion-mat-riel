@@ -1,3 +1,6 @@
+import UnifiedPurchaseInbox from './UnifiedPurchaseInbox';
+import { commitUnifiedPurchase } from '../utils/unifiedPurchaseCommit';
+import { activeUnifiedPriceReferences } from '../utils/unifiedPriceComparison';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Package, RefreshCw } from 'lucide-react';
@@ -74,6 +77,9 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const [priceRiskAcknowledged,setPriceRiskAcknowledged] = useState(false);
     const [purchaseDocuments,setPurchaseDocuments] = useState([]);
     const [archiveEnabled,setArchiveEnabled] = useState(false);
+    const [inboxHistory,setInboxHistory] = useState(null);
+    const unified = Boolean(inboxHistory);
+    const [inboxPending,setInboxPending] = useState([]);
 
     const refresh = useCallback(async () => {
         if (!site?.id || !currentCompanyId || !isAdmin || !isCorrectTenant) return;
@@ -84,7 +90,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             const selectProject = (table, cols) =>
                 supabase.from(table).select(cols).eq(conditions[0], currentCompanyId).eq(conditions[1], site.id);
             const [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult, linkResult,
-                quotesResult, quoteLinesResult, priceLinksResult,documentsResult] = await Promise.all([
+                quotesResult, quoteLinesResult, priceLinksResult,documentsResult,inboxResult,pendingResult] = await Promise.all([
                 selectProject('bt_purchase_budgets', 'id, source_name, created_at').maybeSingle(),
                 purchaseQueryPages(supabase.rpc('bt_purchase_effective_budget_lines', {
                     p_company_id:currentCompanyId,p_site_id:site.id
@@ -103,6 +109,12 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 selectProject('bt_supplier_price_line_links', 'order_line_id, quote_line_id'),
                 purchaseQueryPages(selectProject('bt_purchase_documents',
                     'id, source_kind, source_id, file_name, storage_path, uploaded_at').order('id')),
+                purchaseQueryPages(selectProject('bt_purchase_inbox',
+                    'id, company_id, site_id, file_name, storage_path, kind, status, budget_mode, revision_id, quote_id, supplier, total, created_at')
+                    .order('created_at', { ascending:false }).order('id')),
+                purchaseQueryPages(supabase.rpc('bt_purchase_v2_pending', {
+                    p_company_id:currentCompanyId,p_site_id:site.id,
+                }).order('document_id')),
             ]);
             const failure = [budgetResult, budgetItemsResult, revisionResult, ordersResult, itemsResult].find(result => result.error);
             if (failure) throw failure.error;
@@ -119,6 +131,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             setPriceQuoteLines(pricesAvailable?(quoteLinesResult.data||[]):[]);
             setPriceLinks(pricesAvailable?(priceLinksResult.data||[]):[]);
             setArchiveEnabled(!documentsResult.error);
+            setInboxHistory(inboxResult.error ? null : (inboxResult.data || []));
+            setInboxPending(pendingResult.error ? [] : (pendingResult.data || []));
             setPurchaseDocuments(documentsResult.error?[]:(documentsResult.data||[]));
         } catch (e) {
             setError(e.code === '42P01'
@@ -131,6 +145,16 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
 
     useEffect(() => { void refresh(); }, [refresh, reloadIndex]);
 
+    const activeReferences = useMemo(() => unified
+        ? activeUnifiedPriceReferences({ site, history:inboxHistory, revisions:budgetRevisions, quotes:priceQuotes, quoteLines:priceQuoteLines })
+        : { quotes:priceQuotes, quoteLines:priceQuoteLines },
+    [site, unified, inboxHistory, budgetRevisions, priceQuotes, priceQuoteLines]);
+    const quoteArchive = useMemo(() => [
+        ...purchaseDocuments,
+        ...(inboxHistory || []).filter(document => document.quote_id).map(document => ({
+            ...document, source_kind:'quote', source_id:document.quote_id,
+        })),
+    ], [purchaseDocuments, inboxHistory]);
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
     const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, pendingOrder?.siteConfirmed ? site.name : (pendingOrder?.review?.siteConfirmation || ''));
     const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines, purchaseLinks), [budgetLines, orderLines, purchaseLinks]);
@@ -370,8 +394,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                 </div>
             )}
 
+            {unified && <UnifiedPurchaseInbox site={site} commitDocument={commitUnifiedPurchase}
+                history={inboxHistory} pending={inboxPending} onSaved={async () => { await refresh(); onPurchasesChanged?.(); }} />}
             <SupplierPriceAlertsPanel site={site} companyId={currentCompanyId}
-                quotes={priceQuotes} quoteLines={priceQuoteLines} orders={orders}
+                quotes={activeReferences.quotes} quoteLines={activeReferences.quoteLines} orders={orders}
                 orderLines={orderLines} links={priceLinks} enabled={priceReferenceEnabled}
                 onUpdated={refresh}/>
             <div className="flex gap-2 border-b border-slate-700 mb-4" role="tablist" aria-label="Suivi des achats">
@@ -393,10 +419,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                              </p>
                              <SupplierPriceReferencePanel site={site} companyId={currentCompanyId}
                                  quotes={priceQuotes} quoteLines={priceQuoteLines}
-                                 enabled={priceReferenceEnabled}
-                                 documents={purchaseDocuments} archiveEnabled={archiveEnabled}
+                                 enabled={priceReferenceEnabled} hideImport={unified}
+                                 documents={quoteArchive} archiveEnabled={archiveEnabled}
                                  onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
-                             <PurchaseBudgetRevisions site={site} companyId={currentCompanyId}
+                             <PurchaseBudgetRevisions site={site} companyId={currentCompanyId} hideImport={unified}
                                 budget={budget} budgetLines={budgetLines} revisions={budgetRevisions}
                                 onSaved={async()=>{await refresh();onPurchasesChanged?.();}}/>
                             <PurchaseItemsOverview
@@ -417,7 +443,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             )}
                         </>
                     ) : (
-                        <>
+                        !unified && <>
                             <p className="text-sm text-slate-300">Importer la liste d’achats du chantier. Un PDF numérique cohérent est enregistré automatiquement, sans vérification ligne par ligne.</p>
                             <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-blue-600 bg-blue-950/30 p-3 text-sm font-semibold text-blue-100">
                                 <FileSpreadsheet size={19}/> Importer le budget PDF automatiquement
@@ -448,6 +474,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
             )}
             {tab === 'orders' && (
                 <div role="tabpanel" className="space-y-3">
+                    {!unified && <>
                     <p className="text-sm text-slate-300">
                         Les commandes s’ajoutent uniquement en important une confirmation PDF du fournisseur.
                         Les articles, quantités, prix et données de commande sont extraits automatiquement.
@@ -529,6 +556,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                             </button>
                         </div>
                     )}
+                    </>}
                     <div className="space-y-2 pt-2">
                         <h3 className="font-semibold flex items-center gap-2"><Package size={17}/> Commandes et avoirs enregistrés ({orders.length})</h3>
                         {!orders.length && <p className="text-sm text-slate-400">Aucune commande à ce jour.</p>}

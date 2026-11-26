@@ -43,7 +43,7 @@ export const isReviewablePdfBudgetException = (parsed,site) => {
 };
 
 export default function PurchaseBudgetRevisions({
- site,companyId,budget,budgetLines,revisions=[],onSaved
+ site,companyId,budget,budgetLines,revisions=[],hideImport=false,onSaved
 }){
  const [mode,setMode]=useState('');
  const [label,setLabel]=useState('');
@@ -180,6 +180,7 @@ export default function PurchaseBudgetRevisions({
     </p>
    </div>
    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    {!hideImport&&<>
     <button type="button" disabled={busy||site.status!=='active'}
      onClick={()=>open('replacement')}
      className="min-h-11 flex items-center justify-center gap-2 rounded-lg border border-blue-600 bg-blue-950/40 px-3 text-sm text-blue-100 disabled:opacity-50">
@@ -190,6 +191,7 @@ export default function PurchaseBudgetRevisions({
      className="min-h-11 flex items-center justify-center gap-2 rounded-lg border border-blue-600 bg-blue-950/40 px-3 text-sm text-blue-100 disabled:opacity-50">
      <Plus size={16}/> Ajouter une liste complémentaire
     </button>
+    </>}
    </div>
    {mode&&<div className="rounded-lg border border-blue-700/60 bg-slate-800/60 p-3 space-y-3">
     <p className="text-sm font-medium">

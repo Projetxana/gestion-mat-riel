@@ -18,7 +18,7 @@ export const extractFlocorQuotationHeader = text => {
     const project = numbered || (candidate ? ['', '', candidate] : null);
     // A recognized quotation must never be imported as an order, even without a project.
     const projectName = project?.[2]?.trim() || '';
-    const number = source.slice(0, 1600).match(/\b(20\d{5})\b/);
+    const number = source.slice(0, 1600).match(/^.*T[ée]l[ée]phone[^\n]*[ \t]{2,}(\d{7})\s*$/im);
     const date = source.slice(0, 2000).match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/);
     return {
         quote_number: number?.[1] || '',

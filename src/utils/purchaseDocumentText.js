@@ -39,7 +39,7 @@ export const extractDocumentHints = (input, type = 'order') => {
     'supplier\\s*order\\s*(?:number|#|no\\.?)*',
     'commande\\s*fournisseur',
     'order\\s*confirmation\\s*(?:number|#|no\\.?)'
-  ]));
+  ]) || flocorHeader?.supplier_order_number);
   // Candidate quantities/prices come only from recognized tables and ALWAYS require review.
   let lineSuggestions = type==='budget'
       ? quotationHeader

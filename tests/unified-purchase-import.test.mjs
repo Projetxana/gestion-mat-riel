@@ -33,10 +33,10 @@ test('different tenant and conflicting aliases cannot authorize import',()=>{
  assert.equal(planPurchasePdf(pdf(),{site,aliases:[{...alias,company_id:'b'}]}).status,'confirm');
  assert.equal(planPurchasePdf(pdf(),{site,aliases:[alias,{...alias,site_id:13}]}).status,'confirm');
 });
-test('same hash or supplier document ref blocks; same PO alone does not',()=>{
+test('same hash or conflicting supplier document ref blocks; same PO alone does not',()=>{
  assert.equal(planPurchasePdf(pdf(),{site,knownHashes:['a'.repeat(64)]}).status,'duplicate');
  const document={company_id:'a',kind:'credit',supplier:'Flocor',reference:'7235979',po:'P02097'};
- assert.equal(planPurchasePdf(pdf(),{site,knownDocuments:[document]}).status,'duplicate');
+ assert.equal(planPurchasePdf(pdf(),{site,knownDocuments:[document]}).status,'review');
  assert.equal(planPurchasePdf(pdf(),{site,aliases:[alias],knownDocuments:[{...document,kind:'order',reference:'7235382'}]}).status,'ready');
 });
 test('wrong subtotal, wrong signs and missing rows cannot be financially valid',()=>{

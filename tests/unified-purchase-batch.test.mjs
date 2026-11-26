@@ -24,3 +24,23 @@ test('summary only counts confirmed successful writes',()=>{
 test('batch size capped',async()=>{
  await assert.rejects(planPurchaseBatch(Array(31).fill({}),{readPdf,context:{site}}),/Maximum/);
 });
+
+test('a mixed batch of ten isolates duplicates, conflicting references and unreadable documents', async () => {
+ const batch = [
+  {name:'credit.pdf'}, {name:'same.pdf',hash:'A'.repeat(64)}, {name:'changed.pdf',hash:'b'.repeat(64)},
+  {name:'invoice.pdf',text:'Facture 12',hash:'c'.repeat(64)},
+  {name:'delivery.pdf',text:'Bon de livraison 14',hash:'d'.repeat(64)},
+  {name:'unreadable.pdf',broken:true}, {name:'unrelated.pdf',text:'Conditions générales',hash:'e'.repeat(64)},
+  {name:'credit-2.pdf',text:text.replace('7235979','7235980'),hash:'f'.repeat(64)},
+  {name:'wrong-total.pdf',text:text.replace('Sub-Total   79.06-','Sub-Total   89.06-'),hash:'1'.repeat(64)},
+  {name:'credit-3.pdf',text:text.replace('7235979','7235981'),hash:'2'.repeat(64)},
+ ];
+ const results = await planPurchaseBatch(batch, {readPdf,context:{site,aliases:[alias]}});
+ assert.equal(results.length,10);
+ assert.deepEqual(results.map(x=>x.plan.status),[
+  'ready','duplicate','ready','non_financial','non_financial','blocked','blocked','ready','blocked','ready',
+ ]);
+ // A distinct file with the same reference is kept for the authoritative
+ // commit to distinguish a failed predecessor from a committed conflict.
+ assert.equal(results[0].plan.reference,results[2].plan.reference);
+});

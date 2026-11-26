@@ -22,6 +22,7 @@ test('document RPC and private archive enforce tenant, identity, sign and all-or
         const fixture = await source('tests/purchases-rls-postgres.sql');
         await db.exec(fixture.split('\n\\ir ')[0].replace(/^\\set[^\n]*\n/, ''));
         await db.exec(`
+            CREATE ROLE service_role BYPASSRLS;
             CREATE SCHEMA storage;
             GRANT USAGE ON SCHEMA storage TO authenticated, anon;
             CREATE TABLE storage.buckets(id text PRIMARY KEY, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
@@ -42,6 +43,8 @@ test('document RPC and private archive enforce tenant, identity, sign and all-or
             'bt_purchase_documents_private_20261123_PROPOSED.sql',
             'bt_purchase_documents_policy_scope_fix_20261123_PROPOSED.sql',
             'bt_purchase_confirmations_credits_20261126.sql',
+            'bt_purchase_budget_revisions_20261123_PROPOSED.sql',
+            'bt_purchase_unified_v2.sql',
         ]) await db.exec(await source('migrations/' + name));
 
         const as = user => db.exec(`RESET ROLE; SET request.jwt.claim.sub = '${user}'; SET ROLE authenticated;`);
@@ -118,6 +121,72 @@ test('document RPC and private archive enforce tenant, identity, sign and all-or
             "SELECT public.bt_purchase_create_order($1,11,'LEGACY','Flocor','LEGACY-2','Site A',null,'legacy.pdf',true,'',$2)",
             [companyA, line(2, 79.06)]
         ), { code: '23505' });
+
+        const verify = async (number, kind, hash, { project='Site A 2', quantity=2, amount=79.06,
+            reference='QUOTE-' + number, supplier='Flocor', site=12, author=adminA } = {}) => {
+            await as(author);
+            await stage(number, author, companyA, site);
+            await db.exec('RESET ROLE');
+            const evidence = { kind, sha256:hash.repeat(64), currency:'CAD', supplier, reference, project,
+                expectedCount:1, printedTotal:amount, rows:JSON.parse(line(quantity, amount)) };
+            const result = await db.query(`
+                INSERT INTO public.bt_purchase_verification_receipts
+                    (document_id, company_id, site_id, actor_id, file_sha256, file_name, file_size, storage_path, evidence)
+                VALUES ($1,$2,$3,$4,$5,'v2.pdf',120,$6,$7) RETURNING id
+            `, [id(number), companyA, site, author, evidence.sha256,
+                `${companyA}/${site}/order/${id(number)}/original.pdf`, JSON.stringify(evidence)]);
+            await as(author);
+            return result.rows[0].id;
+        };
+        const commit = async (receipt, confirm = false, mode = null, state = null) =>
+            (await db.query('SELECT public.bt_purchase_commit_document_v2($1,$2,$3,$4) AS result',
+                [receipt, confirm, mode, state])).rows[0].result;
+        const budgetState = async () => (await db.query('SELECT public.bt_purchase_v2_budget_state($1,12) AS state',
+            [companyA])).rows[0].state;
+        const initial = await verify(11, 'quotation', '1');
+        await assert.rejects(db.query('INSERT INTO public.bt_purchase_verification_receipts DEFAULT VALUES'), { code:'42501' });
+        const imported = await commit(initial);
+        assert.equal(imported.status,'imported');
+        assert.equal(imported.total,79.06);
+        assert.deepEqual(await commit(initial), imported);
+        const firstState = await budgetState();
+        const extension = await verify(12, 'quotation', '2');
+        assert.deepEqual(await commit(extension), { status:'confirm', issues:['choose_revision'], budgetState:firstState });
+        assert.equal((await commit(extension,false,'extension',firstState)).status,'imported');
+        const replacement = await verify(13, 'quotation', '3', { quantity:3, amount:118.59 });
+        assert.equal((await commit(replacement,false,'replacement',firstState)).status,'confirm');
+        assert.equal((await commit(replacement,false,'replacement',await budgetState())).status,'imported');
+        const totalsV2 = await db.query('SELECT count(*)::int AS qty,sum(amount)::float8 AS total FROM public.bt_purchase_effective_budget_lines($1,12)',[companyA]);
+        assert.deepEqual(totalsV2.rows,[{qty:2,total:197.65}]);
+        const conflict = await verify(14, 'quotation', '4', { reference:'QUOTE-11' });
+        assert.deepEqual(await commit(conflict), {status:'review',issues:['reference_conflict']});
+        const duplicate = await verify(15, 'quotation', '1');
+        assert.deepEqual(await commit(duplicate), {status:'duplicate'});
+        const delivery = await verify(16, 'delivery', '5', { project:'Autre nom', supplier:'',reference:'' });
+        assert.deepEqual(await commit(delivery), {status:'confirm',issues:['confirm_site'],project:'Autre nom'});
+        assert.equal((await commit(delivery,true)).total,null);
+        assert.equal(await count('public.bt_purchase_order_lines'),4);
+
+        const failed = await verify(17, 'quotation', '6');
+        const stateBeforeFailure = await budgetState();
+        await db.exec(`
+            RESET ROLE;
+            CREATE FUNCTION public.reject_quote() RETURNS trigger LANGUAGE plpgsql AS
+            $$ BEGIN RAISE EXCEPTION 'Failure injected after budget insert'; END $$;
+            CREATE TRIGGER reject_quote BEFORE INSERT ON public.bt_supplier_price_quotes
+            FOR EACH ROW EXECUTE FUNCTION public.reject_quote();
+        `);
+        await as(adminA);
+        await assert.rejects(commit(failed,false,'extension',stateBeforeFailure), /Failure injected/);
+        assert.equal(await budgetState(),stateBeforeFailure);
+        assert.equal(await count('public.bt_purchase_inbox'),4);
+        assert.equal((await db.query('SELECT count(*)::int AS n FROM public.bt_supplier_price_quotes')).rows[0].n,3);
+        const committedPdf = `${companyA}/12/order/${id(11)}/original.pdf`;
+        await db.query('DELETE FROM storage.objects WHERE name=$1',[committedPdf]);
+        assert.equal((await db.query('SELECT count(*)::int AS n FROM storage.objects WHERE name=$1',[committedPdf])).rows[0].n,1);
+        await as(adminB);
+        assert.equal(await count('public.bt_purchase_inbox'),0);
+        await assert.rejects(commit(initial), {code:'42501'});
     } finally {
         await db.close();
     }

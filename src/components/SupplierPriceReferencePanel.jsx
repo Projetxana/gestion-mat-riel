@@ -10,7 +10,7 @@ import {archivePurchasePdf} from '../utils/purchasePdfArchive';
 
 const money=value=>new Intl.NumberFormat('fr-CA',{style:'currency',currency:'CAD'}).format(Number(value||0));
 
-export default function SupplierPriceReferencePanel({site,companyId,quotes=[],quoteLines=[],documents=[],archiveEnabled=false,enabled=true,onSaved}){
+export default function SupplierPriceReferencePanel({site,companyId,quotes=[],quoteLines=[],documents=[],archiveEnabled=false,enabled=true,hideImport=false,onSaved}){
  const [pending,setPending]=useState(null);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
@@ -133,6 +133,7 @@ export default function SupplierPriceReferencePanel({site,companyId,quotes=[],qu
     {flocor.quote_date?' '+flocor.quote_date+' ·':''} référence active
    </p>
   </PurchasePdfCard>}
+  {!hideImport&&<>
   {!enabled&&<p role="status" className="text-amber-200 text-sm">
    Référentiel de prix non encore activé sur Supabase. Migration nécessaire avant import.
   </p>}
@@ -143,6 +144,7 @@ export default function SupplierPriceReferencePanel({site,companyId,quotes=[],qu
     disabled={!enabled||busy||site.status!=='active'}
     onChange={e=>{void select(e.target.files?.[0]);e.target.value='';}}/>
   </label>
+  </>}
   {pending&&<div className="space-y-3 rounded-lg border border-blue-700 p-3 text-sm">
    <h4 className="font-semibold break-words">{pending.sourceName} · Soumission {pending.quoteNumber||'à confirmer'}</h4>
    <div className="grid grid-cols-2 gap-2 text-xs">

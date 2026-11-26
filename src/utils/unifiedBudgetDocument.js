@@ -29,13 +29,20 @@ export function activePriceDocuments(documents,site){
  const scoped=documents.filter(d=>String(d.company_id)===String(site.company_id)&&String(d.site_id)===String(site.id));
  const latestBase=scoped.filter(d=>d.kind==='initial'||d.kind==='replacement').sort((a,b)=>Number(b.revision_no)-Number(a.revision_no))[0];
  const active=scoped.filter(d=>d===latestBase||d.kind==='extension'||d.kind==='price_only');
+ const priceOnly=active.filter(d=>d.kind==='price_only').sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+ const latestBySupplier=new Map();
+ for(const d of priceOnly)if(!latestBySupplier.has(normalizeToken(d.supplier)))latestBySupplier.set(normalizeToken(d.supplier),d);
+ const itemKey=row=>JSON.stringify([normalizeToken(row.item_code),normalizeToken(row.unit).replace(/^(FT|PIED|FEET)$/,'PI').replace(/^(EA|PC|PCS)$/,'UN')]);
  const groups=new Map();
  for(const d of active){
   if(!normalizeToken(d.supplier))continue;
   const key=normalizeToken(d.supplier);
+  const latestPrice=latestBySupplier.get(key);
+  if(d.kind==='price_only'&&d!==latestPrice)continue;
+  const overridden=new Set(d!==latestPrice?(latestPrice?.rows||[]).map(itemKey):[]);
   if(!groups.has(key))groups.set(key,{supplier:d.supplier,documents:[],rows:[]});
   const g=groups.get(key);g.documents.push(d.id);
-  for(const row of d.rows||[])g.rows.push({...row,document_id:d.id});
+  for(const row of d.rows||[])if(!overridden.has(itemKey(row)))g.rows.push({...row,document_id:d.id});
  }
  return [...groups.values()];
 }

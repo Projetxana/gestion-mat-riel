@@ -5,7 +5,7 @@ import {fetchPrivatePurchasePdf} from '../utils/purchasePdfArchive';
 
 // In-app, read-only PDF.js canvas preview. No links, download buttons or new tabs.
 // PDF pages are rendered on demand to keep memory use bounded on mobile devices.
-export default function PurchasePdfPreview({record,title,onClose}){
+export default function PurchasePdfPreview({record,title,onClose,loadBytes}){
  const closeRef=useRef(null);
  const viewportRef=useRef(null);
  const canvasRef=useRef(null);
@@ -71,7 +71,7 @@ export default function PurchasePdfPreview({record,title,onClose}){
   let disposed=false,loadingTask=null;
   setStatus('loading');setError('');setPage(1);setPages(0);setZoom(1);
   const load=async()=>{
-   const bytes=await fetchPrivatePurchasePdf(record);
+   const bytes=await (loadBytes ? loadBytes() : fetchPrivatePurchasePdf(record));
    if(disposed)return;
    const [{getDocument,GlobalWorkerOptions},{default:workerSrc}]=await Promise.all([
     import('pdfjs-dist/build/pdf.mjs'),
@@ -100,7 +100,7 @@ export default function PurchasePdfPreview({record,title,onClose}){
    pdfRef.current=null;
    if(loadingTask)void loadingTask.destroy().catch(()=>{});
   };
- },[record?.storage_path]);
+ },[record?.storage_path,loadBytes]);
 
  useEffect(()=>{
   if(status!=='ready'||!pdfRef.current||!canvasRef.current)return;
