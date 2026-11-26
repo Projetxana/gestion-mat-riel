@@ -23,7 +23,7 @@
     "test:manual-startup-hours": "node --test tests/manual-startup-hours-ui.test.mjs",
     "test:budget-revisions": "node --test tests/purchase-budget-revisions.test.mjs",
     "test:project-excel": "node --test tests/project-excel-import.test.mjs",
-    "test:purchases-v2": "node --test tests/unified-purchase-import.test.mjs tests/unified-purchase-batch.test.mjs"
+    "test:purchases-v2": "node --test tests/unified-purchase-import.test.mjs tests/unified-purchase-batch.test.mjs tests/unified-budget-document.test.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.3.0",
