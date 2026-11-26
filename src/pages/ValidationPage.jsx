@@ -4,7 +4,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { groupSessionsByEmployee, formatDuration } from '../utils/weeklyApproval';
-import { originalDuration, currentDuration, prepareDurationCorrection } from '../utils/sessionDurationCorrection';
+import { originalDuration, currentDuration, prepareSessionCorrection } from '../utils/sessionDurationCorrection';
 import { parseLocalizedHours, isValidQuarterHour, formatHoursHHMM, normalizeHoursInput } from '../utils/quarterHours';
 
 const mondayOf = (date) => {
@@ -105,7 +105,7 @@ export default function ValidationPage() {
     const readAudit = async (sessionId) => {
         const { data, error: auditError } = await supabase
             .from('bt_time_session_audit')
-            .select('id, action, reason, created_at')
+            .select('id, action, reason, created_at, before_values, after_values')
             .eq('company_id', currentCompanyId)
             .eq('session_id', sessionId)
             .order('created_at', { ascending: false })
@@ -122,6 +122,8 @@ export default function ValidationPage() {
         setEditingId(session.id);
         setDraft({
             hours: currentDuration(session),
+            siteId: String(session.site_id ?? ''),
+            taskId: String(session.section_id ?? ''),
             reason: '',
         });
         void readAudit(session.id);
@@ -132,9 +134,7 @@ export default function ValidationPage() {
         setError('');
         setMessage('');
 
-        // The administrator corrects only the daily duration. Keep the
-        // original timestamps, effective start, project and task unchanged.
-        const prepared = prepareDurationCorrection(session, draft.hours, draft.reason);
+        const prepared = prepareSessionCorrection(session, draft, (sites || []).filter(s => String(s.company_id) === String(currentCompanyId)), projectTasks || []);
         if (prepared.error) {
             setError(prepared.error);
             return;
@@ -305,7 +305,7 @@ export default function ValidationPage() {
                                             {day.sessions.map(session => {
                     const start = effectiveStart(session);
                     const end = effectiveEnd(session);
-                    const corrected = Boolean(session.corrected_start_at || session.corrected_end_at);
+                    const corrected = Boolean(session.corrected_start_at || session.corrected_end_at || session.correction_reason);
                     const isEditing = editingId === session.id && draft;
                     return (
                         <section key={session.id} className="rounded-xl border border-slate-700/70 bg-slate-900/60 p-3 sm:p-4 space-y-3">
@@ -338,8 +338,26 @@ export default function ValidationPage() {
 
                             {isEditing && <div className="border-t border-slate-700 pt-4 space-y-3">
                                 <p className="text-sm text-slate-300">
-                                    Corrige uniquement le total de la journée. La date, le chantier et la tâche restent inchangés.
+                                    Corrige la durée, le chantier ou la tâche. La date et l’employé restent inchangés. Le pointage sera à nouveau soumis à validation.
                                 </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <label className="text-sm flex flex-col gap-1">Chantier
+                                        <select value={draft.siteId} disabled={busyId != null}
+                                            onChange={event => setDraft(previous => ({ ...previous, siteId: event.target.value, taskId: '' }))}
+                                            className="min-h-11 rounded-lg bg-slate-950 border border-slate-600 p-2 text-white">
+                                            <option value="">Sélectionner un chantier</option>
+                                            {(sites || []).filter(s => String(s.company_id) === String(currentCompanyId) && (String(s.id) === String(session.site_id) || !['archived','deleted','inactive'].includes(String(s.status).toLowerCase()))).map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+                                        </select>
+                                    </label>
+                                    <label className="text-sm flex flex-col gap-1">Tâche
+                                        <select value={draft.taskId} disabled={busyId != null || !draft.siteId}
+                                            onChange={event => setDraft(previous => ({ ...previous, taskId: event.target.value }))}
+                                            className="min-h-11 rounded-lg bg-slate-950 border border-slate-600 p-2 text-white">
+                                            <option value="">Sélectionner une tâche</option>
+                                            {(projectTasks || []).filter(t => String(t.project_id) === draft.siteId).map(t => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
+                                        </select>
+                                    </label>
+                                </div>
                                 <div className="space-y-3 rounded-xl bg-slate-800/70 p-3 sm:p-4">
                                     <div className="flex items-center justify-between gap-3 border-b border-slate-700 pb-3">
                                         <span className="text-sm font-medium text-slate-300">Heures saisies</span>
@@ -375,7 +393,7 @@ export default function ValidationPage() {
                                 <label className="text-sm flex flex-col gap-1">Motif de correction (obligatoire)
                                     <textarea rows={2} required value={draft.reason}
                                         onChange={event => setDraft(previous => ({ ...previous, reason: event.target.value }))}
-                                        placeholder="Ex. Heure de fin mal saisie"
+                                        placeholder="Ex. Mauvais chantier ou heure de fin mal saisie"
                                         className="rounded-lg bg-slate-950 border border-slate-600 p-3 text-white" />
                                 </label>
                                 <div className="flex flex-wrap gap-2">
@@ -393,6 +411,7 @@ export default function ValidationPage() {
                                     {audit.map(entry => <p key={entry.id} className="text-xs text-slate-400 py-1">
                                         {displayDate(entry.created_at)} · {entry.action === 'corrected' ? 'Correction' : entry.action === 'approved' ? 'Validation' : 'Retour en attente'}
                                         {entry.reason ? ` — ${entry.reason}` : ''}
+                                        {entry.before_values && entry.after_values && (String(entry.before_values.site_id) !== String(entry.after_values.site_id) || String(entry.before_values.section_id) !== String(entry.after_values.section_id)) && <span className="block">{siteName(entry.before_values.site_id)} · {taskName(entry.before_values.section_id)} → {siteName(entry.after_values.site_id)} · {taskName(entry.after_values.section_id)}</span>}
                                     </p>)}
                                 </div>}
                             </div>}
