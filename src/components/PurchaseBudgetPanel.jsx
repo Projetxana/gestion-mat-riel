@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Package, RefreshCw } from
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
 import { calculatePurchaseBudget, comparePurchaseItems, parsePurchaseRows, shippingProjectVerification, normalizeToken } from '../utils/purchaseBudget';
+import {groupPurchaseDocuments} from '../utils/purchaseDocumentIdentity';
 import PurchasePdfReview from './PurchasePdfReview';
 import {preparePurchaseReview,validatePurchaseReview} from '../utils/purchasePdfReview';
 import { assessDigitalPdf } from '../utils/pdfImportEvidence';
@@ -586,7 +587,10 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                     <div className="space-y-2 pt-2">
                         <h3 className="font-semibold flex items-center gap-2"><Package size={17}/> Commandes enregistrées ({orders.length})</h3>
                         {!orders.length && <p className="text-sm text-slate-400">Aucune commande à ce jour.</p>}
-                        {orders.map(item => (
+                        {groupPurchaseDocuments(orders,orderLines).map(group => (
+                          <details key={group.key} open className="rounded-xl border border-slate-700 p-3 space-y-2">
+                            <summary className="cursor-pointer font-semibold">{group.supplier} · PO {group.po_number} · {group.documents.length} document(s) · {money(group.total)}</summary>
+                            {group.documents.map(item => (
                             <PurchasePdfCard key={item.id}
                                 kind="order" source={{...item,
                                     line_count:orderLines.filter(line=>String(line.order_id)===String(item.id)).length,
@@ -598,12 +602,14 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
                                 onAttached={refresh} className="bg-slate-800">
                                 <div className="flex justify-between gap-2">
                                     <div className="min-w-0">
-                                        <p className="font-semibold text-sm break-words">{item.supplier} · PO {item.po_number}</p>
+                                        <p className="font-semibold text-sm break-words">{orderTotals.get(item.id)<0?'Avoir':'Confirmation'} · {item.supplier_order_number||item.po_number}</p>
                                         <p className="text-xs text-slate-400 break-words">Livraison : {item.shipping_project_name}</p>
                                     </div>
                                     <span className="font-semibold tabular-nums text-sm shrink-0">{money(orderTotals.get(item.id))}</span>
                                 </div>
                             </PurchasePdfCard>
+                            ))}
+                          </details>
                         ))}
                     </div>
                     <p className="text-xs text-slate-400">Le PDF numérique est lu localement. L’import des courriels et le rapprochement des bons restent indépendants.</p>
