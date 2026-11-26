@@ -69,7 +69,7 @@ export function planPurchasePdf(read,{site,aliases=[],knownHashes=[],knownDocume
   parserIssues=parsed.issues.filter(i=>i.code!=='project'&&i.code!=='duplicate').map(i=>i.code);
  }
  const checked=reconcileDocumentRows(rows,printedTotal,{credit:kind==='credit',expectedCount});
- const extra={rows,supplier,reference,project,po,originalReference,total:checked.total};
+ const extra={rows,supplier,reference,project,po,originalReference,total:checked.total,printedTotal,expectedCount};
  if(reference&&knownDocuments.some(d=>String(d.company_id)===String(site.company_id)&&normalizeToken(d.supplier)===normalizeToken(supplier)&&d.kind===kind&&normalizeToken(d.reference)===normalizeToken(reference)))return finish('duplicate',['same_reference'],extra);
  if(!checked.valid||parserIssues.length)return finish('review',[...checked.issues,...parserIssues],extra);
  if(['order','credit','quotation'].includes(kind)&&!reference)return finish('review',['missing_reference'],extra);
