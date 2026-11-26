@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { originalDuration, currentDuration, prepareDurationCorrection } from '../src/utils/sessionDurationCorrection.js';
+import { originalDuration, currentDuration, prepareDurationCorrection, prepareSessionCorrection } from '../src/utils/sessionDurationCorrection.js';
 
 const original = {
     punch_start_at: '2026-11-16T08:00:00-05:00',
@@ -56,4 +56,22 @@ test('rejects invalid intervals, unchanged time or missing reason', () => {
     assert.match(prepareDurationCorrection(original, '25:00', 'Erreur').error, /15 minutes/);
     assert.match(prepareDurationCorrection(original, '8:00', 'Erreur').error, /Aucune modification/);
     assert.match(prepareDurationCorrection(original, '7:15', 'x').error, /motif/);
+});
+
+const sites = [{id:12,status:'active'},{id:13,status:'active'},{id:14,status:'archived'}];
+const tasks = [{id:138,project_id:12},{id:139,project_id:12},{id:140,project_id:13},{id:141,project_id:14}];
+const draft = {hours:'8:00',siteId:'13',taskId:'140',reason:'Erreur de chantier'};
+test('reassignment alone preserves exact timestamps and resets approval', () => {
+    assert.deepEqual(prepareSessionCorrection(original,draft,sites,tasks).updates,
+      {site_id:13,section_id:140,correction_reason:'Erreur de chantier',approved:false});
+});
+test('task-only correction and combined duration correction', () => {
+    assert.equal(prepareSessionCorrection(original,{...draft,siteId:'12',taskId:'139'},sites,tasks).updates.section_id,139);
+    assert.equal(prepareSessionCorrection(original,{...draft,hours:'7:15'},sites,tasks).updates.corrected_end_at,'2026-11-16T20:15:00.000Z');
+});
+test('rejects mismatched task, archived destination and missing reason', () => {
+    assert.match(prepareSessionCorrection(original,{...draft,taskId:'138'},sites,tasks).error,/tâche/);
+    assert.match(prepareSessionCorrection(original,{...draft,siteId:'14',taskId:'141'},sites,tasks).error,/actif/);
+    assert.match(prepareSessionCorrection(original,{...draft,reason:''},sites,tasks).error,/motif/);
+    assert.match(prepareSessionCorrection({...original,punch_end_at:null},draft,sites,tasks).error,/Terminez/);
 });
