@@ -34,6 +34,7 @@ export const compareSupplierPrices = ({
  const linksByOrderId=new Map(links.map(link=>[String(link.order_line_id),link]));
  const result=[];
  for(const orderLine of orderLines){
+  if (Number(orderLine.quantity) < 0) continue;
   const order=ordersById.get(String(orderLine.order_id));
   const supplier=normalizedSupplier(order?.supplier);
   const quote=quoteBySupplier.get(supplier);
