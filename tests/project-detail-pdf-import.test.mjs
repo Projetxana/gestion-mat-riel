@@ -35,7 +35,7 @@ test('both tabs provide a PDF import and still preserve Excel/CSV fallback',()=>
  assert.ok(panel.includes('Excel / CSV'));
  assert.ok(transformSync(panel,{loader:'jsx'}).code.length>100);
 });
-test('order creation requires a verified imported PDF, never typed fields',()=>{
+test('order creation requires an imported PDF and explicit validation of uncertain fields',()=>{
  const panel=read('components/PurchaseBudgetPanel.jsx');
  const orderTab=panel.split("{tab === 'orders' && (")[1].split("        </section>")[0];
  assert.ok(orderTab.includes('Importer une confirmation de commande PDF'));
@@ -43,7 +43,9 @@ test('order creation requires a verified imported PDF, never typed fields',()=>{
  assert.ok(!orderTab.includes('N° PO client'));
  assert.ok(!orderTab.includes('type="date"'));
  assert.ok(!orderTab.includes('onChange={e => { setOrder'));
- assert.ok(panel.includes('pendingOrder?.verifiedPdf'));
+ assert.ok(panel.includes('pendingOrder?.originalFile'));
+ assert.ok(panel.includes('validatePurchaseReview'));
+ assert.ok(orderTab.includes('PurchasePdfReview'));
  assert.ok(panel.includes("if(parsed.status!=='auto_commit' || !rows.length)"));
  assert.ok(panel.includes("mode !== 'budget'"));
  assert.ok(panel.includes('p_project_verified: true'));
