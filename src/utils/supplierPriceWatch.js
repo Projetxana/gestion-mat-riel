@@ -54,8 +54,9 @@ export const compareSupplierPrices = ({
    if(!candidates.length){result.push({...base,status:'stale_link'});continue;}
   }else{
    const source=code(orderLine.item_code);
-   if(source)candidates=priced.filter(line=>source===code(line.item_code)||
-    (line.customer_alias&&source===code(line.customer_alias)));
+   const supplierCode=code(orderLine.supplier_item_code);
+   candidates=priced.filter(line=>(supplierCode&&supplierCode===code(line.item_code))||
+    (source&&(source===code(line.item_code)||(line.customer_alias&&source===code(line.customer_alias)))));
   }
   // A product absent from the original quotation is not a failed SKU match:
   // it is a separately identifiable, already committed purchase for which
