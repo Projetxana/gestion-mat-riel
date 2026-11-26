@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Trash2, Plus, Upload } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { supabase } from '../supabaseClient';
-import { importProjectProgress } from '../utils/excelParser';
+import { importProjectProgress, readProjectExcel } from '../utils/excelParser';
 
 const SiteFormModal = ({ onClose, siteToEdit = null }) => {
-    const { addSite, updateSite, projectTasks } = useAppContext(); // ✅ ADDED projectTasks
+    const { addSite, updateSite, projectTasks, refreshData } = useAppContext(); // ✅ ADDED projectTasks
     const isEditing = !!siteToEdit;
 
     // Step 1: Project Info
@@ -20,6 +20,9 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
     // Step 2: Sections (ex-Tasks)
     // Structure: { id, name, planned_hours, completed_hours }
     const [sections, setSections] = useState([]);
+    const [importing, setImporting] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [preview, setPreview] = useState(null);
 
     // Quick Add State
     const [newSelectionName, setNewSelectionName] = useState('');
@@ -79,7 +82,7 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
     const totalPlanned = sections.reduce((acc, t) => acc + (Number(t.planned_hours) || 0), 0);
     const totalCompleted = sections.reduce((acc, t) => acc + (Number(t.completed_hours) || 0), 0);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
 
         // Rule: Start date required validation could be here but optional per schema
@@ -94,12 +97,15 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
             }))
         };
 
-        if (isEditing) {
-            updateSite(siteToEdit.id, payload);
-        } else {
-            addSite(payload);
-        }
-        onClose();
+        if (saving || importing || preview) return;
+        setSaving(true);
+        try {
+            if (isEditing) await updateSite(siteToEdit.id, payload);
+            else await addSite(payload);
+            onClose();
+        } catch (error) {
+            alert(error.message || String(error));
+        } finally { setSaving(false); }
     };
 
     const handleAddSection = () => {
@@ -126,37 +132,51 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
 
     const handleExcelImport = async (e) => {
         const file = e.target.files[0];
-        if (!file) return;
-
-        // Ensure we are in edit mode
-        if (!isEditing || !siteToEdit?.id) {
-            alert("L'import Excel nécessite que le chantier soit déjà créé (Mode Modification).");
-            e.target.value = '';
-            return;
-        }
-
-        try {
-            const result = await importProjectProgress(siteToEdit.id, file, supabase);
-
-            if (result.success) {
-                let msg = `Import terminé.\n`;
-                msg += `➕ Ajoutés : ${result.count}\n`;
-                msg += `✏️ Mis à jour : ${result.updated}\n`;
-                if (result.count === 0 && result.updated === 0) {
-                    msg += `\n⚠️ AVERTISSEMENT : Aucun élément traité.\n`;
-                    msg += `Détails techniques : ${result.debug}\n`;
-                    msg += `Vérifiez que les colonnes 'Tâche', 'Prévu', 'Réalisé' existent.`;
-                }
-                alert(msg);
-                // State updates will be handled by AppContext real-time subscription
-            } else {
-                alert("Erreur lors de l'import : " + result.error);
-            }
-        } catch (err) {
-            console.error("Excel import error:", err);
-            alert("Erreur inattendue : " + err.message);
-        }
         e.target.value = '';
+        if (!file || importing || saving) return;
+        setImporting(true);
+        try { setPreview(await readProjectExcel(file)); }
+        catch (error) { alert("Erreur lors de l'import : " + error.message); }
+        finally { setImporting(false); }
+    };
+
+    const confirmImport = async () => {
+        if (!preview || importing || saving) return;
+        setImporting(true);
+        try {
+            if (!isEditing) {
+                // Replace only the initial template; preserve intentionally entered sections.
+                setSections(previous => {
+                    const retained = previous.filter(t => !/^t[0-3]$/.test(String(t.id)) || Number(t.planned_hours) || Number(t.completed_hours));
+                    const byName = new Map(retained.map(t => [t.name.trim().toLowerCase(), t]));
+                    preview.forEach((task, i) => {
+                        const key = task.name.trim().toLowerCase();
+                        const old = byName.get(key);
+                        byName.set(key, old ? { ...old, planned_hours: task.planned_hours } : {
+                            ...task, id: `import-${Date.now()}-${i}`, completed_hours: task.completed_hours ?? 0
+                        });
+                    });
+                    return [...byName.values()];
+                });
+                setPreview(null);
+                return;
+            }
+            const result = await importProjectProgress(siteToEdit.id, null, supabase, preview);
+            if (result.error) {
+                if (refreshData) await refreshData();
+                setPreview(null);
+                alert(`Import interrompu : ${result.error}\nAjoutées : ${result.count ?? 0}, mises à jour : ${result.updated ?? 0}. Vérifiez le chantier avant de réessayer.`);
+                onClose();
+                return;
+            }
+            if (refreshData) await refreshData();
+            setPreview(null);
+            alert(`Import terminé : ${result.count} ajoutées, ${result.updated} mises à jour. Total chantier : ${result.totalPlanned} h.`);
+            // Close to prevent stale form data from overwriting confirmed database rows.
+            onClose();
+        } catch (error) {
+            alert("Erreur lors de l'import : " + error.message);
+        } finally { setImporting(false); }
     };
 
     return (
@@ -250,10 +270,23 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                             <label className="cursor-pointer text-[10px] bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded flex items-center gap-1 transition-colors">
                                 <Upload size={12} />
                                 <span>Import Excel</span>
-                                <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleExcelImport} />
+                                <input type="file" accept=".xlsx, .xls" className="hidden" disabled={importing || saving || !!preview} onChange={handleExcelImport} />
                             </label>
                         </div>
 
+                        {preview && (
+                            <div role="region" aria-label="Aperçu de l'import Excel" className="bg-slate-800 border border-blue-500/50 rounded-lg p-3 space-y-2">
+                                <p className="text-sm font-bold text-white">{preview.length} tâches · {preview.reduce((sum, task) => sum + task.planned_hours, 0)} h prévues</p>
+                                <p className="text-xs text-slate-300">{isEditing ? "Les tâches existantes conservent leurs heures réalisées. Les autres tâches sont conservées. La confirmation enregistre immédiatement l'import et ferme la fenêtre ; les autres modifications non enregistrées ne seront pas appliquées." : "Les tâches seront ajoutées au formulaire avant la création du chantier."}</p>
+                                <div className="max-h-48 overflow-y-auto">
+                                    {preview.map(task => <div key={task.name} className="flex justify-between gap-2 text-xs text-slate-200 py-1"><span>{task.name}</span><span>{task.planned_hours} h</span></div>)}
+                                </div>
+                                <div className="flex gap-2 justify-end">
+                                    <button type="button" disabled={importing} onClick={() => setPreview(null)} className="px-3 py-2 text-slate-300">Annuler</button>
+                                    <button type="button" disabled={importing} onClick={confirmImport} className="px-3 py-2 rounded bg-green-700 text-white">{importing ? "Import en cours…" : "Confirmer l'import"}</button>
+                                </div>
+                            </div>
+                        )}
                         {/* HEADERS */}
                         <div className="grid grid-cols-12 gap-2 text-[10px] uppercase font-bold text-slate-500 px-2">
                             <div className="col-span-6">Nom Section</div>
@@ -365,7 +398,7 @@ const SiteFormModal = ({ onClose, siteToEdit = null }) => {
                         <button
                             type="button"
                             onClick={handleSubmit}
-                            disabled={!projectInfo.name || sections.length === 0}
+                            disabled={!projectInfo.name || sections.length === 0 || importing || saving || !!preview}
                             className={`px-6 py-2 font-bold rounded-lg shadow-lg transition-all text-sm flex items-center gap-2 ${!projectInfo.name || sections.length === 0
                                 ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
                                 : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'

@@ -745,6 +745,8 @@ export const AppProvider = ({ children }) => {
 
             if (sectionError) {
                 console.error("Error creating project sections:", sectionError);
+                await fetchData();
+                throw new Error("Chantier créé, mais tâches non enregistrées : " + sectionError.message + ". Rouvrez le chantier pour réessayer.");
             }
 
             // Update State with Real ID and Sections
@@ -772,6 +774,7 @@ export const AppProvider = ({ children }) => {
         } else {
             console.error("Error creating site:", error);
             setSites(prev => prev.filter(s => s.id !== tempId));
+            throw new Error(error?.message || "Création du chantier non confirmée.");
         }
     }
 
@@ -1246,6 +1249,7 @@ export const AppProvider = ({ children }) => {
         changePassword,
         addMaterial,
         addSite,
+        refreshData: fetchData,
         transferTool,
         addLog,
         updateCompanyInfo,
