@@ -20,7 +20,7 @@ export default function PurchasePdfReview({pending,site,order,onOrder,onChange,o
    <label className="block">Référence fournisseur<input className={inputClass} value={order.supplierNumber} onChange={e=>{onOrder({...order,supplierNumber:e.target.value});change('confirmed',false);}}/></label>
   </>}
   <p>Chantier détecté : {review.extractedProject||'Non détecté'}</p>
-  {normalizeToken(review.extractedProject)!==normalizeToken(site.name)&&<label className="block">Confirmer le chantier destinataire en saisissant son nom exact<input className={inputClass} value={review.siteConfirmation} onChange={e=>change('siteConfirmation',e.target.value)} placeholder={site.name}/></label>}
+  {normalizeToken(review.extractedProject)!==normalizeToken(site.name)&&<label className="block"><input type="checkbox" checked={review.siteConfirmation===site.name} onChange={e=>change('siteConfirmation',e.target.checked?site.name:'')}/> Je confirme que ce document concerne « {site.name} »</label>}
   <div className="max-h-96 overflow-auto space-y-2">
   {rows.map((row,index)=><div key={index} className="border border-slate-600 rounded p-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
    <label className="col-span-2 sm:col-span-3"><input type="checkbox" checked={row.included!==false} onChange={e=>update(index,'included',e.target.checked)}/> Article {index+1} à inclure</label>
