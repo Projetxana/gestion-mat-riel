@@ -2,7 +2,7 @@
 // Values are proposals for a budget revision and must never auto-create orders.
 import { safeSupplierNumber } from './purchaseDocumentLines.js';
 
-const rowPattern = /^\s*(\d{2,4})\s+(\d+(?:[.,]\d{1,2})?)\s+(UN|FT|PI|EA|PC|LG|CT)\s+([A-Z0-9][A-Z0-9._/-]{1,49}),\s*(.+?)\s{2,}([\d,]*\d\.\d{4}|\.\d{4})\s{2,}([\d,]*\d\.\d{2}|\.\d{2})\s*$/i;
+const rowPattern = /^\s*(\d{2,4})\s+(\d+(?:[.,]\d{1,2})?)\s+(UN|FT|PI|EA|PC|LG|CT)\s+([A-Z0-9][A-Z0-9._/-]{1,49}),\s*(.+?)\s+([\d,]*\d\.\d{4}|\.\d{4})\s+([\d,]*\d\.\d{2}|\.\d{2})\s*$/i;
 const rowAnchor = /^\s*\d{2,4}\s+\d+(?:[.,]\d+)?\s+(?:UN|FT|PI|EA|PC|LG|CT)\s+\S/i;
 const nonItem = /^(?:TOTAL|CONTINUED|PRINTED ON|IMPRIM[ÉE]E LE|FLOCOR|QUOTATION|SOUMISSION|DESCRIPTION\b|SEQ\.|#\s*\d|SITE WEB|T[ÉE]L[ÉE]PHONE|FAX\b|DEBUT PROJET|D[ÉE]BUT PROJET|FIN DE PROJET|D[ÉE]LAI|PRIX NETS|PRIX SUJETS|FAB DORVAL|SOUS.TOTAL|SUB.TOTAL|GST|PST|TPS|TVQ|SIGNATURE|VALIDIT[ÉE]|PAGE\b|ACTIONS GOUVERNEMENTALES|RESPONSABLE|AUTRES FRAIS|OTHER FEES|SHIPPING|TRANSPORT)\b/i;
 const moneyCents = value => Math.round(Number(value) * 100);
@@ -12,15 +12,19 @@ export const extractFlocorQuotationHeader = text => {
     if (!/\bFLOCOR\b/i.test(source.slice(0, 1500)) ||
         !/\bQUOTATION\b/i.test(source.slice(0, 1500)) ||
         !/\bSOUMISSION\b/i.test(source.slice(0, 1500))) return null;
-    const project = source.match(/^\s*#\s*(\d{3,6})\s+(.+?)(?:\s{2,}.*)?$/m);
-    if (!project) return null;
+    const numbered = source.match(/^\s*#\s*(\d{3,6})\s+(.+?)(?:\s{2,}.*)?$/m);
+    const description = source.match(/^\s*Description\s+Job\s*\/\s*Projet[^\n]*\n[ \t]*([^\n\f]+)$/im);
+    const candidate = description?.[1]?.trim().split(/\s{2,}/)[0]?.replace(/\s+\d{1,2}\/\d{1,2}\/\d{2,4}.*$/, '').trim();
+    const project = numbered || (candidate ? ['', '', candidate] : null);
+    // A recognized quotation must never be imported as an order, even without a project.
+    const projectName = project?.[2]?.trim() || '';
     const number = source.slice(0, 1600).match(/\b(20\d{5})\b/);
     const date = source.slice(0, 2000).match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/);
     return {
         quote_number: number?.[1] || '',
         quotation_date: date?.[0] || '',
-        project_number: project[1],
-        shipping_project_name: project[2].trim(),
+        project_number: project?.[1] || '',
+        shipping_project_name: projectName,
     };
 };
 

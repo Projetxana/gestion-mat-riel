@@ -95,3 +95,9 @@ test('quotation never masquerades as Flocor order confirmation',()=>{
  assert.ok(decision.issues.some(issue=>issue.code==='quotation'));
  assert.equal(extractFlocorQuotationHeader('FLOCOR- DORVAL\nCOMMANDE DE VTE\nCONFIRMATION'),null);
 });
+
+ test('Flocor description header without job number',()=>{
+ const text=sample.replace('# 1234  CHANTIER DEMO                         10/20/26           1','Description       Job/Projet          Page\nDJ4 PHASE 2                            1');
+ assert.equal(extractFlocorQuotationHeader(text).shipping_project_name,'DJ4 PHASE 2');
+ assert.equal(extractFlocorQuotationLines(text).items.length,2);
+ });
