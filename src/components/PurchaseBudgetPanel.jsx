@@ -11,6 +11,7 @@ import { assessDigitalPdf } from '../utils/pdfImportEvidence';
 import PurchaseLineReconciliation from './PurchaseLineReconciliation';
 import PurchaseBudgetRevisions from './PurchaseBudgetRevisions';
 import PurchaseItemsOverview from './PurchaseItemsOverview';
+import {budgetPriceReference} from '../utils/budgetPriceReference';
 import SupplierPriceReferencePanel from './SupplierPriceReferencePanel';
 import SupplierPriceAlertsPanel from './SupplierPriceAlertsPanel';
 import PurchasePdfCard from './PurchasePdfCard';
@@ -67,8 +68,8 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
     const [order, setOrder] = useState(emptyOrder);
     const [reloadIndex, setReloadIndex] = useState(0);
     const [pdfIssues, setPdfIssues] = useState([]);
-    const [priceQuotes,setPriceQuotes] = useState([]);
-    const [priceQuoteLines,setPriceQuoteLines] = useState([]);
+    const [storedPriceQuotes,setPriceQuotes] = useState([]);
+    const [storedPriceQuoteLines,setPriceQuoteLines] = useState([]);
     const [priceLinks,setPriceLinks] = useState([]);
     const [priceReferenceEnabled,setPriceReferenceEnabled] = useState(true);
     const [priceRiskAcknowledged,setPriceRiskAcknowledged] = useState(false);
@@ -131,6 +132,7 @@ export default function PurchaseBudgetPanel({ site, onPurchasesChanged }) {
 
     useEffect(() => { void refresh(); }, [refresh, reloadIndex]);
 
+    const {quotes:priceQuotes,quoteLines:priceQuoteLines}=useMemo(()=>budgetPriceReference({budget,budgetLines,revisions:budgetRevisions,quotes:storedPriceQuotes,quoteLines:storedPriceQuoteLines}),[budget,budgetLines,budgetRevisions,storedPriceQuotes,storedPriceQuoteLines]);
     const totals = useMemo(() => calculatePurchaseBudget(budgetLines, orderLines), [budgetLines, orderLines]);
     const shippingCheck = shippingProjectVerification(order.shippingProject, site?.name, pendingOrder?.siteConfirmed ? site.name : (pendingOrder?.review?.siteConfirmation || ''));
     const comparisons = useMemo(() => comparePurchaseItems(budgetLines, orderLines, purchaseLinks), [budgetLines, orderLines, purchaseLinks]);

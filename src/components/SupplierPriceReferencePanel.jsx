@@ -119,7 +119,8 @@ export default function SupplierPriceReferencePanel({site,companyId,quotes=[],qu
     Un nouveau PDF ajoute une version datée; les anciennes restent conservées.
    </p>
   </div>
-  {flocor&&<PurchasePdfCard
+  {flocor?.derived_from_budget&&<div className="rounded-lg border border-emerald-700 p-3 text-sm"><p className="font-semibold text-emerald-200">Prix de référence issus du budget Flocor</p><p>{flocor.line_count} articles · {money(flocor.total_amount)} HT · {flocor.source_name}</p><p className="text-xs text-slate-400">Aucune deuxième importation nécessaire. Une soumission fournisseur explicite reste prioritaire.</p></div>}
+  {flocor&&!flocor.derived_from_budget&&<PurchasePdfCard
    kind="quote" source={{...flocor,supplier:'Flocor'}} site={site} companyId={companyId}
    canAttach={archiveEnabled}
    documentRecord={documents.find(d=>d.source_kind==='quote'&&String(d.source_id)===String(flocor.id))}
