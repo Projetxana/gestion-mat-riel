@@ -54,6 +54,7 @@ export default function SupplierPriceAlertsPanel({
 
  const manualMapping=row=>{
   const q=quoteBySupplier.get(normalizeToken(row.supplier));
+  if(q?.derived_from_budget)return <p className="text-xs text-slate-400">Référence issue du budget : rapprochement manuel non disponible. Importez une soumission de référence explicite si nécessaire.</p>;
   const available=quoteLines.filter(line=>String(line.quote_id)===String(q?.id))
    .filter(line=>{
     const unit=normalizeToken(line.unit),actual=normalizeToken(row.unit);
@@ -128,7 +129,7 @@ export default function SupplierPriceAlertsPanel({
      </p>
     </article>)}
    </div>}
-   {comparison.overpriceCount===0&&<p className="text-xs text-emerald-200 flex items-center gap-2">
+   {comparison.overpriceCount===0&&comparison.lines.some(row=>['ok','below'].includes(row.status))&&<p className="text-xs text-emerald-200 flex items-center gap-2">
     <CheckCircle2 size={16}/> Aucune hausse détectée sur les lignes
     disposant d’une référence de prix fiable.
    </p>}
