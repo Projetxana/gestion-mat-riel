@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { initialHiltiTools } from '../data/hiltiData';
 import { canDeletePendingSession } from '../utils/pendingSessionDeletion';
+import { disableDevicePush } from '../utils/pushSubscription';
 
 const AppContext = createContext();
 
@@ -452,6 +453,9 @@ export const AppProvider = ({ children }) => {
     };
 
     const logout = async () => {
+        // Best effort: remove this device's subscription before ending the session.
+        // Notifications contain no personal information even if revocation fails.
+        await disableDevicePush(supabase, authUser?.id).catch(() => {});
         setCurrentUser(null);
         localStorage.removeItem('legacy_currentUser');
         await supabase.auth.signOut();

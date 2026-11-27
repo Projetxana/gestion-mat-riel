@@ -6,6 +6,7 @@ import { supabase } from '../supabaseClient';
 import UserModal from '../components/UserModal';
 import { useUserPreferences } from '../hooks/useUserPreferences';
 import CompanyPerformanceSettings from '../components/CompanyPerformanceSettings';
+import PushReminderSettings from '../components/PushReminderSettings';
 
 import pkg from '../../package.json';
 
@@ -257,6 +258,7 @@ const Settings = () => {
 
                 {/* Preferences Panel */}
                 <CompanyPerformanceSettings />
+                <PushReminderSettings key={currentCompanyId + ':' + currentUser?.id} />
                 <PreferencesPanel userId={currentUser?.id} />
 
                 {/* Logout Button */}
@@ -482,7 +484,7 @@ const Settings = () => {
 
                         try {
                             // 1. Unregister Service Workers
-                            if ('serviceWorker' in navigator) {
+                            if ('serviceWorker' in navigator && import.meta.env.VITE_BUILDTRACK_PUSH_ENABLED !== 'true') {
                                 const registrations = await navigator.serviceWorker.getRegistrations();
                                 for (const registration of registrations) {
                                     await registration.unregister();
@@ -513,6 +515,7 @@ const Settings = () => {
             </div>
 
             <CompanyPerformanceSettings />
+                <PushReminderSettings key={currentCompanyId + ':' + currentUser?.id} />
             {/* Admin Preferences */}
             <PreferencesPanel userId={currentUser?.id} />
 
