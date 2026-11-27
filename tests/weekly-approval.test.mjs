@@ -47,3 +47,20 @@ test('validated employees and all-approved groups have no pending ids', () => {
     assert.equal(group.approvedCount,2);
     assert.equal(formatDuration(group.totalMinutes),'15:45');
 });
+
+
+test('removing two pending overlapping sessions recalculates day and week totals without changing the retained session', () => {
+    const rows = [
+        session(101, 'alain', '2026-11-26T08:00:00-05:00', 630),
+        session(102, 'alain', '2026-11-26T08:00:00-05:00', 540),
+        session(103, 'alain', '2026-11-26T08:00:00-05:00', 540),
+        session(104, 'alain', '2026-11-25T08:00:00-05:00', 480, true),
+    ];
+    const before = groupSessionsByEmployee(rows, () => 'Alain')[0];
+    assert.equal(formatDuration(before.days.find(day => day.key === '2026-11-26').totalMinutes), '28:30');
+    const after = groupSessionsByEmployee(rows.filter(row => ![102, 103].includes(row.id)), () => 'Alain')[0];
+    assert.equal(formatDuration(after.days.find(day => day.key === '2026-11-26').totalMinutes), '10:30');
+    assert.equal(formatDuration(after.totalMinutes), '18:30');
+    assert.deepEqual(after.pendingIds, [101]);
+    assert.equal(after.approvedCount, 1);
+});
