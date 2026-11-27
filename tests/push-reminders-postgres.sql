@@ -1,8 +1,12 @@
 \set ON_ERROR_STOP on
 -- Dedicated database fixture. No network, real employees, or credentials.
-CREATE ROLE anon NOLOGIN;
-CREATE ROLE authenticated NOLOGIN;
-CREATE ROLE service_role NOLOGIN BYPASSRLS;
+DO $ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role NOLOGIN BYPASSRLS; END IF;
+END $;
+-- Isolated CI cluster only.
+ALTER ROLE service_role BYPASSRLS;
 CREATE SCHEMA auth;
 CREATE TABLE auth.users(id uuid PRIMARY KEY);
 CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE
