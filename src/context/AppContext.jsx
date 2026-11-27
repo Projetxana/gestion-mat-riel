@@ -455,7 +455,10 @@ export const AppProvider = ({ children }) => {
     const logout = async () => {
         // Best effort: remove this device's subscription before ending the session.
         // Notifications contain no personal information even if revocation fails.
-        await disableDevicePush(supabase, authUser?.id).catch(() => {});
+        if (import.meta.env.VITE_BUILDTRACK_PUSH_ENABLED === 'true') {
+            await Promise.race([disableDevicePush(supabase, authUser?.id).catch(() => {}),
+                new Promise(resolve => setTimeout(resolve, 2000))]);
+        }
         setCurrentUser(null);
         localStorage.removeItem('legacy_currentUser');
         await supabase.auth.signOut();

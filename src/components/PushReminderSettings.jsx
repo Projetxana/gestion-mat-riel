@@ -8,7 +8,10 @@ const publicKey = import.meta.env.VITE_BUILDTRACK_PUSH_PUBLIC_KEY || '';
 const defaultSettings = { enabled:false, daily_minute:1080, weekly_enabled:true, weekly_minute:1140, timezone:'America/Toronto' };
 const toTime = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
 const toMinute = t => { const [h,m]=t.split(':').map(Number); return h*60+m; };
-const day = () => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Toronto',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const day = () => {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Toronto',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(p=>[p.type,p.value]));
+    return [parts.year,parts.month,parts.day].join('-');
+};
 
 export default function PushReminderSettings() {
     const { currentUser, currentCompanyId, companyRoleLoading, users } = useAppContext();
@@ -98,7 +101,7 @@ export default function PushReminderSettings() {
             {history.length===0?<p className="text-sm">Aucun envoi enregistré.</p>:history.map(h=><p className="text-sm border-t border-slate-600 py-2" key={h.id}>{h.reminder_date} · {name(h.user_id)} · {h.kind==='weekly'?'Hebdomadaire':'Quotidien'} · {({claimed:'En cours / résultat inconnu',accepted:'Accepté',failed:'Échec',expired:'Abonnement expiré',skipped:'Annulé'})[h.status]||h.status}</p>)}
         </>:!admin&&loaded?<>
             <p className="text-sm">Sur iPhone, ajoute BuildTrack à l’écran d’accueil puis ouvre-le depuis son icône. Tu peux désactiver les rappels à tout moment. Aucun numéro de téléphone requis.</p>
-            {!pushSupported()||!publicKey||!registration?<p className="text-sm text-amber-300">Notifications indisponibles sur cet appareil ou application à actualiser.</p>:subscribed?<button className={buttonClass} disabled={busy} onClick={()=>void act(()=>disableDevicePush(supabase,uid),'Notifications désactivées.')}>Désactiver sur cet appareil</button>:<button className={buttonClass} disabled={busy} onClick={()=>void act(()=>enableDevicePush(supabase,company,uid,registration,publicKey),'Notifications activées sur cet appareil.')}>Activer les notifications</button>}
+            {!pushSupported()||!publicKey||!registration?<p className="text-sm text-amber-300">Notifications indisponibles sur cet appareil ou application à actualiser. <button type="button" className="underline min-h-11" onClick={()=>void load()}>Réessayer</button></p>:subscribed?<button className={buttonClass} disabled={busy} onClick={()=>void act(()=>disableDevicePush(supabase,uid),'Notifications désactivées.')}>Désactiver sur cet appareil</button>:<button className={buttonClass} disabled={busy} onClick={()=>void act(()=>enableDevicePush(supabase,company,uid,registration,publicKey),'Notifications activées sur cet appareil.')}>Activer les notifications</button>}
         </>:null}
     </section>;
 }

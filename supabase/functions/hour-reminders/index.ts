@@ -48,7 +48,7 @@ Deno.serve(async req=>{
                 if(result.ok){status="accepted";accepted++;}
                 else if(result.status===404||result.status===410){
                     status="expired";failed++;
-                    await db.from("bt_push_subscriptions").delete().eq("id",claim.subscription_id);
+                    await db.from("bt_push_subscriptions").delete().eq("id",claim.subscription_id).eq("endpoint",claim.endpoint);
                 }else failed++;
                 await result.body?.cancel().catch(()=>{});
             }catch{failed++;}

@@ -43,7 +43,7 @@ CREATE TABLE public.bt_push_history (
   reminder_date date NOT NULL,
   status text NOT NULL DEFAULT 'claimed' CHECK(status IN ('claimed','accepted','failed','expired','skipped')),
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(subscription_id,kind,reminder_date)
+  CONSTRAINT bt_push_history_once UNIQUE(subscription_id,kind,reminder_date)
 );
 CREATE INDEX bt_push_history_company ON public.bt_push_history(company_id,created_at DESC);
 
@@ -149,7 +149,7 @@ LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path='' AS $fn$
   INSERT INTO public.bt_push_history(company_id,user_id,subscription_id,kind,reminder_date)
     SELECT d.company_id,d.user_id,d.subscription_id,d.kind,d.reminder_date
     FROM public.bt_push_due(p_now) d WHERE d.subscription_id=p_subscription_id AND d.kind=p_kind AND d.reminder_date=p_day
-    ON CONFLICT(subscription_id,kind,reminder_date) DO NOTHING
+    ON CONFLICT ON CONSTRAINT bt_push_history_once DO NOTHING
     RETURNING id,bt_push_history.subscription_id
  )
  SELECT c.id,s.endpoint,c.subscription_id FROM claimed c

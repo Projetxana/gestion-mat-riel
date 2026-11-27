@@ -33,9 +33,9 @@ export async function disableDevicePush(client, userId) {
     const registration = await navigator.serviceWorker.getRegistration('/');
     const subscription = await registration?.pushManager.getSubscription();
     if (!subscription) return;
+    // Revoke locally first, including if the database is temporarily offline.
+    const unsubscribed = await subscription.unsubscribe();
     const { error } = await client.from('bt_push_subscriptions').delete()
         .eq('endpoint', subscription.endpoint).eq('user_id', userId);
-    // Browser revocation also prevents delivery if network/database cleanup fails.
-    const unsubscribed = await subscription.unsubscribe();
     if (error || !unsubscribed) throw new Error('Désactivation à vérifier.');
 }
