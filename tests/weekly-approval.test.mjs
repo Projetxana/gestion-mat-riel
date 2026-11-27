@@ -71,10 +71,11 @@ import { readFileSync } from 'node:fs';
 test('admin deletion uses an inline confirmation, not a native browser dialog', () => {
     const source = readFileSync(new URL('../src/pages/ValidationPage.jsx', import.meta.url), 'utf8');
     const removal = source.slice(source.indexOf('const requestDelete ='), source.indexOf('const approveWeek ='));
-    assert.doesNotMatch(removal, /window\\.confirm/);
-    assert.match(removal, /setDeleteTarget\\(session\\)/);
-    assert.match(source, /onClick=\\{\\(\\) => requestDelete\\(session\\)\\}/);
-    assert.match(source, /Confirmer la suppression/);
-    assert.match(removal, /await deleteTimeSession\\(session.id, session\\)/);
-    assert.match(removal, /setDeleteError\\(result/);
+    assert.ok(removal.length > 0);
+    assert.ok(!removal.includes('window.confirm'));
+    assert.ok(removal.includes('setDeleteTarget(session)'));
+    assert.ok(source.includes('onClick={() => requestDelete(session)}'));
+    assert.ok(source.includes('Confirmer la suppression'));
+    assert.ok(removal.includes('await deleteTimeSession(session.id, session)'));
+    assert.ok(removal.includes('setDeleteError(result'));
 });
