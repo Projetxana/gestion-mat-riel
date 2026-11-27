@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { initialHiltiTools } from '../data/hiltiData';
+import { canDeletePendingSession } from '../utils/pendingSessionDeletion';
 
 const AppContext = createContext();
 
@@ -1154,10 +1155,12 @@ export const AppProvider = ({ children }) => {
         // cross-company record. Keep the existing employee flow unchanged.
         let query = supabase.from('time_sessions').delete().eq('id', sessionId);
         if (pendingSession) {
-            if (currentUser?.role !== 'admin' || !currentCompanyId ||
-                String(pendingSession.id) !== String(sessionId) ||
-                String(pendingSession.company_id) !== String(currentCompanyId) ||
-                pendingSession.approved === true || !pendingSession.punch_end_at) {
+            // Use the same verified tenant membership as the context consumer.
+            // The legacy currentUser state is not the resolved SaaS user.
+            if (!canDeletePendingSession({
+                user: resolvedUser, companyRoleLoading, companyId: currentCompanyId,
+                sessionId, session: pendingSession,
+            })) {
                 return { error: 'Suppression réservée aux saisies terminées en attente de cette entreprise.' };
             }
             query = query.eq('company_id', currentCompanyId)
