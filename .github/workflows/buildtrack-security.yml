@@ -78,3 +78,5 @@ jobs:
         run: bash tests/tenant-recovery-fixture.sh
       - run: node --test tests/collective-hours.test.mjs tests/tenant-rls.test.mjs
       - run: npm run build
+        env:
+          VITE_BUILDTRACK_PUSH_ENABLED: 'true'
