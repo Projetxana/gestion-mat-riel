@@ -64,3 +64,17 @@ test('removing two pending overlapping sessions recalculates day and week totals
     assert.deepEqual(after.pendingIds, [101]);
     assert.equal(after.approvedCount, 1);
 });
+
+
+import { readFileSync } from 'node:fs';
+
+test('admin deletion uses an inline confirmation, not a native browser dialog', () => {
+    const source = readFileSync(new URL('../src/pages/ValidationPage.jsx', import.meta.url), 'utf8');
+    const removal = source.slice(source.indexOf('const requestDelete ='), source.indexOf('const approveWeek ='));
+    assert.doesNotMatch(removal, /window\\.confirm/);
+    assert.match(removal, /setDeleteTarget\\(session\\)/);
+    assert.match(source, /onClick=\\{\\(\\) => requestDelete\\(session\\)\\}/);
+    assert.match(source, /Confirmer la suppression/);
+    assert.match(removal, /await deleteTimeSession\\(session.id, session\\)/);
+    assert.match(removal, /setDeleteError\\(result/);
+});
