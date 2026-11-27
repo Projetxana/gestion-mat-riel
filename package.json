@@ -11,7 +11,7 @@
     "test:delivery-note": "node --test tests/delivery-note-photo-preview.test.mjs",
     "test:daily-report": "node --test tests/daily-report-photo.test.mjs",
     "test:hours": "node --test tests/quarter-hours.test.mjs",
-    "test:weekly-approval": "node --test tests/weekly-approval.test.mjs",
+    "test:weekly-approval": "node --test tests/weekly-approval.test.mjs tests/admin-hours-summary.test.mjs",
     "test:duration-correction": "node --test tests/session-duration-correction.test.mjs",
     "test:task-performance": "node --test tests/task-performance.test.mjs",
     "test:performance-trends": "node --test tests/performance-trends.test.mjs",
