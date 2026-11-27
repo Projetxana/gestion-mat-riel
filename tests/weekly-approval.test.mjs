@@ -64,3 +64,36 @@ test('removing two pending overlapping sessions recalculates day and week totals
     assert.deepEqual(after.pendingIds, [101]);
     assert.equal(after.approvedCount, 1);
 });
+
+
+import { manualEntriesOverlap, findManualEntryConflict } from '../src/utils/manualEntryConflicts.js';
+
+const manual = (hours, overrides = {}) => ({
+    company_id: 'cd', user_id: 'alain', site_id: 1, section_id: 7, manual_entry: true,
+    punch_start_at: '2026-11-26T13:00:00Z',
+    punch_end_at: new Date(Date.parse('2026-11-26T13:00:00Z') + hours * 3600000).toISOString(),
+    ...overrides,
+});
+
+test('manual overlap prevents identical and changed duration resubmissions on the same task', () => {
+    assert.equal(manualEntriesOverlap(manual(9), manual(9)), true);
+    assert.equal(manualEntriesOverlap(manual(10.5), manual(9)), true);
+    assert.ok(findManualEntryConflict([manual(10.5)], [manual(9)]));
+    assert.ok(findManualEntryConflict([manual(9), manual(10.5)]));
+});
+
+test('different tasks, companies, sites, employees and GPS punches are not false positives', () => {
+    for (const change of [{section_id:8},{company_id:'other'},{site_id:2},
+        {user_id:'other'},{manual_entry:false}]) {
+        assert.equal(manualEntriesOverlap(manual(9), manual(9, change)), false);
+    }
+    assert.equal(findManualEntryConflict([manual(4), manual(4,{section_id:8})]), null);
+});
+
+test('adjacent periods and unrelated historical duplicates remain allowed; corrected times are respected', () => {
+    const adjacent = manual(2,{punch_start_at:'2026-11-26T22:00:00Z',punch_end_at:'2026-11-27T00:00:00Z'});
+    assert.equal(manualEntriesOverlap(manual(9), adjacent), false);
+    assert.equal(findManualEntryConflict([manual(3,{section_id:8})], [manual(9),manual(9)]), null);
+    const corrected = manual(9,{corrected_start_at:'2026-11-25T13:00:00Z',corrected_end_at:'2026-11-25T22:00:00Z'});
+    assert.equal(manualEntriesOverlap(manual(9), corrected), false);
+});

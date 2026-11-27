@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Trash2, Copy, Clock, CheckCircle, Info } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { parseLocalizedHours, isValidQuarterHour, formatHoursHHMM, normalizeHoursInput, stepQuarterHour } from '../utils/quarterHours';
+import { findManualEntryConflict, weeklyManualPayload } from '../utils/manualEntryConflicts';
 
 const DAYS_FR = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -51,6 +52,7 @@ const WeeklyTimeEntry = () => {
     const [weekStart, setWeekStart] = useState(() => getWeekStart(new Date()));
     const [entries, setEntries] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const submitLock = React.useRef(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [deletingEntryId, setDeletingEntryId] = useState(null);
 
@@ -133,12 +135,14 @@ const WeeklyTimeEntry = () => {
 
     // Week navigation — save current to cache, then switch
     const prevWeek = () => {
+        if (submitLock.current) return;
         const newStart = new Date(weekStart);
         newStart.setDate(newStart.getDate() - 7);
         setWeekStart(newStart);
     };
 
     const nextWeek = () => {
+        if (submitLock.current) return;
         const newStart = new Date(weekStart);
         newStart.setDate(newStart.getDate() + 7);
         setWeekStart(newStart);
@@ -151,6 +155,7 @@ const WeeklyTimeEntry = () => {
 
     // Entry management
     const updateEntry = (dateKey, entryId, field, value) => {
+        if (submitLock.current || entries[dateKey]?.find(e => e.id === entryId)?.saved) return;
         setEntries(prev => ({
             ...prev,
             [dateKey]: prev[dateKey].map(e =>
@@ -162,6 +167,7 @@ const WeeklyTimeEntry = () => {
     };
 
     const addEntry = (dateKey) => {
+        if (submitLock.current) return;
         const dayEntries = entries[dateKey];
         const last = dayEntries[dayEntries.length - 1];
         setEntries(prev => ({
@@ -180,7 +186,7 @@ const WeeklyTimeEntry = () => {
 
     const removeEntry = async (dateKey, entryId) => {
         const entry = (entries[dateKey] || []).find(item => item.id === entryId);
-        if (!entry || deletingEntryId) return;
+        if (!entry || deletingEntryId || submitLock.current || entry.approved === true) return;
         if (entry.saved && entry.dbId != null) {
             if (!window.confirm('Supprimer définitivement ces heures enregistrées ?')) return;
             setDeletingEntryId(entryId);
@@ -206,11 +212,17 @@ const WeeklyTimeEntry = () => {
     };
 
     const copyDay = (fromDateKey, toDateKey) => {
+        if (submitLock.current) return;
         const source = entries[fromDateKey];
         if (!source || source.length === 0) return;
         setEntries(prev => ({
             ...prev,
-            [toDateKey]: source.map(e => ({ ...e, id: crypto.randomUUID(), dbId: undefined, saved: false }))
+            [toDateKey]: [
+                ...(prev[toDateKey] || []).filter(e => e.saved),
+                ...source.filter(e => parseLocalizedHours(e.hours) > 0).map(e => ({
+                    ...e, id: crypto.randomUUID(), dbId: undefined, saved: false, approved: false,
+                })),
+            ]
         }));
     };
 
@@ -286,13 +298,21 @@ const WeeklyTimeEntry = () => {
         return count;
     };
 
+    const buildPayloads = valid => valid.map(entry =>
+        weeklyManualPayload(entry, currentUser?.id, currentCompanyId));
+    const conflict = currentCompanyId && currentUser?.id
+        ? findManualEntryConflict(buildPayloads(getValidEntries()), timeSessions || [])
+        : null;
+    const conflictMessage = 'Des heures sont déjà saisies sur cette tâche pour cette période. ' +
+        'Supprimez la ligne en double ou demandez une correction à votre administrateur.';
+
     // Submit
     const handleSubmit = async () => {
         if (!currentUser?.id || !currentCompanyId || !currentUser?.role || currentUser.role === 'admin') {
             alert('Compte employé ou entreprise non disponible. Reconnectez-vous.');
             return;
         }
-        if (isSubmitting) return;
+        if (isSubmitting || submitLock.current) return;
         if (getInvalidHoursCount() > 0) {
             alert('Les heures doivent être saisies par tranches de 15 minutes : 7,25 ; 7,5 ; 7,75, etc. (maximum 24 h par entrée).');
             return;
@@ -303,30 +323,19 @@ const WeeklyTimeEntry = () => {
             return;
         }
 
+        const payloads = buildPayloads(valid);
+        if (findManualEntryConflict(payloads, timeSessions || [])) {
+            alert(conflictMessage);
+            return;
+        }
+        submitLock.current = true;
         setIsSubmitting(true);
 
         try {
-            // Build payloads — convert hours to start/end timestamps
-            const payloads = valid.map(e => {
-                const startAt = new Date(`${e.date}T08:00:00`);
-                const endAt = new Date(startAt.getTime() + e.hours * 3600000);
-                return {
-                    user_id: currentUser?.id,
-                    site_id: parseInt(e.siteId),
-                    section_id: parseInt(e.taskId),
-                    punch_start_at: startAt.toISOString(),
-                    punch_end_at: endAt.toISOString(),
-                    manual_entry: true,
-                    company_id: currentCompanyId ?? null,
-                    created_at: new Date().toISOString()
-                };
-            });
-
             const { data, error } = await supabase.from('time_sessions').insert(payloads).select();
 
             if (error) {
-                alert(`Erreur: ${error.message}`);
-                setIsSubmitting(false);
+                alert(error.message.includes('BT_MANUAL_OVERLAP') ? conflictMessage : `Erreur: ${error.message}`);
                 return;
             }
 
@@ -334,21 +343,27 @@ const WeeklyTimeEntry = () => {
                 throw new Error('La sauvegarde n’a pas retourné toutes les heures attendues. Rechargez avant de réessayer.');
             }
             // Reflect saved sessions immediately in the home page without a browser refresh.
-            mergeTimeSessions(data);
             delete entriesCache.current[formatDateISO(weekStart)];
+            setEntries(previous => Object.fromEntries(Object.entries(previous).map(([date, dayEntries]) =>
+                [date, dayEntries.filter(entry => entry.saved || !(
+                    isValidQuarterHour(parseLocalizedHours(entry.hours)) && entry.siteId && entry.taskId
+                ))])));
+            mergeTimeSessions(data);
             setShowSuccess(true);
             setTimeout(() => {
                 navigate('/timetracking');
             }, 1500);
         } catch (err) {
             alert(`Erreur: ${err.message}`);
+        } finally {
+            submitLock.current = false;
+            setIsSubmitting(false);
         }
-
-        setIsSubmitting(false);
     };
 
     // Each press adjusts by exactly one quarter hour (15 minutes).
     const adjustHours = (dateKey, entryId, deltaQuarters) => {
+        if (submitLock.current || entries[dateKey]?.find(e => e.id === entryId)?.saved) return;
         setEntries(prev => ({
             ...prev,
             [dateKey]: prev[dateKey].map(entry =>
@@ -366,7 +381,7 @@ const WeeklyTimeEntry = () => {
                     <CheckCircle size={48} className="text-emerald-400" />
                 </div>
                 <h2 className="text-2xl font-bold text-white mb-2">Heures enregistrées !</h2>
-                <p className="text-slate-400">{getValidEntries().length} entrées • {formatHoursHHMM(weekTotal)} h</p>
+                <p className="text-slate-400">Les heures ont été enregistrées avec succès.</p>
             </div>
         );
     }
@@ -451,6 +466,7 @@ const WeeklyTimeEntry = () => {
                                             <div className="flex items-center bg-slate-800/60 rounded-lg border border-slate-700/50 shrink-0">
                                                 <button
                                                     type="button"
+                                                    disabled={isSaved || isSubmitting}
                                                     onClick={() => adjustHours(dateKey, entry.id, -1)}
                                                     className="px-2 py-2 text-slate-400 hover:text-white text-sm font-bold"
                                                 >−</button>
@@ -459,6 +475,7 @@ const WeeklyTimeEntry = () => {
                                                     inputMode="decimal"
                                                     autoComplete="off"
                                                     value={entry.hours}
+                                                    readOnly={isSaved || isSubmitting}
                                                     onChange={(e) => updateEntry(dateKey, entry.id, 'hours', normalizeHoursInput(e.target.value))}
                                                     onBlur={() => {
                                                         const hours = parseLocalizedHours(entry.hours);
@@ -476,6 +493,7 @@ const WeeklyTimeEntry = () => {
 
                                                 <button
                                                     type="button"
+                                                    disabled={isSaved || isSubmitting}
                                                     onClick={() => adjustHours(dateKey, entry.id, 1)}
                                                     className="px-2 py-2 text-slate-400 hover:text-white text-sm font-bold"
                                                 >+</button>
@@ -486,7 +504,7 @@ const WeeklyTimeEntry = () => {
                                                 <select
                                                     value={entry.taskId}
                                                     onChange={(e) => updateEntry(dateKey, entry.id, 'taskId', e.target.value)}
-                                                    disabled={!entry.siteId}
+                                                    disabled={!entry.siteId || isSaved || isSubmitting}
                                                     className="w-full pl-6 pr-2 py-2 text-xs rounded-lg bg-slate-800/60 border border-slate-700/50 text-slate-200 truncate disabled:opacity-40"
                                                 >
                                                     <option value="">Tâche...</option>
@@ -504,6 +522,7 @@ const WeeklyTimeEntry = () => {
                                             <div className="flex-1 min-w-0">
                                                 <select
                                                     value={entry.siteId}
+                                                    disabled={isSaved || isSubmitting}
                                                     onChange={(e) => updateEntry(dateKey, entry.id, 'siteId', e.target.value)}
                                                     className="w-full px-2 py-2 text-xs rounded-lg bg-slate-800/60 border border-slate-700/50 text-slate-200 truncate"
                                                 >
@@ -518,7 +537,7 @@ const WeeklyTimeEntry = () => {
                                             {dayEntries.length > 1 ? (
                                                 <button
                                                     onClick={() => removeEntry(dateKey, entry.id)}
-                                                    disabled={!!deletingEntryId || entry.approved === true}
+                                                    disabled={isSubmitting || !!deletingEntryId || entry.approved === true}
                                                     className="p-1.5 text-red-400/60 hover:text-red-400 transition-colors shrink-0"
                                                 >
                                                     <Trash2 size={14} />
@@ -588,12 +607,19 @@ const WeeklyTimeEntry = () => {
                         </p>
                     )}
 
+                    {conflict && (
+                        <p role="alert" className="text-sm text-amber-300 mb-2">
+                            <strong>Doublon détecté — {formatDateISO(new Date(conflict.candidate.punch_start_at))}.</strong>{' '}
+                            {getTasksForSite(conflict.candidate.site_id).find(t => String(t.id) === String(conflict.candidate.section_id))?.name || 'Tâche sélectionnée'}. {conflictMessage}
+                        </p>
+                    )}
+
                     {/* Submit button */}
                     <button
                         onClick={handleSubmit}
-                        disabled={isSubmitting || getValidEntries().length === 0 || getInvalidHoursCount() > 0}
+                        disabled={isSubmitting || Boolean(conflict) || getValidEntries().length === 0 || getInvalidHoursCount() > 0}
                         className={`w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-                            getValidEntries().length > 0 && getInvalidHoursCount() === 0
+                            !conflict && getValidEntries().length > 0 && getInvalidHoursCount() === 0
                                 ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30'
                                 : 'bg-slate-800 text-slate-500 cursor-not-allowed'
                         }`}
