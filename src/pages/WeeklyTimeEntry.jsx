@@ -135,12 +135,14 @@ const WeeklyTimeEntry = () => {
 
     // Week navigation — save current to cache, then switch
     const prevWeek = () => {
+        if (submitLock.current) return;
         const newStart = new Date(weekStart);
         newStart.setDate(newStart.getDate() - 7);
         setWeekStart(newStart);
     };
 
     const nextWeek = () => {
+        if (submitLock.current) return;
         const newStart = new Date(weekStart);
         newStart.setDate(newStart.getDate() + 7);
         setWeekStart(newStart);
@@ -153,6 +155,7 @@ const WeeklyTimeEntry = () => {
 
     // Entry management
     const updateEntry = (dateKey, entryId, field, value) => {
+        if (submitLock.current || entries[dateKey]?.find(e => e.id === entryId)?.saved) return;
         setEntries(prev => ({
             ...prev,
             [dateKey]: prev[dateKey].map(e =>
@@ -164,6 +167,7 @@ const WeeklyTimeEntry = () => {
     };
 
     const addEntry = (dateKey) => {
+        if (submitLock.current) return;
         const dayEntries = entries[dateKey];
         const last = dayEntries[dayEntries.length - 1];
         setEntries(prev => ({
@@ -182,7 +186,7 @@ const WeeklyTimeEntry = () => {
 
     const removeEntry = async (dateKey, entryId) => {
         const entry = (entries[dateKey] || []).find(item => item.id === entryId);
-        if (!entry || deletingEntryId) return;
+        if (!entry || deletingEntryId || submitLock.current || entry.approved === true) return;
         if (entry.saved && entry.dbId != null) {
             if (!window.confirm('Supprimer définitivement ces heures enregistrées ?')) return;
             setDeletingEntryId(entryId);
@@ -208,6 +212,7 @@ const WeeklyTimeEntry = () => {
     };
 
     const copyDay = (fromDateKey, toDateKey) => {
+        if (submitLock.current) return;
         const source = entries[fromDateKey];
         if (!source || source.length === 0) return;
         setEntries(prev => ({
@@ -327,7 +332,6 @@ const WeeklyTimeEntry = () => {
         setIsSubmitting(true);
 
         try {
-
             const { data, error } = await supabase.from('time_sessions').insert(payloads).select();
 
             if (error) {
@@ -359,6 +363,7 @@ const WeeklyTimeEntry = () => {
 
     // Each press adjusts by exactly one quarter hour (15 minutes).
     const adjustHours = (dateKey, entryId, deltaQuarters) => {
+        if (submitLock.current || entries[dateKey]?.find(e => e.id === entryId)?.saved) return;
         setEntries(prev => ({
             ...prev,
             [dateKey]: prev[dateKey].map(entry =>
@@ -461,6 +466,7 @@ const WeeklyTimeEntry = () => {
                                             <div className="flex items-center bg-slate-800/60 rounded-lg border border-slate-700/50 shrink-0">
                                                 <button
                                                     type="button"
+                                                    disabled={isSaved || isSubmitting}
                                                     onClick={() => adjustHours(dateKey, entry.id, -1)}
                                                     className="px-2 py-2 text-slate-400 hover:text-white text-sm font-bold"
                                                 >−</button>
@@ -469,6 +475,7 @@ const WeeklyTimeEntry = () => {
                                                     inputMode="decimal"
                                                     autoComplete="off"
                                                     value={entry.hours}
+                                                    readOnly={isSaved || isSubmitting}
                                                     onChange={(e) => updateEntry(dateKey, entry.id, 'hours', normalizeHoursInput(e.target.value))}
                                                     onBlur={() => {
                                                         const hours = parseLocalizedHours(entry.hours);
@@ -486,6 +493,7 @@ const WeeklyTimeEntry = () => {
 
                                                 <button
                                                     type="button"
+                                                    disabled={isSaved || isSubmitting}
                                                     onClick={() => adjustHours(dateKey, entry.id, 1)}
                                                     className="px-2 py-2 text-slate-400 hover:text-white text-sm font-bold"
                                                 >+</button>
@@ -496,7 +504,7 @@ const WeeklyTimeEntry = () => {
                                                 <select
                                                     value={entry.taskId}
                                                     onChange={(e) => updateEntry(dateKey, entry.id, 'taskId', e.target.value)}
-                                                    disabled={!entry.siteId}
+                                                    disabled={!entry.siteId || isSaved || isSubmitting}
                                                     className="w-full pl-6 pr-2 py-2 text-xs rounded-lg bg-slate-800/60 border border-slate-700/50 text-slate-200 truncate disabled:opacity-40"
                                                 >
                                                     <option value="">Tâche...</option>
@@ -514,6 +522,7 @@ const WeeklyTimeEntry = () => {
                                             <div className="flex-1 min-w-0">
                                                 <select
                                                     value={entry.siteId}
+                                                    disabled={isSaved || isSubmitting}
                                                     onChange={(e) => updateEntry(dateKey, entry.id, 'siteId', e.target.value)}
                                                     className="w-full px-2 py-2 text-xs rounded-lg bg-slate-800/60 border border-slate-700/50 text-slate-200 truncate"
                                                 >
@@ -528,7 +537,7 @@ const WeeklyTimeEntry = () => {
                                             {dayEntries.length > 1 ? (
                                                 <button
                                                     onClick={() => removeEntry(dateKey, entry.id)}
-                                                    disabled={!!deletingEntryId || entry.approved === true}
+                                                    disabled={isSubmitting || !!deletingEntryId || entry.approved === true}
                                                     className="p-1.5 text-red-400/60 hover:text-red-400 transition-colors shrink-0"
                                                 >
                                                     <Trash2 size={14} />
@@ -600,7 +609,8 @@ const WeeklyTimeEntry = () => {
 
                     {conflict && (
                         <p role="alert" className="text-sm text-amber-300 mb-2">
-                            <strong>Doublon détecté.</strong> {conflictMessage}
+                            <strong>Doublon détecté — {formatDateISO(new Date(conflict.candidate.punch_start_at))}.</strong>{' '}
+                            {getTasksForSite(conflict.candidate.site_id).find(t => String(t.id) === String(conflict.candidate.section_id))?.name || 'Tâche sélectionnée'}. {conflictMessage}
                         </p>
                     )}
 
