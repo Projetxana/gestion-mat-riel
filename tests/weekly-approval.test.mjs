@@ -79,3 +79,36 @@ test('admin deletion uses an inline confirmation, not a native browser dialog', 
     assert.ok(removal.includes('await deleteTimeSession(session.id, session)'));
     assert.ok(removal.includes('setDeleteError(result'));
 });
+
+
+import { canDeletePendingSession } from '../src/utils/pendingSessionDeletion.js';
+
+test('verified SaaS company admin can delete another employee pending completed session', () => {
+    const args = {
+        user: { id: 'admin-auth', role: 'admin' },
+        companyRoleLoading: false,
+        companyId: 'cd',
+        sessionId: 164,
+        session: { id: 164, user_id: 'employee-auth', company_id: 'cd', approved: false, punch_end_at: '2026-11-26T23:30:00Z' },
+    };
+    assert.equal(canDeletePendingSession(args), true);
+    assert.equal(canDeletePendingSession({...args, session:{...args.session, approved:null}}), true);
+    assert.equal(canDeletePendingSession({...args, user:{id:'employee-auth',role:'member'}}), false);
+    assert.equal(canDeletePendingSession({...args, user:null}), false);
+    assert.equal(canDeletePendingSession({...args, companyRoleLoading:true}), false);
+    assert.equal(canDeletePendingSession({...args, companyId:'other'}), false);
+    assert.equal(canDeletePendingSession({...args, sessionId:163}), false);
+    assert.equal(canDeletePendingSession({...args, session:{...args.session, approved:true}}), false);
+    assert.equal(canDeletePendingSession({...args, session:{...args.session, punch_end_at:null}}), false);
+});
+
+test('context deletion uses resolved membership rather than legacy currentUser role', () => {
+    const source = readFileSync(new URL('../src/context/AppContext.jsx', import.meta.url), 'utf8');
+    const handler = source.slice(source.indexOf('const deleteTimeSession ='), source.indexOf('const switchTask ='));
+    assert.ok(handler.includes('user: resolvedUser, companyRoleLoading'));
+    assert.ok(handler.includes('canDeletePendingSession({'));
+    assert.ok(!handler.includes('currentUser?.role'));
+    assert.ok(handler.includes(".eq('company_id', currentCompanyId)"));
+    assert.ok(handler.includes(".or('approved.is.null,approved.eq.false')"));
+    assert.ok(handler.includes("query.select('id')"));
+});
