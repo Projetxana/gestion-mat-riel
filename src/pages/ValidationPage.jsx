@@ -41,6 +41,9 @@ export default function ValidationPage() {
     const [loading, setLoading] = useState(false);
     const [busyId, setBusyId] = useState(null);
     const [editingId, setEditingId] = useState(null);
+    const [deleteTarget, setDeleteTarget] = useState(null);
+    const [deleteError, setDeleteError] = useState('');
+    const deleteLock = React.useRef(false);
     const [draft, setDraft] = useState(null);
     const [audit, setAudit] = useState([]);
     const [error, setError] = useState('');
@@ -78,6 +81,8 @@ export default function ValidationPage() {
     }, [isAdmin, currentCompanyId, week, weekEnd]);
 
     useEffect(() => {
+        setDeleteTarget(null);
+        setDeleteError('');
         void loadSessions();
     }, [loadSessions]);
 
@@ -159,37 +164,47 @@ export default function ValidationPage() {
         setExpandedUser(String(session.user_id));
     };
 
-    const removePendingSession = async (session) => {
+    const requestDelete = (session) => {
         if (!isAdmin || !currentCompanyId || busyId != null || editingId != null || loading ||
             session.approved === true || !session.punch_end_at ||
             String(session.company_id) !== String(currentCompanyId)) return;
-        const description = getUserName(session.user_id) + ' — ' + displayDate(effectiveStart(session))
-            + '\n' + siteName(session.site_id) + ' · ' + taskName(session.section_id)
-            + '\n' + hoursDuration(effectiveStart(session), effectiveEnd(session)) + ' h';
-        if (!window.confirm('Supprimer définitivement cette saisie ?\n' + description
-            + '\nLes autres saisies seront conservées.')) return;
+        setDeleteError('');
+        setError('');
+        setMessage('');
+        setDeleteTarget(session);
+    };
+
+    const removePendingSession = async () => {
+        const session = deleteTarget;
+        if (!session || deleteLock.current || !isAdmin || !currentCompanyId ||
+            busyId != null || editingId != null || loading ||
+            session.approved === true || !session.punch_end_at ||
+            String(session.company_id) !== String(currentCompanyId)) return;
+        deleteLock.current = true;
         setBusyId('delete:' + session.id);
+        setDeleteError('');
         setError('');
         setMessage('');
         try {
             const result = await deleteTimeSession(session.id, session);
             if (!result?.success) {
-                await loadSessions();
-                setError(result?.error || 'Suppression non confirmée. Actualisez puis réessayez.');
+                setDeleteError(result?.error || 'Suppression non confirmée. Annulez puis actualisez avant de réessayer.');
                 return;
             }
             setRows(previous => previous.filter(row => String(row.id) !== String(session.id)));
+            setDeleteTarget(null);
             await loadSessions();
             setMessage('Saisie supprimée. Les totaux ont été actualisés.');
         } catch (caught) {
-            setError(caught?.message || 'Impossible de supprimer la saisie.');
+            setDeleteError(caught?.message || 'Impossible de supprimer la saisie.');
         } finally {
+            deleteLock.current = false;
             setBusyId(null);
         }
     };
 
     const approveWeek = async (group) => {
-        if (!isAdmin || busyId != null || group.pendingCount === 0 || editingId != null) return;
+        if (!isAdmin || busyId != null || group.pendingCount === 0 || editingId != null || deleteTarget != null) return;
         const messageText = 'Valider la semaine de ' + group.name
             + ' ?\n' + group.pendingCount + ' saisie(s) en attente, '
             + formatDuration(group.totalMinutes) + ' h au total.\n'
@@ -242,27 +257,27 @@ export default function ValidationPage() {
             <div className="rounded-xl bg-slate-800 p-3 flex items-center justify-between gap-2">
                 <button type="button" className="rounded-lg bg-slate-700 min-h-11 px-4" onClick={() => setWeek(previous => {
                     const value = new Date(previous); value.setDate(value.getDate() - 7); return value;
-                })} aria-label="Semaine précédente">←</button>
+                })} disabled={busyId != null || deleteTarget != null} aria-label="Semaine précédente">←</button>
                 <span className="text-center text-sm font-semibold">
                     {displayDate(week)} – {displayDate(new Date(weekEnd.getTime() - 86400000))}
                 </span>
                 <button type="button" className="rounded-lg bg-slate-700 min-h-11 px-4" onClick={() => setWeek(previous => {
                     const value = new Date(previous); value.setDate(value.getDate() + 7); return value;
-                })} aria-label="Semaine suivante">→</button>
+                })} disabled={busyId != null || deleteTarget != null} aria-label="Semaine suivante">→</button>
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-                <button type="button" onClick={() => { setFilter('pending'); setEditingId(null); setExpandedUser(null); }}
+                <button type="button" disabled={busyId != null || deleteTarget != null} onClick={() => { setFilter('pending'); setEditingId(null); setExpandedUser(null); }}
                     aria-pressed={filter === 'pending'}
                     className={`px-4 py-2.5 rounded-lg font-semibold ${filter === 'pending' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
                     À valider ({pendingGroups.length})
                 </button>
-                <button type="button" onClick={() => { setFilter('approved'); setEditingId(null); setExpandedUser(null); }}
+                <button type="button" disabled={busyId != null || deleteTarget != null} onClick={() => { setFilter('approved'); setEditingId(null); setExpandedUser(null); }}
                     aria-pressed={filter === 'approved'}
                     className={`px-4 py-2.5 rounded-lg font-semibold ${filter === 'approved' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
                     Validées ({approvedGroups.length})
                 </button>
-                <button type="button" onClick={() => void loadSessions()} className="ml-auto text-sm text-blue-300 underline">Actualiser</button>
+                <button type="button" disabled={busyId != null || deleteTarget != null} onClick={() => void loadSessions()} className="ml-auto text-sm text-blue-300 underline">Actualiser</button>
             </div>
 
             {error && <p role="alert" className="rounded-lg bg-red-950/60 border border-red-900 p-3 text-red-200">{error}</p>}
@@ -287,6 +302,7 @@ export default function ValidationPage() {
                             <div className="flex flex-col sm:flex-row sm:items-stretch gap-2 p-3 sm:p-4">
                                 <button type="button"
                                     aria-expanded={expanded}
+                                    disabled={busyId != null || deleteTarget != null}
                                     aria-controls={regionId}
                                     onClick={() => {
                                         setExpandedUser(previous => previous === group.userId ? null : group.userId);
@@ -314,7 +330,7 @@ export default function ValidationPage() {
                                 </button>
                                 {group.pendingCount > 0 && (
                                     <button type="button"
-                                        disabled={busyId != null || editingId != null || loading}
+                                        disabled={busyId != null || editingId != null || deleteTarget != null || loading}
                                         onClick={() => void approveWeek(group)}
                                         className="sm:self-center min-h-11 rounded-lg bg-emerald-700 hover:bg-emerald-600 px-4 py-3 font-semibold text-white disabled:opacity-50"
                                     >
@@ -353,14 +369,14 @@ export default function ValidationPage() {
 
                             {session.correction_reason && <p className="text-xs text-amber-200">Dernier motif : {session.correction_reason}</p>}
                             <div className="flex flex-wrap gap-2">
-                                <button type="button" disabled={busyId != null}
+                                <button type="button" disabled={busyId != null || deleteTarget != null}
                                     onClick={() => isEditing ? (setEditingId(null), setDraft(null)) : openEditor(session)}
                                     className="min-h-11 rounded-lg border border-slate-600 px-4 py-2 text-slate-100 font-semibold disabled:opacity-50">
                                     <Pencil size={15} className="inline mr-1" /> {isEditing ? 'Fermer la correction' : 'Corriger'}
                                 </button>
                                 {session.approved !== true && session.punch_end_at && String(session.company_id) === String(currentCompanyId) && (
-                                    <button type="button" disabled={busyId != null || editingId != null || loading}
-                                        onClick={() => void removePendingSession(session)}
+                                    <button type="button" disabled={busyId != null || editingId != null || loading || deleteTarget != null}
+                                        onClick={() => requestDelete(session)}
                                         aria-label={'Supprimer la saisie de ' + getUserName(session.user_id) + ' du ' + displayDate(start) + ' de ' + hoursDuration(start, end) + ' h'}
                                         className="min-h-11 rounded-lg border border-red-800 px-4 py-2 text-red-300 font-semibold hover:bg-red-950/50 disabled:opacity-50">
                                         <Trash2 size={16} className="inline mr-1" /> {busyId === 'delete:' + session.id ? 'Suppression…' : 'Supprimer'}
@@ -372,6 +388,28 @@ export default function ValidationPage() {
                                     {session.approved === true ? 'Validée' : 'En attente'}
                                 </span>
                             </div>
+
+                            {deleteTarget && String(deleteTarget.id) === String(session.id) && (
+                                <div role="group" aria-label="Confirmation de suppression"
+                                    className="rounded-lg border border-red-700 bg-red-950/40 p-3 space-y-3">
+                                    <p className="font-semibold text-red-200">Supprimer définitivement cette saisie ?</p>
+                                    <p className="text-sm text-slate-200">{getUserName(session.user_id)} · {displayDate(start)} · {hoursDuration(start, end)} h</p>
+                                    <p className="text-sm text-slate-300">Les autres saisies seront conservées. Les heures consommées seront recalculées.</p>
+                                    {deleteError && <p role="alert" className="text-sm text-red-200 break-words">{deleteError}</p>}
+                                    <div className="flex flex-wrap gap-2">
+                                        <button type="button" disabled={busyId != null || loading}
+                                            onClick={() => void removePendingSession()}
+                                            className="min-h-11 rounded-lg bg-red-700 px-4 py-2 font-semibold text-white disabled:opacity-50">
+                                            {busyId === 'delete:' + session.id ? 'Suppression…' : 'Confirmer la suppression'}
+                                        </button>
+                                        <button type="button" disabled={busyId != null}
+                                            onClick={() => { setDeleteTarget(null); setDeleteError(''); }}
+                                            className="min-h-11 rounded-lg bg-slate-700 px-4 py-2 font-semibold disabled:opacity-50">
+                                            Annuler
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {isEditing && <div className="border-t border-slate-700 pt-4 space-y-3">
                                 <p className="text-sm text-slate-300">
