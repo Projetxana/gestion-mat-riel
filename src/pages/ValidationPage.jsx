@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock, Pencil, ShieldCheck, X, ChevronDown, ChevronUp, UsersRound } from 'lucide-react';
+import { CheckCircle2, Clock, Pencil, ShieldCheck, X, ChevronDown, ChevronUp, UsersRound, Trash2 } from 'lucide-react';
 import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAppContext } from '../context/AppContext';
@@ -31,7 +31,7 @@ const effectiveEnd = (session) => session.corrected_end_at || session.punch_end_
 export default function ValidationPage() {
     const {
         currentUser, currentCompanyId, companyRoleLoading,
-        users, sites, projectTasks, mergeTimeSessions,
+        users, sites, projectTasks, mergeTimeSessions, deleteTimeSession,
     } = useAppContext();
     const isAdmin = currentUser?.role === 'admin';
     const [week, setWeek] = useState(() => mondayOf(new Date()));
@@ -157,6 +157,35 @@ export default function ValidationPage() {
         setMessage('Correction enregistrée, pointage placé en attente de validation.');
         setFilter('pending');
         setExpandedUser(String(session.user_id));
+    };
+
+    const removePendingSession = async (session) => {
+        if (!isAdmin || !currentCompanyId || busyId != null || editingId != null || loading ||
+            session.approved === true || !session.punch_end_at ||
+            String(session.company_id) !== String(currentCompanyId)) return;
+        const description = getUserName(session.user_id) + ' — ' + displayDate(effectiveStart(session))
+            + '\n' + siteName(session.site_id) + ' · ' + taskName(session.section_id)
+            + '\n' + hoursDuration(effectiveStart(session), effectiveEnd(session)) + ' h';
+        if (!window.confirm('Supprimer définitivement cette saisie ?\n' + description
+            + '\nLes autres saisies seront conservées.')) return;
+        setBusyId('delete:' + session.id);
+        setError('');
+        setMessage('');
+        try {
+            const result = await deleteTimeSession(session.id, session);
+            if (!result?.success) {
+                await loadSessions();
+                setError(result?.error || 'Suppression non confirmée. Actualisez puis réessayez.');
+                return;
+            }
+            setRows(previous => previous.filter(row => String(row.id) !== String(session.id)));
+            await loadSessions();
+            setMessage('Saisie supprimée. Les totaux ont été actualisés.');
+        } catch (caught) {
+            setError(caught?.message || 'Impossible de supprimer la saisie.');
+        } finally {
+            setBusyId(null);
+        }
     };
 
     const approveWeek = async (group) => {
@@ -329,6 +358,14 @@ export default function ValidationPage() {
                                     className="min-h-11 rounded-lg border border-slate-600 px-4 py-2 text-slate-100 font-semibold disabled:opacity-50">
                                     <Pencil size={15} className="inline mr-1" /> {isEditing ? 'Fermer la correction' : 'Corriger'}
                                 </button>
+                                {session.approved !== true && session.punch_end_at && String(session.company_id) === String(currentCompanyId) && (
+                                    <button type="button" disabled={busyId != null || editingId != null || loading}
+                                        onClick={() => void removePendingSession(session)}
+                                        aria-label={'Supprimer la saisie de ' + getUserName(session.user_id) + ' du ' + displayDate(start) + ' de ' + hoursDuration(start, end) + ' h'}
+                                        className="min-h-11 rounded-lg border border-red-800 px-4 py-2 text-red-300 font-semibold hover:bg-red-950/50 disabled:opacity-50">
+                                        <Trash2 size={16} className="inline mr-1" /> {busyId === 'delete:' + session.id ? 'Suppression…' : 'Supprimer'}
+                                    </button>
+                                )}
                                 <span className={session.approved === true
                                     ? 'rounded-lg bg-emerald-950/50 px-3 py-2 text-sm font-semibold text-emerald-300'
                                     : 'rounded-lg bg-amber-950/40 px-3 py-2 text-sm font-semibold text-amber-300'}>
@@ -426,7 +463,7 @@ export default function ValidationPage() {
                     );
                 })}
             </div>
-            <p className="text-xs text-slate-500">Seul un administrateur de l'entreprise peut corriger ou valider. Les pointages originaux et l'historique des corrections sont conservés dans Supabase.</p>
+            <p className="text-xs text-slate-500">Seul un administrateur de l'entreprise peut corriger, valider ou supprimer depuis cet écran. Seules les saisies terminées en attente peuvent être supprimées ici. L'historique des corrections est conservé dans Supabase.</p>
         </div>
     );
 }

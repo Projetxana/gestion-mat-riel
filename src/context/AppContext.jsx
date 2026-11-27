@@ -1149,10 +1149,30 @@ export const AppProvider = ({ children }) => {
         return { success: true };
     };
 
-    const deleteTimeSession = async (sessionId) => {
+    const deleteTimeSession = async (sessionId, pendingSession = null) => {
+        // The admin review flow must never delete an approved, open, stale or
+        // cross-company record. Keep the existing employee flow unchanged.
+        let query = supabase.from('time_sessions').delete().eq('id', sessionId);
+        if (pendingSession) {
+            if (currentUser?.role !== 'admin' || !currentCompanyId ||
+                String(pendingSession.id) !== String(sessionId) ||
+                String(pendingSession.company_id) !== String(currentCompanyId) ||
+                pendingSession.approved === true || !pendingSession.punch_end_at) {
+                return { error: 'Suppression réservée aux saisies terminées en attente de cette entreprise.' };
+            }
+            query = query.eq('company_id', currentCompanyId)
+                .eq('user_id', pendingSession.user_id)
+                .or('approved.is.null,approved.eq.false')
+                .not('punch_end_at', 'is', null);
+            // Reject changes made after the administrator reviewed the card.
+            for (const field of ['punch_start_at', 'punch_end_at', 'corrected_start_at',
+                'corrected_end_at', 'site_id', 'section_id', 'correction_reason']) {
+                const value = pendingSession[field];
+                query = value == null ? query.is(field, null) : query.eq(field, value);
+            }
+        }
         // A zero-row DELETE may be silently blocked by RLS. Verify the affected row.
-        const { data, error } = await supabase.from('time_sessions')
-            .delete().eq('id', sessionId).select('id');
+        const { data, error } = await query.select('id');
         if (error) {
             console.error("Error deleting session:", error);
             return { error: error.message };
