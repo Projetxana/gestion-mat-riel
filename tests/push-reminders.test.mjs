@@ -12,7 +12,9 @@ test('provider allowlist blocks SSRF, credentials, redirects to arbitrary destin
 test('public VAPID key is decoded to uncompressed P-256 form',()=>{
     const key=Buffer.concat([Buffer.from([4]),Buffer.alloc(64,1)]).toString('base64url');
     assert.equal(decodeVapidKey(key).length,65);
-    assert.throws(()=>decodeVapidKey('private-key'));
+    assert.deepEqual(decodeVapidKey('  '+key+'\n'),decodeVapidKey(key));
+    assert.throws(()=>decodeVapidKey('private-key'),/11 caractères reçus, 87 attendus/);
+    assert.throws(()=>decodeVapidKey(key.slice(0,40)+' '+key.slice(40)),/88 caractères reçus/);
 });
 test('subscription requires explicit browser permission and persists only device endpoint',async()=>{
     const old=globalThis.Notification;
