@@ -18,10 +18,9 @@ export default function PushReminderSettings() {
     const admin = currentUser?.role === 'admin';
     const [config,setConfig] = useState(defaultSettings);
     const [members,setMembers] = useState([]);
-    const [roster,setRoster] = useState([]);
-    const [absences,setAbsences] = useState([]);
+    const [exclusions,setExclusions] = useState([]);
     const [history,setHistory] = useState([]);
-    const [absence,setAbsence] = useState({user_id:'',start_date:day(),end_date:day()});
+    const [period,setPeriod] = useState({label:'',start_date:day(),end_date:day()});
     const [registration,setRegistration] = useState(null);
     const [subscribed,setSubscribed] = useState(false);
     const [busy,setBusy] = useState(false);
@@ -38,15 +37,13 @@ export default function PushReminderSettings() {
                 const responses = await Promise.all([
                     supabase.from('bt_push_settings').select('*').eq('company_id',company).maybeSingle(),
                     supabase.from('company_users').select('user_id,role').eq('company_id',company).eq('role','member'),
-                    supabase.from('bt_push_roster').select('user_id').eq('company_id',company),
-                    supabase.from('bt_push_absences').select('id,user_id,start_date,end_date').eq('company_id',company).order('start_date',{ascending:false}).limit(100),
+                    supabase.from('bt_push_exclusions').select('id,label,start_date,end_date').eq('company_id',company).order('start_date',{ascending:true}),
                     supabase.from('bt_push_history').select('id,user_id,kind,reminder_date,status,created_at').eq('company_id',company).order('created_at',{ascending:false}).limit(50),
                 ]);
                 if (responses.some(r=>r.error)) throw new Error('Paramètres des rappels indisponibles.');
                 setConfig(responses[0].data || defaultSettings);
                 setMembers([...new Map((responses[1].data||[]).map(m=>[m.user_id,m])).values()]);
-                setRoster((responses[2].data||[]).map(m=>m.user_id));
-                setAbsences(responses[3].data||[]);setHistory(responses[4].data||[]);
+                setExclusions(responses[2].data||[]);setHistory(responses[3].data||[]);
             } else if (pushSupported()) {
                 const reg=await navigator.serviceWorker.getRegistration('/');
                 if (reg?.active) {
@@ -83,7 +80,7 @@ export default function PushReminderSettings() {
         {admin&&loaded?<>
             <div className={panelClass}>
             <h3 className="font-semibold text-base">1. Horaires et activation</h3>
-            <p className="text-sm text-slate-600">Les rappels sont envoyés aux employés sélectionnés ayant autorisé les notifications, uniquement si une journée attendue est manquante. Du lundi au vendredi.</p>
+            <p className="text-sm text-slate-600">Tous les employés de cette entreprise sont concernés automatiquement. Seuls ceux ayant autorisé les notifications et dont une journée de travail est manquante reçoivent un rappel.</p>
             <label className="!flex !flex-row !justify-start !items-center gap-3 min-h-11"><input className={checkClass} type="checkbox" checked={config.enabled} onChange={e=>setConfig({...config,enabled:e.target.checked})}/> Activer les rappels</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><label className="!flex !flex-col gap-1">Heure quotidienne <input className={inputClass} type="time" required value={toTime(config.daily_minute)} onChange={e=>e.target.value&&setConfig({...config,daily_minute:toMinute(e.target.value)})}/></label>
             <div className="space-y-1"><label className="!flex !flex-row !justify-start !items-center gap-3 min-h-11"><input className={checkClass} type="checkbox" checked={config.weekly_enabled} onChange={e=>setConfig({...config,weekly_enabled:e.target.checked})}/> Rappel du vendredi</label>
@@ -93,16 +90,26 @@ export default function PushReminderSettings() {
             </select></label>
             <button className={buttonClass} disabled={busy} onClick={()=>void act(()=>supabase.from('bt_push_settings').upsert({company_id:company,enabled:config.enabled,daily_minute:config.daily_minute,weekly_enabled:config.weekly_enabled,weekly_minute:config.weekly_minute,timezone:config.timezone}),'Paramètres enregistrés.')}>Enregistrer les paramètres</button>
             </div>
-            <div className={panelClass}><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">2. Employés concernés</h3><span className="text-sm font-medium text-slate-600">{roster.filter(id=>members.some(m=>m.user_id===id)).length} / {members.length} sélectionnés</span></div><p className="text-sm text-slate-600">Employés attendus du lundi au vendredi. Les sélections sont enregistrées immédiatement.</p><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {[...members].sort((a,b)=>name(a.user_id).localeCompare(name(b.user_id),'fr')).map(m=><label key={m.user_id} className="!flex !flex-row !justify-start !items-center gap-3 min-h-11 rounded-lg border border-slate-200 px-3 py-2 cursor-pointer"><input className={checkClass} type="checkbox" disabled={busy} checked={roster.includes(m.user_id)} onChange={e=>void act(()=>e.target.checked?supabase.from('bt_push_roster').insert({company_id:company,user_id:m.user_id}):supabase.from('bt_push_roster').delete().eq('company_id',company).eq('user_id',m.user_id),'Liste enregistrée.')}/>{name(m.user_id)}</label>)}
-            </div></div>
-            <div className={panelClass}><h3 className="font-semibold">3. Absences et congés</h3><p className="text-sm text-slate-600">Aucun rappel durant les dates incluses.</p><div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end"><label className="!flex !flex-col gap-1">Employé
-            <select aria-label="Employé absent" className={inputClass} value={absence.user_id} onChange={e=>setAbsence({...absence,user_id:e.target.value})}><option value="">Choisir un employé</option>{members.map(m=><option key={m.user_id} value={m.user_id}>{name(m.user_id)}</option>)}</select></label>
-            <label className="!flex !flex-col gap-1">Du<input className={inputClass} type="date" value={absence.start_date} onChange={e=>setAbsence({...absence,start_date:e.target.value})}/></label>
-            <label className="!flex !flex-col gap-1">Au<input className={inputClass} type="date" value={absence.end_date} onChange={e=>setAbsence({...absence,end_date:e.target.value})}/></label></div>
-            <button className={buttonClass} disabled={busy||!absence.user_id||!absence.start_date||!absence.end_date||absence.end_date<absence.start_date} onClick={()=>void act(()=>supabase.from('bt_push_absences').insert({...absence,company_id:company}),'Absence enregistrée.')}>Ajouter l’absence</button>
-            {absences.map(a=><div key={a.id} className="flex flex-wrap items-center gap-2 text-sm border-t border-slate-200 pt-2"><span>{name(a.user_id)} · {a.start_date} au {a.end_date}</span><button disabled={busy} className="min-h-11 text-red-700" onClick={()=>void act(()=>supabase.from('bt_push_absences').delete().eq('id',a.id).eq('company_id',company),'Absence retirée.')}>Retirer</button></div>)}
-            </div><div className={panelClass}><h3 className="font-semibold">4. Historique des envois</h3>
+            <div className={panelClass}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-semibold">Employés concernés automatiquement</h3>
+                    <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-800">{members.length} employés</span>
+                </div>
+                <p className="text-sm text-slate-600">Aucune sélection nécessaire. Les nouveaux employés sont inclus dès leur inscription aux notifications sur leur appareil.</p>
+            </div>
+            <div className={panelClass}>
+                <h3 className="font-semibold">2. Périodes sans rappel</h3>
+                <p className="text-sm text-slate-600">Vacances de la construction, fêtes et fermetures collectives. Les dates de début et de fin sont incluses. Les journées exclues ne comptent pas dans le rappel hebdomadaire.</p>
+                <label className="!flex !flex-col gap-1">Nom de la période (facultatif)
+                    <input className={inputClass} maxLength={120} placeholder="Ex. Vacances de la construction" value={period.label} onChange={e=>setPeriod({...period,label:e.target.value})}/>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="!flex !flex-col gap-1">Du<input className={inputClass} type="date" value={period.start_date} onChange={e=>setPeriod({...period,start_date:e.target.value})}/></label>
+                    <label className="!flex !flex-col gap-1">Au<input className={inputClass} type="date" min={period.start_date} value={period.end_date} onChange={e=>setPeriod({...period,end_date:e.target.value})}/></label>
+                </div>
+                <button className={buttonClass} disabled={busy||!period.start_date||!period.end_date||period.end_date<period.start_date} onClick={()=>void act(async()=>{const result=await supabase.from('bt_push_exclusions').insert({...period,label:period.label.trim(),company_id:company});if(!result.error)setPeriod({label:'',start_date:day(),end_date:day()});return result;},'Période enregistrée.')}>Ajouter une période</button>
+                {exclusions.length===0?<p className="text-sm text-slate-500">Aucune période exclue.</p>:<div className="divide-y divide-slate-200">{exclusions.map(p=><div key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-3"><div><p className="font-medium">{p.label||'Fermeture collective'}</p><p className="text-sm text-slate-600">{p.start_date} au {p.end_date}</p></div><button type="button" disabled={busy} className="min-h-11 px-3 text-red-700" onClick={()=>void act(()=>supabase.from('bt_push_exclusions').delete().eq('id',p.id).eq('company_id',company),'Période retirée.')}>Retirer</button></div>)}</div>}
+            </div><div className={panelClass}><h3 className="font-semibold">3. Historique des envois</h3>
             <p className="text-xs text-slate-600">Accepté signifie accepté par le service push, pas nécessairement lu ou affiché.</p>
             {history.length===0?<p className="text-sm">Aucun envoi enregistré.</p>:history.map(h=><p className="text-sm border-t border-slate-200 py-2" key={h.id}>{h.reminder_date} · {name(h.user_id)} · {h.kind==='weekly'?'Hebdomadaire':'Quotidien'} · {({claimed:'En cours / résultat inconnu',accepted:'Accepté',failed:'Échec',expired:'Abonnement expiré',skipped:'Annulé'})[h.status]||h.status}</p>)}
         </div></>:!admin&&loaded?<>
