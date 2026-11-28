@@ -3,19 +3,20 @@ export function pushSupported() {
         'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
 export function decodeVapidKey(value) {
-    if (!/^[A-Za-z0-9_-]{87}$/.test(value || '')) throw new Error('Clé publique Web Push invalide.');
-    const binary = atob(value.replace(/-/g, '+').replace(/_/g, '/') + '=');
+    const key = typeof value === 'string' ? value.trim() : '';
+    if (!/^[A-Za-z0-9_-]{87}$/.test(key)) throw new Error(`Clé publique Web Push invalide (${key.length} caractères reçus, 87 attendus).`);
+    const binary = atob(key.replace(/-/g, '+').replace(/_/g, '/') + '=');
     const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
     if (bytes.length !== 65 || bytes[0] !== 4) throw new Error('Clé publique Web Push invalide.');
     return bytes;
 }
 export async function enableDevicePush(client, companyId, userId, registration, publicKey) {
     if (!companyId || !userId || !registration?.active) throw new Error('Application non prête.');
+    const key = decodeVapidKey(publicKey);
     // Called directly from a click. Never request permission on page load.
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') throw new Error('Notifications non autorisées.');
     const previous = await registration.pushManager.getSubscription();
-    const key = decodeVapidKey(publicKey);
     const subscription = previous || await registration.pushManager.subscribe({
         userVisibleOnly: true, applicationServerKey: key,
     });
