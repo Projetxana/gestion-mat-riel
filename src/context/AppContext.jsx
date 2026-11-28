@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { initialHiltiTools } from '../data/hiltiData';
 import { canDeletePendingSession } from '../utils/pendingSessionDeletion';
@@ -22,6 +22,9 @@ export const AppProvider = ({ children }) => {
     const authUser = saasSession?.user ?? null;
     const [currentCompanyId, setCurrentCompanyId] = useState(null);
     const [companySetupComplete, setCompanySetupComplete] = useState(null); // null=loading, true/false
+    const [companyLookupError, setCompanyLookupError] = useState(null);
+    const companyRequest = useRef(0);
+    const activeAuthId = useRef(null);
     const [companyRole, setCompanyRole] = useState(null);
     const [companyRoleLoading, setCompanyRoleLoading] = useState(true);
 
@@ -62,30 +65,42 @@ export const AppProvider = ({ children }) => {
 
     // Initial Data Fetch & Geofence Watcher
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        let active = true;
+        let authEventSeen = false;
+        let pending;
+        const acceptSession = (session) => {
+            if (!active) return;
+            const id = session?.user?.id ?? null;
+            const changed = activeAuthId.current !== id;
+            activeAuthId.current = id;
             setSaasSession(session);
-            if (session) {
-                fetchCompanyId();
-                fetchData();
-            }
-        });
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSaasSession(session);
-            if (session) {
-                // Ne jamais appeler Supabase de façon synchrone dans onAuthStateChange.
-                setTimeout(() => { fetchCompanyId(); fetchData(); }, 0);
-            } else {
+            if (changed || !id) {
+                companyRequest.current++;
                 setCurrentCompanyId(null);
-                setCompanySetupComplete(false);
-                setSites([]);
-                setMaterials([]);
-                setProjectTasks([]);
-                setTimeSessions([]);
-                setUsers([]);
-                setLogs([]);
+                setCompanySetupComplete(null);
+                setCompanyLookupError(null);
+                setSites([]); setMaterials([]); setProjectTasks([]);
+                setTimeSessions([]); setUsers([]); setLogs([]);
             }
+            if (id && (changed || !pending)) {
+                clearTimeout(pending);
+                pending = setTimeout(() => {
+                    if (!active || activeAuthId.current !== id) return;
+                    void fetchCompanyId(id);
+                    void fetchData();
+                }, 0);
+            } else if (!id) {
+                clearTimeout(pending);
+                pending = undefined;
+            }
+        };
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            authEventSeen = true;
+            acceptSession(session);
         });
+        supabase.auth.getSession().then(({ data, error }) => {
+            if (!authEventSeen && active && !error) acceptSession(data?.session ?? null);
+        }).catch(() => {});
 
         // Data are fetched only after an authenticated session is restored.
 
@@ -158,6 +173,9 @@ export const AppProvider = ({ children }) => {
         ];
 
         return () => {
+            active = false;
+            clearTimeout(pending);
+            companyRequest.current++;
             subscription.unsubscribe();
             if (watchId) navigator.geolocation.clearWatch(watchId);
             channels.forEach(channel => supabase.removeChannel(channel));
@@ -355,23 +373,49 @@ export const AppProvider = ({ children }) => {
     };
 
     // Fetch Company ID from Supabase RPC
-    const fetchCompanyId = async () => {
-        try {
-            const { data, error } = await supabase.rpc('get_user_company_id');
-            if (!error && data) {
-                setCurrentCompanyId(data);
-                setCompanySetupComplete(true);
-            } else {
+    const fetchCompanyId = async (expectedId = activeAuthId.current) => {
+        if (!expectedId || activeAuthId.current !== expectedId) return;
+        const request = ++companyRequest.current;
+        const isCurrent = () => request === companyRequest.current && activeAuthId.current === expectedId;
+        setCompanySetupComplete(null);
+        setCompanyLookupError(null);
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const { data, error } = await supabase.rpc('get_user_company_id');
+                if (!isCurrent()) return;
+                if (error) throw error;
+                if (data) {
+                    setCurrentCompanyId(data);
+                    setCompanySetupComplete(true);
+                    return;
+                }
+                // Confirm a null RPC with an authenticated, tenant-scoped membership read.
+                const membership = await supabase.from('company_users').select('company_id')
+                    .eq('user_id', expectedId).limit(1).maybeSingle();
+                if (!isCurrent()) return;
+                if (membership.error) throw membership.error;
+                if (membership.data?.company_id) {
+                    setCurrentCompanyId(membership.data.company_id);
+                    setCompanySetupComplete(true);
+                    return;
+                }
+                // Require a verified server session before declaring onboarding necessary.
+                const verified = await supabase.auth.getUser();
+                if (!isCurrent()) return;
+                if (verified.error || verified.data?.user?.id !== expectedId) throw new Error('Session non confirmée');
+                if (attempt < 2) { await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1))); continue; }
                 setCurrentCompanyId(null);
                 setCompanySetupComplete(false);
+                return;
+            } catch {
+                if (!isCurrent()) return;
+                if (attempt < 2) { await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1))); continue; }
+                setCurrentCompanyId(null);
+                setCompanyLookupError('Impossible de vérifier votre entreprise. Réessayez.');
+                setCompanySetupComplete(null);
             }
-        } catch (e) {
-            console.log('No company found for user');
-            setCurrentCompanyId(null);
-            setCompanySetupComplete(false);
         }
     };
-
 
     // Actions
 
@@ -1307,6 +1351,8 @@ export const AppProvider = ({ children }) => {
 
         currentCompanyId,
         companySetupComplete,
+        companyLookupError,
+        retryCompanyLookup: fetchCompanyId,
         inviteEmployee,
         fetchCompanyInvites,
         uploadCompanyLogo,
