@@ -28,66 +28,38 @@ import ValidationPage from './pages/ValidationPage';
 import OnboardingPage from './pages/OnboardingPage';
 import SetupWizard from './pages/SetupWizard';
 
+const CompanyLookupState = ({ error, retry, logout }) => (
+  <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+    <div className="w-full max-w-md rounded-xl bg-slate-900 p-6 text-white space-y-4 text-center">
+      <h1 className="text-xl font-bold">Connexion à votre entreprise</h1>
+      <p role={error ? 'alert' : 'status'} className="text-slate-300">{error || 'Vérification de votre accès…'}</p>
+      {error && <button className="w-full rounded-lg bg-blue-600 py-3" onClick={() => void retry()}>Réessayer</button>}
+      <button className="w-full rounded-lg bg-slate-700 py-3" onClick={() => void logout()}>Se déconnecter</button>
+    </div>
+  </div>
+);
+
 const ProtectedRoute = ({ children }) => {
-  const { currentUser, companySetupComplete, saasSession } = useAppContext();
+  const { currentUser, companySetupComplete, companyLookupError, retryCompanyLookup, logout, saasSession } = useAppContext();
   const [loading, setLoading] = React.useState(true);
-  const [user, setUser] = React.useState(null);
-
   React.useEffect(() => {
-    let mounted = true;
-
-    const initAuth = async () => {
-      try {
-        const response = await supabase.auth.getSession();
-        
-        if (mounted) {
-          if (response?.data?.session) {
-         console.log("SESSION =", response)
-         console.log("SESSION USER =", response?.data?.session?.user)
-            setUser(response.data.session.user);
-          } else {
-            setUser(null);
-          }
-        }
-      } catch (error) {
-        console.error("Auth init error:", error);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    initAuth();
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted) {
-        setUser(session?.user ?? null);
-      }
-    });
-
-    return () => {
-      if (listener?.subscription) {
-        listener.subscription.unsubscribe()
-      }
-    }
-  }, [])
-
-  if (loading) return null
-
-  const isAuthenticated = user || currentUser;
-
-  if (!loading && !isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // If SaaS user has no company yet, redirect to setup wizard
-if (user && companySetupComplete === false) {
-    return <Navigate to="/setup" replace />;
-}
-
-  if (currentUser?.must_change_password) {
-    return <Navigate to="/change-password" replace />;
-  }
+    let active = true;
+    supabase.auth.getSession().finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+  if (loading) return null;
+  if (!saasSession && !currentUser) return <Navigate to="/login" replace />;
+  if (companySetupComplete === null) return <CompanyLookupState error={companyLookupError} retry={retryCompanyLookup} logout={logout}/>;
+  if (companySetupComplete === false) return <Navigate to="/setup" replace />;
+  if (currentUser?.must_change_password) return <Navigate to="/change-password" replace />;
   return children;
+};
+
+const SetupRoute = () => {
+  const { saasSession, companySetupComplete, companyLookupError, retryCompanyLookup, logout } = useAppContext();
+  if (!saasSession || companySetupComplete === null) return <CompanyLookupState error={companyLookupError} retry={retryCompanyLookup} logout={logout}/>;
+  if (companySetupComplete === true) return <Navigate to="/" replace />;
+  return <SetupWizard />;
 };
 
 class ErrorBoundary extends React.Component {
@@ -156,7 +128,7 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
-      <Route path="/setup" element={<SetupWizard />} />
+      <Route path="/setup" element={<SetupRoute />} />
       <Route path="/change-password" element={<ChangePasswordPage />} />
       <Route path="/activate" element={<ActivateAccountPage />} />
       <Route
