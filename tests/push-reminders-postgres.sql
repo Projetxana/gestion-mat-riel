@@ -162,3 +162,46 @@ DO $$ BEGIN
 END $$;
 RESET ROLE;
 SELECT 'Push reminder scheduling, privacy and RLS tests passed' AS result;
+
+-- V2: collective exclusions and independent switches; fixture only.
+\ir ../docs/push-reminders/schema-v2-collective-exclusions.sql
+DELETE FROM public.bt_push_roster;
+UPDATE public.bt_push_subscriptions SET created_at='2026-01-01T00:00Z';
+UPDATE public.bt_push_settings SET daily_enabled=false,weekly_enabled=true;
+SET ROLE service_role;
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM public.bt_push_due('2026-11-26T23:00Z')) THEN RAISE EXCEPTION 'Disabled daily sent'; END IF;
+ IF (SELECT count(*) FROM public.bt_push_due('2026-11-28T00:00Z'))<>1 THEN RAISE EXCEPTION 'Weekly-only without roster failed'; END IF;
+END $$;
+RESET ROLE;
+UPDATE public.bt_push_settings SET daily_enabled=true,weekly_enabled=false;
+SET ROLE service_role;
+DO $$ BEGIN
+ IF (SELECT count(*) FROM public.bt_push_due('2026-11-26T23:00Z'))<>1 THEN RAISE EXCEPTION 'Daily-only without roster failed'; END IF;
+ IF EXISTS(SELECT 1 FROM public.bt_push_due('2026-11-28T00:00Z')) THEN RAISE EXCEPTION 'Disabled weekly sent'; END IF;
+END $$;
+RESET ROLE;
+UPDATE public.bt_push_settings SET daily_enabled=false,weekly_enabled=false;
+SET ROLE service_role;
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM public.bt_push_due('2026-11-26T23:00Z')) OR EXISTS(SELECT 1 FROM public.bt_push_due('2026-11-28T00:00Z')) THEN RAISE EXCEPTION 'Both disabled sent'; END IF;
+END $$;
+RESET ROLE;
+UPDATE public.bt_push_settings SET daily_enabled=true,weekly_enabled=true;
+SET ROLE authenticated;
+SET request.jwt.claim.sub='00000000-0000-0000-0000-000000000001';
+INSERT INTO public.bt_push_exclusions(company_id,start_date,end_date,label) VALUES
+ ('10000000-0000-0000-0000-000000000001','2026-11-23','2026-11-27','Winter closure'),
+ ('10000000-0000-0000-0000-000000000001','2026-07-20','2026-07-24','Summer closure');
+DO $$ BEGIN
+ BEGIN
+ INSERT INTO public.bt_push_exclusions(company_id,start_date,end_date) VALUES ('20000000-0000-0000-0000-000000000001','2026-11-23','2026-11-27');
+ RAISE EXCEPTION 'Foreign closure writable'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $$;
+RESET ROLE;
+SET ROLE service_role;
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM public.bt_push_due('2026-11-26T23:00Z')) OR EXISTS(SELECT 1 FROM public.bt_push_due('2026-11-28T00:00Z')) OR EXISTS(SELECT 1 FROM public.bt_push_due('2026-07-23T22:00Z')) THEN RAISE EXCEPTION 'Collective closure ignored'; END IF;
+END $$;
+RESET ROLE;
+SELECT 'Independent schedules and collective exclusions passed' AS result;
