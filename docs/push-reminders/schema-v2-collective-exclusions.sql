@@ -1,4 +1,7 @@
 BEGIN;
+ALTER TABLE public.bt_push_settings ADD COLUMN daily_enabled boolean NOT NULL DEFAULT true;
+ALTER TABLE public.bt_push_settings DROP CONSTRAINT bt_push_settings_check;
+ALTER TABLE public.bt_push_settings ADD CONSTRAINT bt_push_settings_schedule_check CHECK (NOT (daily_enabled AND weekly_enabled) OR weekly_minute >= daily_minute + 30);
 CREATE TABLE public.bt_push_exclusions (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -31,7 +34,7 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $fn$
        AND m.user_id=s.user_id AND m.role='member')
  ), due AS (
    SELECT e.*, 'daily'::text AS reminder_kind,e.today AS first_day
-   FROM eligible e WHERE e.minute>=e.daily_minute AND e.minute<e.daily_minute+30
+   FROM eligible e WHERE e.daily_enabled AND e.minute>=e.daily_minute AND e.minute<e.daily_minute+30
    UNION ALL
    SELECT e.*, 'weekly'::text AS reminder_kind,e.today-4 AS first_day
    FROM eligible e WHERE e.dow=5 AND e.weekly_enabled AND
