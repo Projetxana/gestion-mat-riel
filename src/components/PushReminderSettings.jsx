@@ -5,7 +5,7 @@ import { disableDevicePush, enableDevicePush, pushSupported } from '../utils/pus
 
 const feature = import.meta.env.VITE_BUILDTRACK_PUSH_ENABLED === 'true';
 const publicKey = import.meta.env.VITE_BUILDTRACK_PUSH_PUBLIC_KEY || '';
-const defaultSettings = { enabled:false, daily_minute:1080, weekly_enabled:true, weekly_minute:1140, timezone:'America/Toronto' };
+const defaultSettings = { enabled:false, daily_enabled:true, daily_minute:1080, weekly_enabled:true, weekly_minute:1140, timezone:'America/Toronto' };
 const toTime = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
 const toMinute = t => { const [h,m]=t.split(':').map(Number); return h*60+m; };
 const day = () => {
@@ -82,13 +82,23 @@ export default function PushReminderSettings() {
             <h3 className="font-semibold text-base">1. Horaires et activation</h3>
             <p className="text-sm text-slate-600">Tous les employés de cette entreprise sont concernés automatiquement. Seuls ceux ayant autorisé les notifications et dont une journée de travail est manquante reçoivent un rappel.</p>
             <label className="!flex !flex-row !justify-start !items-center gap-3 min-h-11"><input className={checkClass} type="checkbox" checked={config.enabled} onChange={e=>setConfig({...config,enabled:e.target.checked})}/> Activer les rappels</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><label className="!flex !flex-col gap-1">Heure quotidienne <input className={inputClass} type="time" required value={toTime(config.daily_minute)} onChange={e=>e.target.value&&setConfig({...config,daily_minute:toMinute(e.target.value)})}/></label>
-            <div className="space-y-1"><label className="!flex !flex-row !justify-start !items-center gap-3 min-h-11"><input className={checkClass} type="checkbox" checked={config.weekly_enabled} onChange={e=>setConfig({...config,weekly_enabled:e.target.checked})}/> Rappel du vendredi</label>
-            <label className="!flex !flex-col gap-1">Heure du vendredi <input className={inputClass} type="time" required value={toTime(config.weekly_minute)} onChange={e=>e.target.value&&setConfig({...config,weekly_minute:toMinute(e.target.value)})}/></label></div></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+                    <label className="!flex !flex-row !justify-start !items-center gap-3 min-h-11"><input className={checkClass} type="checkbox" checked={config.daily_enabled} onChange={e=>setConfig({...config,daily_enabled:e.target.checked})}/> Rappel quotidien</label>
+                    <p className="text-sm text-slate-600">Du lundi au vendredi, si les heures du jour sont manquantes.</p>
+                    <label className="!flex !flex-col gap-1">Heure du rappel quotidien<input className={inputClass+' disabled:opacity-50'} type="time" disabled={!config.daily_enabled} value={toTime(config.daily_minute)} onChange={e=>e.target.value&&setConfig({...config,daily_minute:toMinute(e.target.value)})}/></label>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+                    <label className="!flex !flex-row !justify-start !items-center gap-3 min-h-11"><input className={checkClass} type="checkbox" checked={config.weekly_enabled} onChange={e=>setConfig({...config,weekly_enabled:e.target.checked})}/> Rappel hebdomadaire</label>
+                    <p className="text-sm text-slate-600">Le vendredi, si une journée de la semaine est manquante.</p>
+                    <label className="!flex !flex-col gap-1">Heure du rappel hebdomadaire<input className={inputClass+' disabled:opacity-50'} type="time" disabled={!config.weekly_enabled} value={toTime(config.weekly_minute)} onChange={e=>e.target.value&&setConfig({...config,weekly_minute:toMinute(e.target.value)})}/></label>
+                </div>
+            </div>
+            {config.daily_enabled&&config.weekly_enabled&&config.weekly_minute<config.daily_minute+30&&<p role="alert" className="text-sm text-red-700">Le rappel du vendredi doit être au moins 30 minutes après le rappel quotidien.</p>}
             <label className="flex flex-col gap-1">Fuseau horaire<select className={inputClass} value={config.timezone} onChange={e=>setConfig({...config,timezone:e.target.value})}>
                 {['America/Toronto','America/Halifax','America/St_Johns','America/Winnipeg','America/Regina','America/Edmonton','America/Vancouver'].map(t=><option key={t}>{t}</option>)}
             </select></label>
-            <button className={buttonClass} disabled={busy} onClick={()=>void act(()=>supabase.from('bt_push_settings').upsert({company_id:company,enabled:config.enabled,daily_minute:config.daily_minute,weekly_enabled:config.weekly_enabled,weekly_minute:config.weekly_minute,timezone:config.timezone}),'Paramètres enregistrés.')}>Enregistrer les paramètres</button>
+            <button className={buttonClass} disabled={busy||(config.daily_enabled&&config.weekly_enabled&&config.weekly_minute<config.daily_minute+30)} onClick={()=>void act(()=>supabase.from('bt_push_settings').upsert({company_id:company,enabled:config.enabled,daily_enabled:config.daily_enabled,daily_minute:config.daily_minute,weekly_enabled:config.weekly_enabled,weekly_minute:config.weekly_minute,timezone:config.timezone}),'Paramètres enregistrés.')}>Enregistrer les paramètres</button>
             </div>
             <div className={panelClass}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
